@@ -1,4 +1,4 @@
-  <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -33,7 +33,6 @@
         .stat-card { background: rgba(255, 255, 255, 0.02); border: 1px solid #334155; padding: 10px; border-radius: 12px; text-align: center; }
         .stat-card p { font-size: 0.75rem; color: var(--text-muted); }
         .stat-card h3 { font-size: 1rem; margin-top: 4px; }
-        .full-width-card { grid-column: span 2; }
 
         /* לחצנים */
         .btn-toggle-form { background-color: #1e293b; border: 1px solid var(--primary); color: var(--primary); padding: 14px; border-radius: 12px; font-weight: 600; font-size: 1rem; cursor: pointer; text-align: center; margin-bottom: 15px; width: 100%; }
@@ -83,7 +82,7 @@
 
     <div class="dashboard">
         <div class="main-balance">
-            <span>תזרים פנוי חודשי (פחות קבועות, הלוואות ומשתנות של החודש)</span>
+            <span>תזרים פנוי חודשי (הכנסות פחות כל מה שיורד החודש)</span>
             <h2 id="net-balance">₪0</h2>
         </div>
         <div class="stats-grid">
@@ -103,9 +102,13 @@
                 <p>📉 סך הכל יתרה (משתנות)</p>
                 <h3 id="dash-variable-total" class="text-muted">₪0</h3>
             </div>
-            <div class="stat-card full-width-card">
-                <p>🏦 יתרת חוב הלוואות כולל</p>
-                <h3 id="dash-loan" class="loan-text">₪0</h3>
+            <div class="stat-card">
+                <p>🏦 יורד החודש (הלוואות)</p>
+                <h3 id="dash-loan-monthly" class="loan-text">₪0</h3>
+            </div>
+            <div class="stat-card">
+                <p>📊 סך הכל חוב הלוואות</p>
+                <h3 id="dash-loan-total" class="loan-text">₪0</h3>
             </div>
         </div>
     </div>
@@ -353,7 +356,7 @@
 
         lInc.innerHTML = ''; lFix.innerHTML = ''; lVar.innerHTML = ''; lLoan.innerHTML = '';
 
-        var sumInc = 0, sumFix = 0, sumVarMonthly = 0, sumVarTotalLeft = 0, sumLoanTotalLeft = 0, monthlyExpenses = 0;
+        var sumInc = 0, sumFix = 0, sumVarMonthly = 0, sumVarTotalLeft = 0, sumLoanMonthly = 0, sumLoanTotalLeft = 0, monthlyExpenses = 0;
 
         for (var i = 0; i < items.length; i++) {
             var item = items[i];
@@ -366,15 +369,18 @@
                     monthlyExpenses += mAmount;
                 } else if (item.type === 'variable') {
                     var dt = parseDatesAndGetLeft(item.start, item.total);
-                    sumVarTotalLeft += (item.amount * dt.left); // סך הכל יתרה כוללת של החוב
+                    sumVarTotalLeft += (item.amount * dt.left);
                     if(dt.left > 0) {
-                        sumVarMonthly += item.amount; // כמה יורד החודש
-                        monthlyExpenses += item.amount; // מוריד מהתזרים רק את החודשי!
+                        sumVarMonthly += item.amount;
+                        monthlyExpenses += item.amount;
                     }
                 } else if (item.type === 'loan') {
                     var dt = parseDatesAndGetLeft(item.start, item.total);
-                    sumLoanTotalLeft += (item.amount * dt.left);
-                    if(dt.left > 0) monthlyExpenses += item.amount;
+                    sumLoanTotalLeft += (item.amount * dt.left); // סך הכל יתרת חוב ההלוואות
+                    if(dt.left > 0) {
+                        sumLoanMonthly += item.amount; // כמה יורד מההלוואה החודש הזה
+                        monthlyExpenses += item.amount; // מוריד מהתזרים רק את ההחזר החודשי!
+                    }
                 }
             }
         }
@@ -463,7 +469,8 @@
         document.getElementById('dash-fixed').textContent = '₪' + sumFix.toLocaleString();
         document.getElementById('dash-variable-monthly').textContent = '₪' + sumVarMonthly.toLocaleString();
         document.getElementById('dash-variable-total').textContent = '₪' + sumVarTotalLeft.toLocaleString();
-        document.getElementById('dash-loan').textContent = '₪' + sumLoanTotalLeft.toLocaleString();
+        document.getElementById('dash-loan-monthly').textContent = '₪' + sumLoanMonthly.toLocaleString();
+        document.getElementById('dash-loan-total').textContent = '₪' + sumLoanTotalLeft.toLocaleString();
 
         var net = sumInc - monthlyExpenses;
         document.getElementById('net-balance').textContent = '₪' + Math.round(net).toLocaleString();
