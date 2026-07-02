@@ -1,11 +1,13 @@
-<!DOCTYPE html>
+.<!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>FamilyFinance PRO</title>
     
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>&#128176;</text></svg>">    <style>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>&#128176;</text></svg>">
+    
+    <style>
         :root {
             --bg-color: #0f172a;
             --card-bg: #1e293b;
@@ -32,22 +34,27 @@
         .stat-card p { font-size: 0.75rem; color: var(--text-muted); }
         .stat-card h3 { font-size: 1rem; margin-top: 4px; }
 
-        /* לחצן פתיחת טופס מוסתר */
+        /* לחצנים */
         .btn-toggle-form { background-color: #1e293b; border: 1px solid var(--primary); color: var(--primary); padding: 14px; border-radius: 12px; font-weight: 600; font-size: 1rem; cursor: pointer; text-align: center; margin-bottom: 15px; width: 100%; }
 
-        /* טופס הוספה מוסתר כברירת מחדל */
-        .add-form { display: none; background-color: var(--card-bg); border-radius: 16px; padding: 16px; margin-bottom: 20px; border: 1px solid #334155; }
+        /* טפסים */
+        .add-form, .edit-inside-form { background-color: var(--card-bg); border-radius: 16px; padding: 16px; margin-bottom: 20px; border: 1px solid #334155; }
+        .add-form { display: none; }
+        .edit-inside-form { margin-top: 10px; background-color: #0f172a; padding: 12px; border-radius: 10px; }
         .form-group { margin-bottom: 12px; }
         label { display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px; }
         input, select, textarea, button { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #334155; background-color: #0f172a; color: white; font-size: 0.9rem; outline: none; }
+        .edit-inside-form input, .edit-inside-form select { background-color: #1e293b; }
         button.btn-submit { background-color: var(--primary); color: #0f172a; font-weight: 600; cursor: pointer; border: none; margin-top: 10px; }
+        button.btn-save-edit { background-color: var(--success); color: #0f172a; font-weight: 600; border: none; margin-top: 8px; padding: 8px; font-size: 0.85rem; }
+        button.btn-cancel-edit { background-color: #334155; color: white; border: none; margin-top: 4px; padding: 8px; font-size: 0.85rem; }
 
-        /* טאבים (פעיל / ארכיון) */
+        /* טאבים */
         .tabs { display: flex; margin-bottom: 15px; gap: 8px; background: #1e293b; padding: 4px; border-radius: 12px; }
         .tab { flex: 1; padding: 10px; text-align: center; border-radius: 10px; cursor: pointer; font-size: 0.9rem; color: var(--text-muted); }
         .tab.active { background: var(--bg-color); color: var(--primary); font-weight: bold; }
 
-        /* פקדים נפתחים (אקורדיון) */
+        /* אקורדיון */
         .accordion-header { background-color: #1e293b; border: 1px solid #334155; padding: 14px; border-radius: 12px; margin-top: 10px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-weight: 500; }
         .accordion-content { display: none; padding: 8px 0; }
         .list-container { display: flex; flex-direction: column; gap: 8px; }
@@ -56,8 +63,9 @@
         .item-card { background-color: var(--card-bg); border: 1px solid #334155; padding: 12px; border-radius: 12px; margin-bottom: 4px; }
         .item-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-weight: bold; }
         .item-details { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 0.8rem; color: var(--text-muted); background: rgba(0,0,0,0.1); padding: 8px; border-radius: 8px; }
-        .item-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
-        .btn-action { background: #0f172a; border: 1px solid #334155; color: var(--text-muted); padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; cursor: pointer; width: auto; }
+        .item-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+        .btn-action { background: #0f172a; border: 1px solid #334155; color: var(--text-muted); padding: 5px 10px; border-radius: 6px; font-size: 0.75rem; cursor: pointer; width: auto; }
+        .btn-edit-action { color: var(--primary); border-color: rgba(56,189,248,0.3); }
         .btn-danger-action { color: var(--danger); border-color: rgba(248,113,113,0.3); }
 
         .income-text { color: var(--success); }
@@ -168,6 +176,8 @@
 
 <script>
     var items = [];
+    var editingId = null; // משתנה לשמירת ה-ID של הפריט שנמצא בעריכה כרגע
+
     try {
         var saved = localStorage.getItem('family_finance_data');
         if (saved) {
@@ -277,6 +287,52 @@
         }
     }
 
+    function startEdit(id) {
+        editingId = id;
+        renderAll();
+    }
+
+    function cancelEdit() {
+        editingId = null;
+        renderAll();
+    }
+
+    function saveInlineEdit(id) {
+        var idx = items.findIndex(function(i) { return i.id === id; });
+        if (idx === -1) return;
+        var item = items[idx];
+
+        var titleVal = document.getElementById('edit-title-' + id).value.trim();
+        var amountVal = parseFloat(document.getElementById('edit-amount-' + id).value);
+
+        if (!titleVal || isNaN(amountVal)) {
+            alert('נא להזין שם וסכום תקינים');
+            return;
+        }
+
+        item.title = titleVal;
+        item.amount = amountVal;
+
+        if (item.type === 'fixed') {
+            item.where = document.getElementById('edit-where-' + id).value;
+            item.period = document.getElementById('edit-period-' + id).value;
+            item.notes = document.getElementById('edit-notes-' + id).value;
+        } else if (item.type === 'variable') {
+            item.total = document.getElementById('edit-total-' + id).value;
+            item.start = document.getElementById('edit-start-' + id).value;
+        } else if (item.type === 'loan') {
+            item.where = document.getElementById('edit-where-' + id).value;
+            item.interest = document.getElementById('edit-interest-' + id).value;
+            item.day = document.getElementById('edit-day-' + id).value;
+            item.total = document.getElementById('edit-total-' + id).value;
+            item.start = document.getElementById('edit-start-' + id).value;
+        }
+
+        editingId = null;
+        saveToLocalStorage();
+        renderAll();
+    }
+
     function switchTab(tab) {
         currentView = tab;
         document.getElementById('tab-active').className = (tab === 'active') ? 'tab active' : 'tab';
@@ -323,44 +379,78 @@
                 var card = document.createElement('div');
                 card.className = 'item-card';
 
-                var actionButtons = '';
-                if (!item.isArchived) {
-                    actionButtons = '<button class="btn-action" onclick="archiveItem(' + item.id + ')">📦 ארכיון</button>';
+                var isEditing = (editingId === item.id);
+
+                if (isEditing) {
+                    // תצוגת עריכה בתוך הכרטיס
+                    var editHtml = '<div class="edit-inside-form">' +
+                        '<div class="form-group"><label>שם / כותרת</label><input type="text" id="edit-title-' + item.id + '" value="' + item.title + '"></div>' +
+                        '<div class="form-group"><label>סכום / עלות חודשית</label><input type="number" id="edit-amount-' + item.id + '" value="' + item.amount + '"></div>';
+
+                    if (item.type === 'fixed') {
+                        editHtml += '<div class="form-group"><label>איפה יורד</label><input type="text" id="edit-where-' + item.id + '" value="' + (item.where || '') + '"></div>' +
+                            '<div class="form-group"><label>תדירות</label><select id="edit-period-' + item.id + '"><option value="חודשי"' + (item.period === 'חודשי' ? ' selected' : '') + '>חודשי</option><option value="שנתי"' + (item.period === 'שנתי' ? ' selected' : '') + '>שנתי</option></select></div>' +
+                            '<div class="form-group"><label>הערות</label><textarea id="edit-notes-' + item.id + '">' + (item.notes || '') + '</textarea></div>';
+                    } else if (item.type === 'variable') {
+                        editHtml += '<div class="form-group"><label>סך תשלומים</label><input type="number" id="edit-total-' + item.id + '" value="' + (item.total || '') + '"></div>' +
+                            '<div class="form-group"><label>תאריך התחלה</label><input type="date" id="edit-start-' + item.id + '" value="' + (item.start || '') + '"></div>';
+                    } else if (item.type === 'loan') {
+                        editHtml += '<div class="form-group"><label>היכן יורד</label><input type="text" id="edit-where-' + item.id + '" value="' + (item.where || '') + '"></div>' +
+                            '<div class="form-group"><label>ריבית (%)</label><input type="number" step="0.01" id="edit-interest-' + item.id + '" value="' + (item.interest || '') + '"></div>' +
+                            '<div class="form-group"><label>יום בחודש</label><input type="number" id="edit-day-' + item.id + '" value="' + (item.day || '') + '"></div>' +
+                            '<div class="form-group"><label>סך תשלומים</label><input type="number" id="edit-total-' + item.id + '" value="' + (item.total || '') + '"></div>' +
+                            '<div class="form-group"><label>תאריך מתחיל</label><input type="date" id="edit-start-' + item.id + '" value="' + (item.start || '') + '"></div>';
+                    }
+
+                    editHtml += '<button class="btn-save-edit" onclick="saveInlineEdit(' + item.id + ')">💾 שמור שינויים</button>' +
+                        '<button class="btn-cancel-edit" onclick="cancelEdit()">ביטול</button>' +
+                        '</div>';
+                    card.innerHTML = editHtml;
                 } else {
-                    actionButtons = '<button class="btn-action" onclick="unarchiveItem(' + item.id + ')">🔄 החזר לתנועות</button>' +
-                                    '<button class="btn-action btn-danger-action" onclick="deletePermanently(' + item.id + ')">🗑️ מחיקה סופית</button>';
+                    // תצוגה רגילה של הכרטיס
+                    var actionButtons = '';
+                    if (!item.isArchived) {
+                        actionButtons = '<button class="btn-action btn-edit-action" onclick="startEdit(' + item.id + ')">✏️ עריכה</button>' +
+                                        '<button class="btn-action" onclick="archiveItem(' + item.id + ')">📦 ארכיון</button>';
+                    } else {
+                        actionButtons = '<button class="btn-action btn-edit-action" onclick="startEdit(' + item.id + ')">✏️ עריכה</button>' +
+                                        '<button class="btn-action" onclick="unarchiveItem(' + item.id + ')">🔄 החזר לתנועות</button>' +
+                                        '<button class="btn-action btn-danger-action" onclick="deletePermanently(' + item.id + ')">🗑️ מחיקה סופית</button>';
+                    }
+
+                    if (item.type === 'income') {
+                        card.innerHTML = '<div class="item-top"><span>' + item.title + '</span><span class="income-text">₪' + item.amount.toLocaleString() + '</span></div>' +
+                                         '<div class="item-actions">' + actionButtons + '</div>';
+                    } 
+                    else if (item.type === 'fixed') {
+                        card.innerHTML = '<div class="item-top"><span>' + item.title + '</span><span class="expense-text">₪' + item.amount.toLocaleString() + ' (' + item.period + ')</span></div>' +
+                                         '<div class="item-details"><div>איפה יורד: ' + (item.where || '-') + '</div><div>הערות: ' + (item.notes || '-') + '</div></div>' +
+                                         '<div class="item-actions">' + actionButtons + '</div>';
+                    } 
+                    else if (item.type === 'variable') {
+                        var dt = parseDatesAndGetLeft(item.start, item.total);
+                        card.innerHTML = '<div class="item-top"><span>' + item.title + '</span><span class="expense-text">₪' + item.amount.toLocaleString() + ' לחודש</span></div>' +
+                                         '<div class="item-details">' +
+                                         '<div>תשלומים: ' + item.total + '</div><div>תאריך התחלה: ' + (item.start ? new Date(item.start).toLocaleDateString('he-IL') : '-') + '</div>' +
+                                         '<div>תאריך סיום: ' + dt.endStr + '</div><div style="color:var(--primary)">חודשים שנשארו: ' + dt.left + '</div>' +
+                                         '</div><div class="item-actions">' + actionButtons + '</div>';
+                    } 
+                    else if (item.type === 'loan') {
+                        var dt = parseDatesAndGetLeft(item.start, item.total);
+                        card.innerHTML = '<div class="item-top"><span>' + item.title + '</span><span class="loan-text">₪' + item.amount.toLocaleString() + ' החזר</span></div>' +
+                                         '<div class="item-details">' +
+                                         '<div>היכן יורד: ' + (item.where || '-') + '</div><div>ריבית: ' + (item.interest || '0') + '%</div>' +
+                                         '<div>מתי יורד: ' + (item.day || '-') + ' בחודש</div><div>תאריך מתחיל: ' + (item.start ? new Date(item.start).toLocaleDateString('he-IL') : '-') + '</div>' +
+                                         '<div>תאריך מסתיים: ' + dt.endStr + '</div><div style="color:var(--warning)">חודשים שנותרו: ' + dt.left + '</div>' +
+                                         '</div><div class="item-actions">' + actionButtons + '</div>';
+                    }
                 }
 
-                if (item.type === 'income') {
-                    card.innerHTML = '<div class="item-top"><span>' + item.title + '</span><span class="income-text">₪' + item.amount.toLocaleString() + '</span></div>' +
-                                     '<div class="item-actions">' + actionButtons + '</div>';
-                    lInc.appendChild(card);
-                } 
-                else if (item.type === 'fixed') {
-                    card.innerHTML = '<div class="item-top"><span>' + item.title + '</span><span class="expense-text">₪' + item.amount.toLocaleString() + ' (' + item.period + ')</span></div>' +
-                                     '<div class="item-details"><div>איפה יורד: ' + item.where + '</div><div>הערות: ' + item.notes + '</div></div>' +
-                                     '<div class="item-actions">' + actionButtons + '</div>';
-                    lFix.appendChild(card);
-                } 
-                else if (item.type === 'variable') {
-                    var dt = parseDatesAndGetLeft(item.start, item.total);
-                    card.innerHTML = '<div class="item-top"><span>' + item.title + '</span><span class="expense-text">₪' + item.amount.toLocaleString() + ' לחודש</span></div>' +
-                                     '<div class="item-details">' +
-                                     '<div>תשלומים: ' + item.total + '</div><div>תאריך התחלה: ' + (item.start ? new Date(item.start).toLocaleDateString('he-IL') : '-') + '</div>' +
-                                     '<div>תאריך סיום: ' + dt.endStr + '</div><div style="color:var(--primary)">חודשים שנשארו: ' + dt.left + '</div>' +
-                                     '</div><div class="item-actions">' + actionButtons + '</div>';
-                    lVar.appendChild(card);
-                } 
-                else if (item.type === 'loan') {
-                    var dt = parseDatesAndGetLeft(item.start, item.total);
-                    card.innerHTML = '<div class="item-top"><span>' + item.title + '</span><span class="loan-text">₪' + item.amount.toLocaleString() + ' החזר</span></div>' +
-                                     '<div class="item-details">' +
-                                     '<div>היכן יורד: ' + item.where + '</div><div>ריבית: ' + item.interest + '%</div>' +
-                                     '<div>מתי יורד: ' + item.day + ' בחודש</div><div>תאריך מתחיל: ' + (item.start ? new Date(item.start).toLocaleDateString('he-IL') : '-') + '</div>' +
-                                     '<div>תאריך מסתיים: ' + dt.endStr + '</div><div style="color:var(--warning)">חודשים שנותרו: ' + dt.left + '</div>' +
-                                     '</div><div class="item-actions">' + actionButtons + '</div>';
-                    lLoan.appendChild(card);
-                }
+                // חלוקה לטאבים המתאימים
+                if (item.type === 'income') lInc.appendChild(card);
+                else if (item.type === 'fixed') lFix.appendChild(card);
+                else if (item.type === 'variable') lVar.appendChild(card);
+                else if (item.type === 'loan') lLoan.appendChild(card);
             }
         }
 
