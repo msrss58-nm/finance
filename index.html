@@ -1,4 +1,4 @@
-.<!DOCTYPE html>
+  <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -33,6 +33,7 @@
         .stat-card { background: rgba(255, 255, 255, 0.02); border: 1px solid #334155; padding: 10px; border-radius: 12px; text-align: center; }
         .stat-card p { font-size: 0.75rem; color: var(--text-muted); }
         .stat-card h3 { font-size: 1rem; margin-top: 4px; }
+        .full-width-card { grid-column: span 2; }
 
         /* לחצנים */
         .btn-toggle-form { background-color: #1e293b; border: 1px solid var(--primary); color: var(--primary); padding: 14px; border-radius: 12px; font-weight: 600; font-size: 1rem; cursor: pointer; text-align: center; margin-bottom: 15px; width: 100%; }
@@ -82,12 +83,12 @@
 
     <div class="dashboard">
         <div class="main-balance">
-            <span>תזרים פנוי (הכנסות פחות הוצאות חודשיות)</span>
+            <span>תזרים פנוי חודשי (פחות קבועות, הלוואות ומשתנות של החודש)</span>
             <h2 id="net-balance">₪0</h2>
         </div>
         <div class="stats-grid">
             <div class="stat-card">
-                <p>💰 הכנסות</p>
+                <p>💰 הכנסות חודשיות</p>
                 <h3 id="dash-income" class="income-text">₪0</h3>
             </div>
             <div class="stat-card">
@@ -95,11 +96,15 @@
                 <h3 id="dash-fixed" class="expense-text">₪0</h3>
             </div>
             <div class="stat-card">
-                <p>🛒 יתרת משתנות לשלם</p>
-                <h3 id="dash-variable" class="expense-text">₪0</h3>
+                <p>🛒 יורד החודש (משתנות)</p>
+                <h3 id="dash-variable-monthly" class="expense-text">₪0</h3>
             </div>
             <div class="stat-card">
-                <p>🏦 יתרת חוב הלוואות</p>
+                <p>📉 סך הכל יתרה (משתנות)</p>
+                <h3 id="dash-variable-total" class="text-muted">₪0</h3>
+            </div>
+            <div class="stat-card full-width-card">
+                <p>🏦 יתרת חוב הלוואות כולל</p>
                 <h3 id="dash-loan" class="loan-text">₪0</h3>
             </div>
         </div>
@@ -176,7 +181,7 @@
 
 <script>
     var items = [];
-    var editingId = null; // משתנה לשמירת ה-ID של הפריט שנמצא בעריכה כרגע
+    var editingId = null;
 
     try {
         var saved = localStorage.getItem('family_finance_data');
@@ -348,7 +353,7 @@
 
         lInc.innerHTML = ''; lFix.innerHTML = ''; lVar.innerHTML = ''; lLoan.innerHTML = '';
 
-        var sumInc = 0, sumFix = 0, sumVarLeft = 0, sumLoanLeft = 0, monthlyExpenses = 0;
+        var sumInc = 0, sumFix = 0, sumVarMonthly = 0, sumVarTotalLeft = 0, sumLoanTotalLeft = 0, monthlyExpenses = 0;
 
         for (var i = 0; i < items.length; i++) {
             var item = items[i];
@@ -361,11 +366,14 @@
                     monthlyExpenses += mAmount;
                 } else if (item.type === 'variable') {
                     var dt = parseDatesAndGetLeft(item.start, item.total);
-                    sumVarLeft += (item.amount * dt.left);
-                    if(dt.left > 0) monthlyExpenses += item.amount;
+                    sumVarTotalLeft += (item.amount * dt.left); // סך הכל יתרה כוללת של החוב
+                    if(dt.left > 0) {
+                        sumVarMonthly += item.amount; // כמה יורד החודש
+                        monthlyExpenses += item.amount; // מוריד מהתזרים רק את החודשי!
+                    }
                 } else if (item.type === 'loan') {
                     var dt = parseDatesAndGetLeft(item.start, item.total);
-                    sumLoanLeft += (item.amount * dt.left);
+                    sumLoanTotalLeft += (item.amount * dt.left);
                     if(dt.left > 0) monthlyExpenses += item.amount;
                 }
             }
@@ -382,7 +390,6 @@
                 var isEditing = (editingId === item.id);
 
                 if (isEditing) {
-                    // תצוגת עריכה בתוך הכרטיס
                     var editHtml = '<div class="edit-inside-form">' +
                         '<div class="form-group"><label>שם / כותרת</label><input type="text" id="edit-title-' + item.id + '" value="' + item.title + '"></div>' +
                         '<div class="form-group"><label>סכום / עלות חודשית</label><input type="number" id="edit-amount-' + item.id + '" value="' + item.amount + '"></div>';
@@ -407,7 +414,6 @@
                         '</div>';
                     card.innerHTML = editHtml;
                 } else {
-                    // תצוגה רגילה של הכרטיס
                     var actionButtons = '';
                     if (!item.isArchived) {
                         actionButtons = '<button class="btn-action btn-edit-action" onclick="startEdit(' + item.id + ')">✏️ עריכה</button>' +
@@ -446,7 +452,6 @@
                     }
                 }
 
-                // חלוקה לטאבים המתאימים
                 if (item.type === 'income') lInc.appendChild(card);
                 else if (item.type === 'fixed') lFix.appendChild(card);
                 else if (item.type === 'variable') lVar.appendChild(card);
@@ -456,8 +461,9 @@
 
         document.getElementById('dash-income').textContent = '₪' + sumInc.toLocaleString();
         document.getElementById('dash-fixed').textContent = '₪' + sumFix.toLocaleString();
-        document.getElementById('dash-variable').textContent = '₪' + sumVarLeft.toLocaleString();
-        document.getElementById('dash-loan').textContent = '₪' + sumLoanLeft.toLocaleString();
+        document.getElementById('dash-variable-monthly').textContent = '₪' + sumVarMonthly.toLocaleString();
+        document.getElementById('dash-variable-total').textContent = '₪' + sumVarTotalLeft.toLocaleString();
+        document.getElementById('dash-loan').textContent = '₪' + sumLoanTotalLeft.toLocaleString();
 
         var net = sumInc - monthlyExpenses;
         document.getElementById('net-balance').textContent = '₪' + Math.round(net).toLocaleString();
