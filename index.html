@@ -367,7 +367,7 @@
         document.getElementById('form-fixed').style.display = (baseType == 'fixed') ? 'block' : 'none';
     }
 
-    // --- ⚖️ תיקון תאריך סיום: חיוב אחרון מבוצע ב- (Total - 1) חודשים לאחר הראשון ---
+    // --- ⚖️ לוגיקת חישוב מועדים ותשלומים שנותרו מעודכנת ומסונכרנת לחלוטין ---
     function parseDatesAndGetLeft(startDateStr, totalPayments, billingDay) {
         if (!startDateStr || !totalPayments) return { left: 0, endStr: '-' };
         
@@ -379,34 +379,36 @@
         var total = parseInt(totalPayments, 10);
         var bDay = billingDay ? parseInt(billingDay, 10) : 1;
 
+        // 1. קביעת חודש החיוב הראשון בפועל
         var firstBillingYear = startYear;
         var firstBillingMonth = startMonth;
-        
         if (startDay >= bDay) {
             firstBillingMonth += 1; 
         }
-        
         var firstBillingDate = new Date(firstBillingYear, firstBillingMonth, bDay);
         
-        // תיקון תאריך סיום: הוספת סך תשלומים פחות 1 כדי לקבל את החודש המדויק
+        // 2. קביעת תאריך חיוב אחרון ומדויק בבנק (הוספת סך תשלומים פחות 1)
         var end = new Date(firstBillingDate.getFullYear(), firstBillingDate.getMonth() + (total - 1), bDay);
         var endStr = end.toLocaleDateString('he-IL');
 
+        // 3. חישוב מדויק של תשלומים שנותרו ביחס להיום
         var today = new Date();
         var todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
         
+        // אם היום הנוכחי מוקדם ממועד החיוב הראשון בפועל - נשארו כל התשלומים
         if (todayZero < firstBillingDate) {
             return { left: total, endStr: endStr };
         }
 
+        // חישוב מספר חודשי החיוב המלאים שעברו
         var passedMonths = (todayZero.getFullYear() - firstBillingDate.getFullYear()) * 12 + (todayZero.getMonth() - firstBillingDate.getMonth());
         
+        // אם עברנו או הגענו ליום החיוב בחודש הנוכחי, החודש הנוכחי נחשב ככזה שירד
         if (todayZero.getDate() >= bDay) {
             passedMonths += 1;
         }
 
         var left = total - passedMonths;
-        
         if (left < 0) left = 0;
         if (left > total) left = total;
         
