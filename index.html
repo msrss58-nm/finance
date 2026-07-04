@@ -1,4 +1,4 @@
-.<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -24,7 +24,6 @@
         .container { max-width: 500px; margin: 0 auto; }
         header h1 { font-size: 1.6rem; color: var(--primary); text-align: center; margin-bottom: 20px; }
 
-        /* דשבורד */
         .dashboard { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 1px solid #334155; border-radius: 20px; padding: 16px; margin-bottom: 20px; }
         .main-balance { text-align: center; margin-bottom: 15px; }
         .main-balance span { font-size: 0.85rem; color: var(--text-muted); }
@@ -34,12 +33,10 @@
         .stat-card p { font-size: 0.75rem; color: var(--text-muted); }
         .stat-card h3 { font-size: 1rem; margin-top: 4px; }
 
-        /* שורת לחצנים עליונה משולבת */
         .action-row { display: flex; gap: 10px; margin-bottom: 15px; }
         .btn-action-main { flex: 1; background-color: #1e293b; border: 1px solid var(--primary); color: var(--primary); padding: 12px; border-radius: 12px; font-weight: 600; font-size: 0.95rem; cursor: pointer; text-align: center; white-space: nowrap; }
         .btn-action-main.secondary { border-color: var(--text-muted); color: var(--text-color); }
 
-        /* טפסים ומגירות ניהול */
         .add-form, .manage-box, .edit-inside-form { background-color: var(--card-bg); border-radius: 16px; padding: 16px; margin-bottom: 20px; border: 1px solid #334155; }
         .add-form, .manage-box { display: none; }
         .edit-inside-form { margin-top: 10px; background-color: #0f172a; padding: 12px; border-radius: 10px; }
@@ -51,25 +48,21 @@
         button.btn-save-edit { background-color: var(--success); color: #0f172a; font-weight: 600; border: none; margin-top: 8px; padding: 8px; font-size: 0.85rem; }
         button.btn-cancel-edit { background-color: #334155; color: white; border: none; margin-top: 4px; padding: 8px; font-size: 0.85rem; }
 
-        /* רשימת קטגוריות לניהול */
         .cat-manager-list { margin-top: 15px; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 10px; }
         .cat-manager-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #334155; }
         .cat-manager-item:last-child { border-bottom: none; }
         .cat-btn-group { display: flex; gap: 5px; width: auto; }
         .cat-mini-btn { padding: 4px 8px; font-size: 0.75rem; border-radius: 6px; cursor: pointer; border: 1px solid #334155; background: #0f172a; color: white; width: auto; }
 
-        /* טאבים */
         .tabs { display: flex; margin-bottom: 15px; gap: 8px; background: #1e293b; padding: 4px; border-radius: 12px; }
         .tab { flex: 1; padding: 10px; text-align: center; border-radius: 10px; cursor: pointer; font-size: 0.9rem; color: var(--text-muted); }
         .tab.active { background: var(--bg-color); color: var(--primary); font-weight: bold; }
 
-        /* אקורדיון */
         .accordion-section { margin-top: 10px; }
         .accordion-header { background-color: #1e293b; border: 1px solid #334155; padding: 14px; border-radius: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-weight: 500; }
         .accordion-content { display: none; padding: 8px 0; }
         .list-container { display: flex; flex-direction: column; gap: 8px; }
 
-        /* כרטיס תנועה */
         .item-card { background-color: var(--card-bg); border: 1px solid #334155; padding: 12px; border-radius: 12px; margin-bottom: 4px; }
         .item-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-weight: bold; }
         .item-details { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 0.8rem; color: var(--text-muted); background: rgba(0,0,0,0.1); padding: 8px; border-radius: 8px; }
@@ -162,8 +155,7 @@
         </div>
         <button class="btn-submit" style="background-color:var(--success);" onclick="addCustomCategory()">צור קטגוריה חדשה +</button>
 
-        <div class="cat-manager-list" id="custom-categories-list">
-            </div>
+        <div class="cat-manager-list" id="custom-categories-list"></div>
     </div>
 
     <div class="add-form" id="main-form">
@@ -183,9 +175,9 @@
             <div class="form-group"><label>החזר חודשי</label><input type="number" id="loan-amount" placeholder="₪"></div>
             <div class="form-group"><label>היכן יורד</label><input type="text" id="loan-where"></div>
             <div class="form-group"><label>ריבית (%)</label><input type="number" id="loan-interest" step="0.01"></div>
-            <div class="form-group"><label>מתי יורד (יום בחודש)</label><input type="number" id="loan-day" min="1" max="31"></div>
+            <div class="form-group"><label>מתי יורד (יום בחודש)</label><input type="number" id="loan-day" min="1" max="31" value="1"></div>
             <div class="form-group"><label>כמה תשלומים (סך הכל)</label><input type="number" id="loan-total"></div>
-            <div class="form-group"><label>תאריך מתחיל</label><input type="date" id="loan-start"></div>
+            <div class="form-group"><label>תאריך לקיחה / פתיחה</label><input type="date" id="loan-start"></div>
         </div>
 
         <div id="form-variable" style="display:none;">
@@ -216,7 +208,6 @@
 </div>
 
 <script>
-    // --- הגדרות ברירת מחדל של קטגוריות בסיס ---
     var categoryConfig = {
         income: { label: "💰 הכנסות", baseType: "income" },
         fixed: { label: "🏡 הוצאות קבועות", baseType: "fixed" },
@@ -224,12 +215,9 @@
         loan: { label: "🏦 הלוואות", baseType: "loan" }
     };
 
-    // טעינת שמות וקטגוריות מותאמות אישית
     try {
         var savedConfig = localStorage.getItem('family_finance_cat_config');
-        if (savedConfig) {
-            categoryConfig = JSON.parse(savedConfig);
-        }
+        if (savedConfig) { categoryConfig = JSON.parse(savedConfig); }
     } catch(e) { console.log('שגיאה בטעינת קטגוריות'); }
 
     var items = [];
@@ -242,28 +230,21 @@
     } catch(e) { console.log('שגיאה בטעינת הנתונים'); }
 
     function saveToLocalStorage() {
-        try {
-            localStorage.setItem('family_finance_data', JSON.stringify(items));
-        } catch(e) { console.log('שגיאה בשמירת הנתונים'); }
+        try { localStorage.setItem('family_finance_data', JSON.stringify(items)); } catch(e) { console.log('שגיאה בשמירת הנתונים'); }
     }
 
     function saveConfigToLocalStorage() {
-        try {
-            localStorage.setItem('family_finance_cat_config', JSON.stringify(categoryConfig));
-        } catch(e) { console.log('שגיאה בשמירת תצורת הקטגוריות'); }
+        try { localStorage.setItem('family_finance_cat_config', JSON.stringify(categoryConfig)); } catch(e) { console.log('שגיאה בשמירת תצורת הקטגוריות'); }
     }
 
-    // פונקציית פתיחה/סגירה בלעדית (סוגרת את השנייה כשפותחים אחת)
     function toggleBox(id) {
         var el = document.getElementById(id);
         var otherId = (id === 'main-form') ? 'manage-box' : 'main-form';
         var otherEl = document.getElementById(otherId);
-        
         otherEl.style.display = 'none';
         el.style.display = (el.style.display === 'block') ? 'none' : 'block';
     }
 
-    // מנגנון ניהול הקטגוריות
     function initCategoryInputs() {
         if(document.getElementById('cat-name-income')) {
             document.getElementById('cat-name-income').value = categoryConfig.income.label;
@@ -272,7 +253,6 @@
             document.getElementById('cat-name-loan').value = categoryConfig.loan.label;
         }
         
-        // מילוי רשימת המותאמות אישית עם אפשרות מחיקה ושינוי שם
         var listContainer = document.getElementById('custom-categories-list');
         if(listContainer) {
             listContainer.innerHTML = '';
@@ -348,7 +328,6 @@
         var hasItems = items.some(function(i) { return i.displayCategory === key || (i.type === key); });
         if(hasItems) {
             if(!confirm('ישנן תנועות המשויכות לקטגוריה זו. מחיקת הקטגוריה תעביר אותן לקטגוריית הבסיס. להמשיך?')) return;
-            // העברת התנועות לקטגוריית הבסיס של אותה קטגוריה
             var base = categoryConfig[key].baseType;
             items.forEach(function(i) {
                 if(i.displayCategory === key) i.displayCategory = base;
@@ -388,33 +367,45 @@
         document.getElementById('form-fixed').style.display = (baseType == 'fixed') ? 'block' : 'none';
     }
 
-    // --- ⚖️ תיקון מדויק ומבוקר של מנגנון חישוב חודשי הלוואות ותאריכים ---
-    function parseDatesAndGetLeft(startDateStr, totalPayments) {
+    // --- ⚖️ תיקון תאריך סיום: חיוב אחרון מבוצע ב- (Total - 1) חודשים לאחר הראשון ---
+    function parseDatesAndGetLeft(startDateStr, totalPayments, billingDay) {
         if (!startDateStr || !totalPayments) return { left: 0, endStr: '-' };
         
-        // יצירת אובייקט תאריך מתוך המחרוזת בצורה בטוחה
         var parts = startDateStr.split('-');
         var startYear = parseInt(parts[0], 10);
-        var startMonth = parseInt(parts[1], 10) - 1; // חודשים ב-JS מתחילים מ-0
+        var startMonth = parseInt(parts[1], 10) - 1; 
         var startDay = parts[2] ? parseInt(parts[2], 10) : 1;
         
-        var start = new Date(startYear, startMonth, startDay);
         var total = parseInt(totalPayments, 10);
+        var bDay = billingDay ? parseInt(billingDay, 10) : 1;
+
+        var firstBillingYear = startYear;
+        var firstBillingMonth = startMonth;
         
-        // תאריך הסיום האמיתי
-        var end = new Date(startYear, startMonth + total, startDay);
+        if (startDay >= bDay) {
+            firstBillingMonth += 1; 
+        }
+        
+        var firstBillingDate = new Date(firstBillingYear, firstBillingMonth, bDay);
+        
+        // תיקון תאריך סיום: הוספת סך תשלומים פחות 1 כדי לקבל את החודש המדויק
+        var end = new Date(firstBillingDate.getFullYear(), firstBillingDate.getMonth() + (total - 1), bDay);
         var endStr = end.toLocaleDateString('he-IL');
 
         var today = new Date();
-        // חישוב מדויק של הפרש החודשים הכולל בין החודש הנוכחי לחודש ההתחלה
-        var diffMonths = (today.getFullYear() - start.getFullYear()) * 12 + (today.getMonth() - start.getMonth());
+        var todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
         
-        var left = total - diffMonths;
-        
-        // תיקון חריגה: אם אנחנו בדיוק בתוך חודש ההתחלה (הפרש 0), התשלום הראשון יורד החודש, ולכן נשארו בדיוק ה-Total תשלומים.
-        if (diffMonths < 0) {
-            left = total; // הלוואה עתידית שעוד לא התחילה
+        if (todayZero < firstBillingDate) {
+            return { left: total, endStr: endStr };
         }
+
+        var passedMonths = (todayZero.getFullYear() - firstBillingDate.getFullYear()) * 12 + (todayZero.getMonth() - firstBillingDate.getMonth());
+        
+        if (todayZero.getDate() >= bDay) {
+            passedMonths += 1;
+        }
+
+        var left = total - passedMonths;
         
         if (left < 0) left = 0;
         if (left > total) left = total;
@@ -446,7 +437,7 @@
             if(!obj.title || isNaN(obj.amount)) return alert('מלא שם וסכום החזר');
             document.getElementById('loan-title').value=''; document.getElementById('loan-original').value='';
             document.getElementById('loan-amount').value=''; document.getElementById('loan-where').value=''; 
-            document.getElementById('loan-interest').value=''; document.getElementById('loan-day').value=''; 
+            document.getElementById('loan-interest').value=''; document.getElementById('loan-day').value='1'; 
             document.getElementById('loan-total').value=''; document.getElementById('loan-start').value='';
         } 
         else if (baseType === 'variable') {
@@ -546,31 +537,21 @@
         renderAll();
     }
 
-    // בניית אזורי אקורדיון דינמיים לפי הגדרות הקטגוריות הנוכחיות
     function rebuildAccordionContainers() {
         var container = document.getElementById('dynamic-accordion-container');
         if(!container) return;
-        
-        // שמירת מצב פתוח/סגור של מגירות כדי שלא ייסגרו בזמן רינדור
         var openStates = {};
         for (var key in categoryConfig) {
             var oldEl = document.getElementById('sec-' + key);
-            if(oldEl) {
-                openStates[key] = oldEl.style.display;
-            }
+            if(oldEl) { openStates[key] = oldEl.style.display; }
         }
-        
         container.innerHTML = '';
-        
         for (var key in categoryConfig) {
             var sec = document.createElement('div');
             sec.className = 'accordion-section';
-            
             var disp = openStates[key] || 'none';
-            
             sec.innerHTML = '<div class="accordion-header" onclick="var c=document.getElementById(\'sec-' + key + '\'); c.style.display=(c.style.display==\'block\')?\'none\':\'block\';">' + categoryConfig[key].label + ' ▼</div>' +
                 '<div class="accordion-content" id="sec-' + key + '" style="display:' + disp + '"><div id="list-' + key + '" class="list-container"></div></div>';
-            
             container.appendChild(sec);
         }
     }
@@ -578,28 +559,17 @@
     function renderAll() {
         rebuildAccordionContainers();
         
-        // עדכון כותרות הדשבורד המשתנות דינמית לפי שמות הקטגוריות
         document.getElementById('lbl-dash-income').textContent = categoryConfig.income.label + " חודשיות";
         document.getElementById('lbl-dash-fixed').textContent = categoryConfig.fixed.label;
         document.getElementById('lbl-dash-loan-m').textContent = categoryConfig.loan.label;
         document.getElementById('lbl-dash-loan-t').textContent = "סך הכל חוב " + categoryConfig.loan.label;
 
-        var sums = {};
-        for(var key in categoryConfig) {
-            sums[key] = { monthly: 0, totalLeft: 0 };
-        }
-
         var sumInc = 0, sumFix = 0, sumVarMonthly = 0, sumVarTotalLeft = 0, sumLoanMonthly = 0, sumLoanTotalLeft = 0, monthlyExpenses = 0;
 
-        // חישוב מרוכז של סיכומים פיננסיים
         for (var i = 0; i < items.length; i++) {
             var item = items[i];
             var cKey = item.displayCategory || item.type;
-            
-            // תאימות לאחור במידה והקטגוריה נמחקה
-            if(!categoryConfig[cKey]) {
-                cKey = item.type;
-            }
+            if(!categoryConfig[cKey]) cKey = item.type;
 
             if (!item.isArchived) {
                 if (item.type === 'income') {
@@ -609,14 +579,14 @@
                     sumFix += item.amount;
                     monthlyExpenses += mAmount;
                 } else if (item.type === 'variable') {
-                    var dt = parseDatesAndGetLeft(item.start, item.total);
+                    var dt = parseDatesAndGetLeft(item.start, item.total, 1);
                     sumVarTotalLeft += (item.amount * dt.left);
                     if(dt.left > 0) {
                         sumVarMonthly += item.amount;
                         monthlyExpenses += item.amount;
                     }
                 } else if (item.type === 'loan') {
-                    var dt = parseDatesAndGetLeft(item.start, item.total);
+                    var dt = parseDatesAndGetLeft(item.start, item.total, item.day);
                     sumLoanTotalLeft += (item.amount * dt.left);
                     if(dt.left > 0) {
                         sumLoanMonthly += item.amount;
@@ -626,7 +596,6 @@
             }
         }
 
-        // רינדור והכנסת כרטיסים לתוך המכולות
         for (var j = 0; j < items.length; j++) {
             var item = items[j];
             var cKey = item.displayCategory || item.type;
@@ -658,7 +627,7 @@
                             '<div class="form-group"><label>החזר חודשי</label><input type="number" id="edit-amount-' + item.id + '" value="' + item.amount + '"></div>' +
                             '<div class="form-group"><label>היכן יורד</label><input type="text" id="edit-where-' + item.id + '" value="' + (item.where || '') + '"></div>' +
                             '<div class="form-group"><label>ריבית (%)</label><input type="number" step="0.01" id="edit-interest-' + item.id + '" value="' + (item.interest || '') + '"></div>' +
-                            '<div class="form-group"><label>יום בחודש</label><input type="number" id="edit-day-' + item.id + '" value="' + (item.day || '') + '"></div>' +
+                            '<div class="form-group"><label>יום בחודש</label><input type="number" id="edit-day-' + item.id + '" value="' + (item.day || '1') + '"></div>' +
                             '<div class="form-group"><label>סך תשלומים</label><input type="number" id="edit-total-' + item.id + '" value="' + (item.total || '') + '"></div>' +
                             '<div class="form-group"><label>תאריך מתחיל</label><input type="date" id="edit-start-' + item.id + '" value="' + (item.start || '') + '"></div>';
                     } else {
@@ -690,7 +659,7 @@
                                          '<div class="item-actions">' + actionButtons + '</div>';
                     } 
                     else if (item.type === 'variable') {
-                        var dt = parseDatesAndGetLeft(item.start, item.total);
+                        var dt = parseDatesAndGetLeft(item.start, item.total, 1);
                         var origStr = item.originalAmount ? '₪' + item.originalAmount.toLocaleString() : '-';
                         card.innerHTML = '<div class="item-top"><span>' + item.title + '</span><span class="expense-text">₪' + item.amount.toLocaleString() + ' לחודש</span></div>' +
                                          '<div class="item-details">' +
@@ -700,14 +669,14 @@
                                          '</div><div class="item-actions">' + actionButtons + '</div>';
                     } 
                     else if (item.type === 'loan') {
-                        var dt = parseDatesAndGetLeft(item.start, item.total);
+                        var dt = parseDatesAndGetLeft(item.start, item.total, item.day);
                         var origStr = item.originalAmount ? '₪' + item.originalAmount.toLocaleString() : '-';
                         card.innerHTML = '<div class="item-top"><span>' + item.title + '</span><span class="loan-text">₪' + item.amount.toLocaleString() + ' החזר</span></div>' +
                                          '<div class="item-details">' +
                                          '<div>סכום מקור: ' + origStr + '</div><div>היכן יורד: ' + (item.where || '-') + '</div>' +
-                                         '<div>ריבית: ' + (item.interest || '0') + '%</div><div>מתי יורד: ' + (item.day || '-') + ' בחודש</div>' +
-                                         '<div>תאריך מתחיל: ' + (item.start ? new Date(item.start).toLocaleDateString('he-IL') : '-') + '</div>' +
-                                         '<div>תאריך מסתיים: ' + dt.endStr + '</div><div style="color:var(--warning); grid-column: span 2;">חודשים שנותרו: ' + dt.left + '</div>' +
+                                         '<div>ריבית: ' + (item.interest || '0') + '%</div><div>חיוב חודשי: ' + (item.day || '1') + ' בחודש</div>' +
+                                         '<div>תאריך פתיחה: ' + (item.start ? new Date(item.start).toLocaleDateString('he-IL') : '-') + '</div>' +
+                                         '<div>חיוב אחרון: ' + dt.endStr + '</div><div style="color:var(--warning); grid-column: span 2;">חודשים שנותרו: ' + dt.left + '</div>' +
                                          '</div><div class="item-actions">' + actionButtons + '</div>';
                     }
                 }
@@ -717,7 +686,6 @@
             }
         }
 
-        // עדכון המספרים על הדשבורד
         document.getElementById('dash-income').textContent = '₪' + sumInc.toLocaleString();
         document.getElementById('dash-fixed').textContent = '₪' + sumFix.toLocaleString();
         document.getElementById('dash-variable-monthly').textContent = '₪' + sumVarMonthly.toLocaleString();
@@ -730,7 +698,6 @@
         document.getElementById('net-balance').className = net >= 0 ? 'income-text' : 'expense-text';
     }
 
-    // הפעלה ראשונית של כל המערכות
     initCategoryInputs();
     renderAll();
 </script>
