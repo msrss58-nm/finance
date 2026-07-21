@@ -1,10 +1,10 @@
-..<!DOCTYPE html>
+.<!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FamilyFinance PRO</title>
-    <!-- Tailwind CSS עבור עיצוב מודרני ונקי -->
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -64,15 +64,15 @@
             <span id="net-cashflow" class="text-2xl sm:text-3xl font-extrabold text-white">₪0</span>
         </div>
 
-        <!-- מעבר בין טאבים (פעילים / ארכיון) -->
+        <!-- מעבר בין טאבים -->
         <div class="flex gap-2 border-b border-slate-700 pb-2">
             <button onclick="switchTab('active')" id="tab-active-btn" class="px-4 py-2 text-sm font-semibold rounded-xl bg-blue-600 text-white transition">תנועות פעילות</button>
             <button onclick="switchTab('archive')" id="tab-archive-btn" class="px-4 py-2 text-sm font-semibold rounded-xl bg-slate-800 text-slate-400 hover:text-white transition">ארכיון המערכת</button>
         </div>
 
-        <!-- אזור הצגת התנועות (באקורדיונים לפי קטגוריות) -->
+        <!-- אזור הצגת התנועות -->
         <main id="categories-container" class="space-y-4">
-            <!-- ממוזג דינמית דרך JavaScript -->
+            <!-- נטען דינמית -->
         </main>
     </div>
 
@@ -89,7 +89,6 @@
                 <div>
                     <label class="text-xs text-slate-400 block mb-1">קטגוריה</label>
                     <select id="item-category" onchange="handleCategoryChange()" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
-                        <!-- מתמלא דינמית -->
                     </select>
                 </div>
                 <div>
@@ -97,7 +96,6 @@
                     <input type="number" step="any" id="item-amount" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500" placeholder="0.00">
                 </div>
 
-                <!-- שדות דינמיים להוצאות קבועות (מחזוריות) -->
                 <div id="field-period" class="hidden">
                     <label class="text-xs text-slate-400 block mb-1">מחזוריות</label>
                     <select id="item-period" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
@@ -106,7 +104,6 @@
                     </select>
                 </div>
 
-                <!-- שדות דינמיים להלוואות ותשלומים -->
                 <div id="field-loan-details" class="hidden space-y-3">
                     <div class="grid grid-cols-2 gap-2">
                         <div>
@@ -143,7 +140,6 @@
         <div class="bg-slate-800 border border-slate-700 w-full max-w-md rounded-2xl p-6 space-y-4 shadow-2xl">
             <h3 class="text-lg font-bold text-white">ניהול והוספת קטגוריות</h3>
             <div id="categories-list-manage" class="space-y-2 max-h-48 overflow-y-auto pr-1">
-                <!-- נטען דינמית -->
             </div>
             <hr class="border-slate-700">
             <form onsubmit="handleCategoryAdd(event)" class="space-y-3">
@@ -167,9 +163,8 @@
         </div>
     </div>
 
-    <!-- לוגיקת ה-JavaScript המלאה -->
+    <!-- JavaScript -->
     <script>
-        // מצב אפליקציה ואחסון מקומי
         let state = JSON.parse(localStorage.getItem('family_finance_state')) || {
             currentTab: 'active',
             categories: [
@@ -191,7 +186,6 @@
             return cat ? cat.baseType : 'fixed';
         }
 
-        // חישוב לוח שפיצר והחזר חודשי
         function calculateSpitzerPayment(principal, annualRate, months) {
             if (!annualRate || annualRate <= 0) return principal / months;
             let monthlyRate = (annualRate / 100) / 12;
@@ -199,20 +193,17 @@
             return Math.round(payment);
         }
 
-        // בדיקת פעילות הלוואה בחודש הנוכחי לפי חוקי מועדים
         function isLoanActiveThisMonth(item) {
             if (!item.startDate) return true;
             let start = new Date(item.startDate);
             let now = new Date();
             let billingDay = item.billingDay || 1;
 
-            // חוק חישוב חיוב ראשון
             let firstBilling = new Date(start.getFullYear(), start.getMonth(), billingDay);
             if (start.getDate() >= billingDay) {
                 firstBilling.setMonth(firstBilling.getMonth() + 1);
             }
 
-            // חוק תאריך סיום (חודש אחד פחות)
             let duration = parseInt(item.duration) || 12;
             let lastBilling = new Date(firstBilling);
             lastBilling.setMonth(lastBilling.getMonth() + duration - 1);
@@ -227,7 +218,7 @@
             return true;
         }
 
-        // עדכון דשבורד מרכזי עם התיקון המלא (סינון ארכיון + המרה למספרים)
+        // חישוב מבוסס ומדויק עבור הדשבורד
         function updateDashboard() {
             const activeItems = state.items.filter(item => !item.archived);
 
@@ -235,6 +226,7 @@
                 .filter(item => getBaseCategory(item.categoryId) === 'income')
                 .reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
 
+            // חישוב מתוקן להוצאות קבועות (חודשי מול שנתי)
             const totalFixed = activeItems
                 .filter(item => getBaseCategory(item.categoryId) === 'fixed')
                 .reduce((sum, item) => {
@@ -270,7 +262,6 @@
             document.getElementById('net-cashflow').textContent = `₪${netCashFlow.toLocaleString('he-IL', {maximumFractionDigits: 2})}`;
         }
 
-        // רינדור ממשק המשתמש
         function render() {
             updateDashboard();
             const container = document.getElementById('categories-container');
@@ -331,7 +322,6 @@
             render();
         }
 
-        // ניהול מודלים
         function openTransactionModal() {
             document.getElementById('transaction-form').reset();
             document.getElementById('item-id').value = '';
@@ -397,7 +387,7 @@
         }
 
         function deleteItem(id) {
-            if (confirm('האם אתה নিশ্চিত שברצונך למחוק תנועה זו?')) {
+            if (confirm('האם אתה בטוח שברצונך למחוק תנועה זו?')) {
                 state.items = state.items.filter(i => i.id !== id);
                 saveState();
             }
@@ -450,7 +440,6 @@
             updateCategoryManageList();
         }
 
-        // הרצה ראשונית
         render();
     </script>
 </body>
