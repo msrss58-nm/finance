@@ -94,7 +94,7 @@
                 <h3 id="dash-income" class="income-text">₪0</h3>
             </div>
             <div class="stat-card">
-                <p>🏡 <span id="lbl-dash-fixed">הוצאות קבועות</span></p>
+                <p>🏡 <span id="lbl-dash-fixed">הוצאות קבועות (חודשי)</span></p>
                 <h3 id="dash-fixed" class="expense-text">₪0</h3>
             </div>
             <div class="stat-card">
@@ -367,7 +367,6 @@
         document.getElementById('form-fixed').style.display = (baseType == 'fixed') ? 'block' : 'none';
     }
 
-    // --- ⚖️ לוגיקת חישוב מועדים ותשלומים שנותרו מעודכנת ומסונכרנת לחלוטין ---
     function parseDatesAndGetLeft(startDateStr, totalPayments, billingDay) {
         if (!startDateStr || !totalPayments) return { left: 0, endStr: '-' };
         
@@ -379,7 +378,6 @@
         var total = parseInt(totalPayments, 10);
         var bDay = billingDay ? parseInt(billingDay, 10) : 1;
 
-        // 1. קביעת חודש החיוב הראשון בפועל
         var firstBillingYear = startYear;
         var firstBillingMonth = startMonth;
         if (startDay >= bDay) {
@@ -387,23 +385,18 @@
         }
         var firstBillingDate = new Date(firstBillingYear, firstBillingMonth, bDay);
         
-        // 2. קביעת תאריך חיוב אחרון ומדויק בבנק (הוספת סך תשלומים פחות 1)
         var end = new Date(firstBillingDate.getFullYear(), firstBillingDate.getMonth() + (total - 1), bDay);
         var endStr = end.toLocaleDateString('he-IL');
 
-        // 3. חישוב מדויק של תשלומים שנותרו ביחס להיום
         var today = new Date();
         var todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
         
-        // אם היום הנוכחי מוקדם ממועד החיוב הראשון בפועל - נשארו כל התשלומים
         if (todayZero < firstBillingDate) {
             return { left: total, endStr: endStr };
         }
 
-        // חישוב מספר חודשי החיוב המלאים שעברו
         var passedMonths = (todayZero.getFullYear() - firstBillingDate.getFullYear()) * 12 + (todayZero.getMonth() - firstBillingDate.getMonth());
         
-        // אם עברנו או הגענו ליום החיוב בחודש הנוכחי, החודש הנוכחי נחשב ככזה שירד
         if (todayZero.getDate() >= bDay) {
             passedMonths += 1;
         }
@@ -577,8 +570,9 @@
                 if (item.type === 'income') {
                     sumInc += item.amount;
                 } else if (item.type === 'fixed') {
+                    // חישוב העלות החודשית היחסית
                     var mAmount = (item.period === 'שנתי') ? (item.amount / 12) : item.amount;
-                    sumFix += item.amount;
+                    sumFix += mAmount; // מעכשיו כרטיס הדשבורד מציג את העלות החודשית
                     monthlyExpenses += mAmount;
                 } else if (item.type === 'variable') {
                     var dt = parseDatesAndGetLeft(item.start, item.total, 1);
@@ -656,7 +650,8 @@
                                          '<div class="item-actions">' + actionButtons + '</div>';
                     } 
                     else if (item.type === 'fixed') {
-                        card.innerHTML = '<div class="item-top"><span>' + item.title + '</span><span class="expense-text">₪' + item.amount.toLocaleString() + ' (' + item.period + ')</span></div>' +
+                        var mDisp = (item.period === 'שנתי') ? ' (כ-₪' + Math.round(item.amount / 12).toLocaleString() + ' לחודש)' : '';
+                        card.innerHTML = '<div class="item-top"><span>' + item.title + '</span><span class="expense-text">₪' + item.amount.toLocaleString() + ' (' + item.period + ')' + mDisp + '</span></div>' +
                                          '<div class="item-details"><div>איפה יורד: ' + (item.where || '-') + '</div><div>הערות: ' + (item.notes || '-') + '</div></div>' +
                                          '<div class="item-actions">' + actionButtons + '</div>';
                     } 
@@ -689,7 +684,7 @@
         }
 
         document.getElementById('dash-income').textContent = '₪' + sumInc.toLocaleString();
-        document.getElementById('dash-fixed').textContent = '₪' + sumFix.toLocaleString();
+        document.getElementById('dash-fixed').textContent = '₪' + Math.round(sumFix).toLocaleString();
         document.getElementById('dash-variable-monthly').textContent = '₪' + sumVarMonthly.toLocaleString();
         document.getElementById('dash-variable-total').textContent = '₪' + sumVarTotalLeft.toLocaleString();
         document.getElementById('dash-loan-monthly').textContent = '₪' + sumLoanMonthly.toLocaleString();
