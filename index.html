@@ -1,4 +1,4 @@
-..<!DOCTYPE html>
+.<!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -172,11 +172,12 @@
         <div id="form-loan" style="display:none;">
             <div class="form-group"><label>שם ההלוואה</label><input type="text" id="loan-title"></div>
             <div class="form-group"><label>סכום מקור (סך ההלוואה המקורית)</label><input type="number" id="loan-original" placeholder="₪"></div>
-            <div class="form-group"><label>ריבית שנתית (%)</label><input type="number" id="loan-interest" step="0.01" value="4.85"></div>
-            <div class="form-group"><label>כמה תשלומים (תקופה בחודשים)</label><input type="number" id="loan-total" value="12"></div>
+            <div class="form-group"><label>החזר חודשי</label><input type="number" id="loan-amount" placeholder="₪"></div>
+            <div class="form-group"><label>היכן יורד</label><input type="text" id="loan-where"></div>
+            <div class="form-group"><label>ריבית (%)</label><input type="number" id="loan-interest" step="0.01"></div>
             <div class="form-group"><label>מתי יורד (יום בחודש)</label><input type="number" id="loan-day" min="1" max="31" value="1"></div>
+            <div class="form-group"><label>כמה תשלומים (סך הכל)</label><input type="number" id="loan-total"></div>
             <div class="form-group"><label>תאריך לקיחה / פתיחה</label><input type="date" id="loan-start"></div>
-            <div class="form-group"><label>היכן יורד (חשבון/כרטיס)</label><input type="text" id="loan-where"></div>
         </div>
 
         <div id="form-variable" style="display:none;">
@@ -366,9 +367,9 @@
         document.getElementById('form-fixed').style.display = (baseType == 'fixed') ? 'block' : 'none';
     }
 
-    // --- ⚖️ פונקציות חישוב מועדים כלליות ---
+    // --- ⚖️ לוגיקת חישוב מועדים ותשלומים שנותרו מעודכנת ומסונכרנת לחלוטין ---
     function parseDatesAndGetLeft(startDateStr, totalPayments, billingDay) {
-        if (!startDateStr || !totalPayments) return { left: 0, endStr: '-', passed: 0 };
+        if (!startDateStr || !totalPayments) return { left: 0, endStr: '-' };
         
         var parts = startDateStr.split('-');
         var startYear = parseInt(parts[0], 10);
@@ -378,6 +379,7 @@
         var total = parseInt(totalPayments, 10);
         var bDay = billingDay ? parseInt(billingDay, 10) : 1;
 
+        // 1. קביעת חודש החיוב הראשון בפועל
         var firstBillingYear = startYear;
         var firstBillingMonth = startMonth;
         if (startDay >= bDay) {
@@ -385,17 +387,23 @@
         }
         var firstBillingDate = new Date(firstBillingYear, firstBillingMonth, bDay);
         
+        // 2. קביעת תאריך חיוב אחרון ומדויק בבנק (הוספת סך תשלומים פחות 1)
         var end = new Date(firstBillingDate.getFullYear(), firstBillingDate.getMonth() + (total - 1), bDay);
         var endStr = end.toLocaleDateString('he-IL');
 
+        // 3. חישוב מדויק של תשלומים שנותרו ביחס להיום
         var today = new Date();
         var todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
         
+        // אם היום הנוכחי מוקדם ממועד החיוב הראשון בפועל - נשארו כל התשלומים
         if (todayZero < firstBillingDate) {
-            return { left: total, endStr: endStr, passed: 0 };
+            return { left: total, endStr: endStr };
         }
 
+        // חישוב מספר חודשי החיוב המלאים שעברו
         var passedMonths = (todayZero.getFullYear() - firstBillingDate.getFullYear()) * 12 + (todayZero.getMonth() - firstBillingDate.getMonth());
+        
+        // אם עברנו או הגענו ליום החיוב בחודש הנוכחי, החודש הנוכחי נחשב ככזה שירד
         if (todayZero.getDate() >= bDay) {
             passedMonths += 1;
         }
@@ -404,53 +412,7 @@
         if (left < 0) left = 0;
         if (left > total) left = total;
         
-        return { left: left, endStr: endStr, passed: passedMonths };
-    }
-
-    // --- 🏦 👑 לוגיקת שפיצר הרשמית להלוואות (חישוב מדויק ומסונכרן לבנק) 👑 🏦 ---
-    function calculateSpitzerLoan(originalAmount, annualInterestRate, totalPayments, startDateStr, billingDay) {
-        var p = parseFloat(originalAmount) || 0;
-        var rYear = parseFloat(annualInterestRate) || 0;
-        var n = parseInt(totalPayments, 10) || 0;
-
-        if (p <= 0 || n <= 0) {
-            return { monthlyPayment: 0, remainingBalance: 0, leftPayments: 0, endStr: '-' };
-        }
-
-        // 1. חישוב החזר חודשי מדויק לפי נוסחת שפיצר
-        var monthlyPayment = 0;
-        if (rYear === 0) {
-            monthlyPayment = p / n;
-        } else {
-            var rMonthly = (rYear / 100) / 12; // ריבית חודשית
-            monthlyPayment = p * (rMonthly * Math.pow(1 + rMonthly, n)) / (Math.pow(1 + rMonthly, n) - 1);
-        }
-
-        // 2. קבלת נתוני המועדים והתשלומים שעברו
-        var dt = parseDatesAndGetLeft(startDateStr, n, billingDay);
-        
-        // 3. בניית לוח סילוקין פנימי כדי למצוא את יתרת הקרן האמיתית לסילוק בחודש הנוכחי
-        var currentRemainingPrincipal = p;
-        if (rYear > 0) {
-            var rMonthly = (rYear / 100) / 12;
-            for (var i = 0; i < dt.passed; i++) {
-                if (i >= n) break;
-                var interestForMonth = currentRemainingPrincipal * rMonthly;
-                var principalForMonth = monthlyPayment - interestForMonth;
-                currentRemainingPrincipal -= principalForMonth;
-            }
-        } else {
-            currentRemainingPrincipal = p - (monthlyPayment * dt.passed);
-        }
-
-        if (currentRemainingPrincipal < 0 || dt.left === 0) currentRemainingPrincipal = 0;
-
-        return {
-            monthlyPayment: Math.round(monthlyPayment), // עיגול לשקל הקרוב (למשל 685)
-            remainingBalance: Math.round(currentRemainingPrincipal), // יתרת הקרן המדויקת לבנק
-            leftPayments: dt.left,
-            endStr: dt.endStr
-        };
+        return { left: left, endStr: endStr };
     }
 
     function addNewItem() {
@@ -468,21 +430,17 @@
         else if (baseType === 'loan') {
             obj.title = document.getElementById('loan-title').value.trim();
             obj.originalAmount = parseFloat(document.getElementById('loan-original').value) || 0;
-            obj.interest = parseFloat(document.getElementById('loan-interest').value) || 0;
-            obj.total = parseInt(document.getElementById('loan-total').value, 10) || 12;
-            obj.day = parseInt(document.getElementById('loan-day').value, 10) || 1;
-            obj.start = document.getElementById('loan-start').value;
+            obj.amount = parseFloat(document.getElementById('loan-amount').value);
             obj.where = document.getElementById('loan-where').value;
-            
-            if(!obj.title || !obj.originalAmount || !obj.start) return alert('נא למלא: שם הלוואה, סכום מקור ותאריך לקיחה');
-            
-            // חישוב מקדים של שפיצר לשמירת ההחזר הבסיסי
-            var spitzer = calculateSpitzerLoan(obj.originalAmount, obj.interest, obj.total, obj.start, obj.day);
-            obj.amount = spitzer.monthlyPayment; // שומר את ה-685 ש"ח המעוגל
-
+            obj.interest = document.getElementById('loan-interest').value;
+            obj.day = document.getElementById('loan-day').value;
+            obj.total = document.getElementById('loan-total').value;
+            obj.start = document.getElementById('loan-start').value;
+            if(!obj.title || isNaN(obj.amount)) return alert('מלא שם וסכום החזר');
             document.getElementById('loan-title').value=''; document.getElementById('loan-original').value='';
-            document.getElementById('loan-interest').value='4.85'; document.getElementById('loan-total').value='12'; 
-            document.getElementById('loan-day').value='1'; document.getElementById('loan-start').value=''; document.getElementById('loan-where').value='';
+            document.getElementById('loan-amount').value=''; document.getElementById('loan-where').value=''; 
+            document.getElementById('loan-interest').value=''; document.getElementById('loan-day').value='1'; 
+            document.getElementById('loan-total').value=''; document.getElementById('loan-start').value='';
         } 
         else if (baseType === 'variable') {
             obj.title = document.getElementById('var-title').value.trim();
@@ -542,33 +500,31 @@
         var item = items[idx];
 
         var titleVal = document.getElementById('edit-title-' + id).value.trim();
-        if (!titleVal) return alert('נא להזין כותרת תקינה');
+        var amountVal = parseFloat(document.getElementById('edit-amount-' + id).value);
+
+        if (!titleVal || isNaN(amountVal)) {
+            alert('נא להזין שם וסכום תקינים');
+            return;
+        }
 
         item.title = titleVal;
+        item.amount = amountVal;
 
         if (item.type === 'fixed') {
-            item.amount = parseFloat(document.getElementById('edit-amount-' + id).value) || 0;
             item.where = document.getElementById('edit-where-' + id).value;
             item.period = document.getElementById('edit-period-' + id).value;
             item.notes = document.getElementById('edit-notes-' + id).value;
         } else if (item.type === 'variable') {
-            item.amount = parseFloat(document.getElementById('edit-amount-' + id).value) || 0;
             item.originalAmount = parseFloat(document.getElementById('edit-original-' + id).value) || 0;
             item.total = document.getElementById('edit-total-' + id).value;
             item.start = document.getElementById('edit-start-' + id).value;
         } else if (item.type === 'loan') {
             item.originalAmount = parseFloat(document.getElementById('edit-original-' + id).value) || 0;
-            item.interest = parseFloat(document.getElementById('edit-interest-' + id).value) || 0;
-            item.total = document.getElementById('edit-total-' + id).value;
-            item.day = document.getElementById('edit-day-' + id).value;
-            item.start = document.getElementById('edit-start-' + id).value;
             item.where = document.getElementById('edit-where-' + id).value;
-            
-            // עדכון מחדש של ההחזר החודשי המעוגל בשפיצר על בסיס השינויים
-            var spitzer = calculateSpitzerLoan(item.originalAmount, item.interest, item.total, item.start, item.day);
-            item.amount = spitzer.monthlyPayment;
-        } else if (item.type === 'income') {
-            item.amount = parseFloat(document.getElementById('edit-amount-' + id).value) || 0;
+            item.interest = document.getElementById('edit-interest-' + id).value;
+            item.day = document.getElementById('edit-day-' + id).value;
+            item.total = document.getElementById('edit-total-' + id).value;
+            item.start = document.getElementById('edit-start-' + id).value;
         }
 
         editingId = null;
@@ -608,12 +564,15 @@
         document.getElementById('lbl-dash-income').textContent = categoryConfig.income.label + " חודשיות";
         document.getElementById('lbl-dash-fixed').textContent = categoryConfig.fixed.label;
         document.getElementById('lbl-dash-loan-m').textContent = categoryConfig.loan.label;
-        document.getElementById('lbl-dash-loan-t').textContent = "יתרת קרן " + categoryConfig.loan.label;
+        document.getElementById('lbl-dash-loan-t').textContent = "סך הכל חוב " + categoryConfig.loan.label;
 
         var sumInc = 0, sumFix = 0, sumVarMonthly = 0, sumVarTotalLeft = 0, sumLoanMonthly = 0, sumLoanTotalLeft = 0, monthlyExpenses = 0;
 
         for (var i = 0; i < items.length; i++) {
             var item = items[i];
+            var cKey = item.displayCategory || item.type;
+            if(!categoryConfig[cKey]) cKey = item.type;
+
             if (!item.isArchived) {
                 if (item.type === 'income') {
                     sumInc += item.amount;
@@ -629,12 +588,11 @@
                         monthlyExpenses += item.amount;
                     }
                 } else if (item.type === 'loan') {
-                    // חישוב שפיצר דינמי לצורך ה-Dashboard והסיכומים
-                    var loanCalc = calculateSpitzerLoan(item.originalAmount, item.interest, item.total, item.start, item.day);
-                    sumLoanTotalLeft += loanCalc.remainingBalance; // יתרת הקרן האמיתית המעודכנת
-                    if(loanCalc.leftPayments > 0) {
-                        sumLoanMonthly += loanCalc.monthlyPayment; // ההחזר החודשי המדויק (למשל 685)
-                        monthlyExpenses += loanCalc.monthlyPayment;
+                    var dt = parseDatesAndGetLeft(item.start, item.total, item.day);
+                    sumLoanTotalLeft += (item.amount * dt.left);
+                    if(dt.left > 0) {
+                        sumLoanMonthly += item.amount;
+                        monthlyExpenses += item.amount;
                     }
                 }
             }
@@ -667,12 +625,13 @@
                             '<div class="form-group"><label>סך תשלומים</label><input type="number" id="edit-total-' + item.id + '" value="' + (item.total || '') + '"></div>' +
                             '<div class="form-group"><label>תאריך התחלה</label><input type="date" id="edit-start-' + item.id + '" value="' + (item.start || '') + '"></div>';
                     } else if (item.type === 'loan') {
-                        editHtml += '<div class="form-group"><label>סכום מקור (קרן הלוואה)</label><input type="number" id="edit-original-' + item.id + '" value="' + (item.originalAmount || '') + '"></div>' +
-                            '<div class="form-group"><label>ריבית שנתית (%)</label><input type="number" step="0.01" id="edit-interest-' + item.id + '" value="' + (item.interest || '') + '"></div>' +
-                            '<div class="form-group"><label>סך חודשי תקופה</label><input type="number" id="edit-total-' + item.id + '" value="' + (item.total || '') + '"></div>' +
-                            '<div class="form-group"><label>יום חיוב בחודש</label><input type="number" id="edit-day-' + item.id + '" value="' + (item.day || '1') + '"></div>' +
-                            '<div class="form-group"><label>תאריך לקיחה</label><input type="date" id="edit-start-' + item.id + '" value="' + (item.start || '') + '"></div>' +
-                            '<div class="form-group"><label>היכן יורד</label><input type="text" id="edit-where-' + item.id + '" value="' + (item.where || '') + '"></div>';
+                        editHtml += '<div class="form-group"><label>סכום מקור</label><input type="number" id="edit-original-' + item.id + '" value="' + (item.originalAmount || '') + '"></div>' +
+                            '<div class="form-group"><label>החזר חודשי</label><input type="number" id="edit-amount-' + item.id + '" value="' + item.amount + '"></div>' +
+                            '<div class="form-group"><label>היכן יורד</label><input type="text" id="edit-where-' + item.id + '" value="' + (item.where || '') + '"></div>' +
+                            '<div class="form-group"><label>ריבית (%)</label><input type="number" step="0.01" id="edit-interest-' + item.id + '" value="' + (item.interest || '') + '"></div>' +
+                            '<div class="form-group"><label>יום בחודש</label><input type="number" id="edit-day-' + item.id + '" value="' + (item.day || '1') + '"></div>' +
+                            '<div class="form-group"><label>סך תשלומים</label><input type="number" id="edit-total-' + item.id + '" value="' + (item.total || '') + '"></div>' +
+                            '<div class="form-group"><label>תאריך מתחיל</label><input type="date" id="edit-start-' + item.id + '" value="' + (item.start || '') + '"></div>';
                     } else {
                         editHtml += '<div class="form-group"><label>סכום</label><input type="number" id="edit-amount-' + item.id + '" value="' + item.amount + '"></div>';
                     }
@@ -712,16 +671,14 @@
                                          '</div><div class="item-actions">' + actionButtons + '</div>';
                     } 
                     else if (item.type === 'loan') {
-                        var loanCalc = calculateSpitzerLoan(item.originalAmount, item.interest, item.total, item.start, item.day);
+                        var dt = parseDatesAndGetLeft(item.start, item.total, item.day);
                         var origStr = item.originalAmount ? '₪' + item.originalAmount.toLocaleString() : '-';
-                        card.innerHTML = '<div class="item-top"><span>' + item.title + '</span><span class="loan-text">₪' + loanCalc.monthlyPayment.toLocaleString() + ' החזר</span></div>' +
+                        card.innerHTML = '<div class="item-top"><span>' + item.title + '</span><span class="loan-text">₪' + item.amount.toLocaleString() + ' החזר</span></div>' +
                                          '<div class="item-details">' +
                                          '<div>סכום מקור: ' + origStr + '</div><div>היכן יורד: ' + (item.where || '-') + '</div>' +
                                          '<div>ריבית: ' + (item.interest || '0') + '%</div><div>חיוב חודשי: ' + (item.day || '1') + ' בחודש</div>' +
                                          '<div>תאריך פתיחה: ' + (item.start ? new Date(item.start).toLocaleDateString('he-IL') : '-') + '</div>' +
-                                         '<div>חיוב אחרון: ' + loanCalc.endStr + '</div>' +
-                                         '<div style="color:var(--success)">קרן לסילוק בבנק: ₪' + loanCalc.remainingBalance.toLocaleString() + '</div>' +
-                                         '<div style="color:var(--warning)">חודשים שנותרו: ' + loanCalc.leftPayments + '</div>' +
+                                         '<div>חיוב אחרון: ' + dt.endStr + '</div><div style="color:var(--warning); grid-column: span 2;">חודשים שנותרו: ' + dt.left + '</div>' +
                                          '</div><div class="item-actions">' + actionButtons + '</div>';
                     }
                 }
