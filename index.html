@@ -17,6 +17,7 @@
             --success: #4ade80;
             --danger: #f87171;
             --warning: #fbbf24;
+            --credit: #c084fc;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, sans-serif; }
@@ -74,6 +75,7 @@
         .income-text { color: var(--success); }
         .expense-text { color: var(--danger); }
         .loan-text { color: var(--warning); }
+        .credit-text { color: var(--credit); }
     </style>
 </head>
 <body>
@@ -113,6 +115,15 @@
                 <p>📊 סך הכל חוב (<span id="lbl-dash-loan-t">הלוואות</span>)</p>
                 <h3 id="dash-loan-total" class="loan-text">₪0</h3>
             </div>
+            <!-- תוספת כרטיסי אשראי בדשבורד -->
+            <div class="stat-card">
+                <p>💳 יורד החודש (כרטיסי אשראי)</p>
+                <h3 id="dash-credit-monthly" class="credit-text">₪0</h3>
+            </div>
+            <div class="stat-card">
+                <p>💳 סך הכל יתרה (כרטיסי אשראי)</p>
+                <h3 id="dash-credit-total" class="credit-text">₪0</h3>
+            </div>
         </div>
     </div>
 
@@ -143,13 +154,13 @@
         <h3 style="font-size:1rem; margin-top:20px; margin-bottom:10px; color:var(--success);">הוספת קטגוריה חדשה מותאמת אישית</h3>
         <div class="form-group">
             <label>שם הקטגוריה החדשה</label>
-            <input type="text" id="new-cat-title" placeholder="למשל: רכב, חיסכון, חופשות">
+            <input type="text" id="new-cat-title" placeholder="למשל: כרטיסי אשראי, רכב, חופשות">
         </div>
         <div class="form-group">
             <label>סוג ההתנהגות הכלכלית</label>
             <select id="new-cat-type">
+                <option value="variable">תשלומים שונים / כרטיסי אשראי (עסקאות עם תשלומים ותאריך סיום)</option>
                 <option value="fixed">הוצאה קבועה (סכום קבוע חודשי/שנתי)</option>
-                <option value="variable">תשלומים שונים (עסקאות עם תשלומים ותאריך סיום)</option>
                 <option value="income">הכנסה (מוסיף לתזרים הפנוי)</option>
             </select>
         </div>
@@ -181,7 +192,7 @@
         </div>
 
         <div id="form-variable" style="display:none;">
-            <div class="form-group"><label>שם התשלום</label><input type="text" id="var-title"></div>
+            <div class="form-group"><label>שם התשלום / העסקה</label><input type="text" id="var-title"></div>
             <div class="form-group"><label>סכום מקור (סך כל העסקה המקורית)</label><input type="number" id="var-original" placeholder="₪"></div>
             <div class="form-group"><label>עלות חודשית</label><input type="number" id="var-amount" placeholder="₪"></div>
             <div class="form-group"><label>כמה תשלומים (סך הכל)</label><input type="number" id="var-total"></div>
@@ -219,6 +230,13 @@
         var savedConfig = localStorage.getItem('family_finance_cat_config');
         if (savedConfig) { categoryConfig = JSON.parse(savedConfig); }
     } catch(e) { console.log('שגיאה בטעינת קטגוריות'); }
+
+    // תיקון אוטומטי לקטגוריות שכוללות "אשראי" או "כרטיס" במידה והוגדרו בטעות כ-fixed
+    for (var k in categoryConfig) {
+        if (categoryConfig[k].label.includes("אשראי") || categoryConfig[k].label.includes("כרטיס")) {
+            categoryConfig[k].baseType = "variable";
+        }
+    }
 
     var items = [];
     var editingId = null;
@@ -287,7 +305,7 @@
     function translateBaseType(bt) {
         if(bt === 'income') return 'הכנסה';
         if(bt === 'fixed') return 'קבוע';
-        if(bt === 'variable') return 'תשלומים';
+        if(bt === 'variable') return 'תשלומים / אשראי';
         return '';
     }
 
@@ -564,29 +582,40 @@
         document.getElementById('lbl-dash-loan-m').textContent = categoryConfig.loan.label;
         document.getElementById('lbl-dash-loan-t').textContent = "סך הכל חוב " + categoryConfig.loan.label;
 
-        var sumInc = 0, sumFix = 0, sumVarMonthly = 0, sumVarTotalLeft = 0, sumLoanMonthly = 0, sumLoanTotalLeft = 0, monthlyExpenses = 0;
+        var sumInc = 0, sumFix = 0, sumVarMonthly = 0, sumVarTotalLeft = 0, sumLoanMonthly = 0, sumLoanTotalLeft = 0, sumCreditMonthly = 0, sumCreditTotalLeft = 0, monthlyExpenses = 0;
 
         for (var i = 0; i < items.length; i++) {
             var item = items[i];
             var cKey = item.displayCategory || item.type;
             if(!categoryConfig[cKey]) cKey = item.type;
 
-            // זיהוי הסוג הבסיסי של התנועה גם עבור קטגוריות מותאמות אישית
             var effectiveBaseType = categoryConfig[cKey] ? categoryConfig[cKey].baseType : item.type;
+            var catLabel = categoryConfig[cKey] ? categoryConfig[cKey].label : '';
+            
+            // בדיקה האם הקטגוריה היא כרטיסי אשראי
+            var isCreditCard = catLabel.includes("אשראי") || catLabel.includes("כרטיס");
 
             if (!item.isArchived) {
                 if (effectiveBaseType === 'income') {
                     sumInc += item.amount;
-                } else if (effectiveBaseType === 'fixed') {
+                } else if (effectiveBaseType === 'fixed' && !isCreditCard) {
                     var mAmount = (item.period === 'שנתי') ? (item.amount / 12) : item.amount;
                     sumFix += mAmount;
                     monthlyExpenses += mAmount;
-                } else if (effectiveBaseType === 'variable') {
+                } else if (effectiveBaseType === 'variable' || isCreditCard) {
                     var dt = parseDatesAndGetLeft(item.start, item.total, 1);
-                    sumVarTotalLeft += (item.amount * dt.left);
-                    if(dt.left > 0) {
-                        sumVarMonthly += item.amount;
-                        monthlyExpenses += item.amount;
+                    if (isCreditCard) {
+                        sumCreditTotalLeft += (item.amount * dt.left);
+                        if(dt.left > 0) {
+                            sumCreditMonthly += item.amount;
+                            monthlyExpenses += item.amount;
+                        }
+                    } else {
+                        sumVarTotalLeft += (item.amount * dt.left);
+                        if(dt.left > 0) {
+                            sumVarMonthly += item.amount;
+                            monthlyExpenses += item.amount;
+                        }
                     }
                 } else if (effectiveBaseType === 'loan') {
                     var dt = parseDatesAndGetLeft(item.start, item.total, item.day);
@@ -697,6 +726,10 @@
         document.getElementById('dash-variable-total').textContent = '₪' + sumVarTotalLeft.toLocaleString();
         document.getElementById('dash-loan-monthly').textContent = '₪' + sumLoanMonthly.toLocaleString();
         document.getElementById('dash-loan-total').textContent = '₪' + sumLoanTotalLeft.toLocaleString();
+        
+        // עדכון כרטיסי אשראי בדשבורד
+        document.getElementById('dash-credit-monthly').textContent = '₪' + sumCreditMonthly.toLocaleString();
+        document.getElementById('dash-credit-total').textContent = '₪' + sumCreditTotalLeft.toLocaleString();
 
         var net = sumInc - monthlyExpenses;
         document.getElementById('net-balance').textContent = '₪' + Math.round(net).toLocaleString();
