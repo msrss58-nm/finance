@@ -1,750 +1,457 @@
-.<!DOCTYPE html>
+..<!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FamilyFinance PRO</title>
-    
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>&#128176;</text></svg>">
-    
-    <style>
-        :root {
-            --bg-color: #0f172a;
-            --card-bg: #1e293b;
-            --text-color: #f8fafc;
-            --text-muted: #94a3b8;
-            --primary: #38bdf8;
-            --success: #4ade80;
-            --danger: #f87171;
-            --warning: #fbbf24;
+    <!-- Tailwind CSS עבור עיצוב מודרני ונקי -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                    }
+                }
+            }
         }
-
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, sans-serif; }
-        body { background-color: var(--bg-color); color: var(--text-color); padding: 16px; padding-bottom: 40px; }
-        .container { max-width: 500px; margin: 0 auto; }
-        header h1 { font-size: 1.6rem; color: var(--primary); text-align: center; margin-bottom: 20px; }
-
-        .dashboard { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 1px solid #334155; border-radius: 20px; padding: 16px; margin-bottom: 20px; }
-        .main-balance { text-align: center; margin-bottom: 15px; }
-        .main-balance span { font-size: 0.85rem; color: var(--text-muted); }
-        .main-balance h2 { font-size: 2.2rem; font-weight: 700; margin-top: 5px; }
-        .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-        .stat-card { background: rgba(255, 255, 255, 0.02); border: 1px solid #334155; padding: 10px; border-radius: 12px; text-align: center; }
-        .stat-card p { font-size: 0.75rem; color: var(--text-muted); }
-        .stat-card h3 { font-size: 1rem; margin-top: 4px; }
-
-        .action-row { display: flex; gap: 10px; margin-bottom: 15px; }
-        .btn-action-main { flex: 1; background-color: #1e293b; border: 1px solid var(--primary); color: var(--primary); padding: 12px; border-radius: 12px; font-weight: 600; font-size: 0.95rem; cursor: pointer; text-align: center; white-space: nowrap; }
-        .btn-action-main.secondary { border-color: var(--text-muted); color: var(--text-color); }
-
-        .add-form, .manage-box, .edit-inside-form { background-color: var(--card-bg); border-radius: 16px; padding: 16px; margin-bottom: 20px; border: 1px solid #334155; }
-        .add-form, .manage-box { display: none; }
-        .edit-inside-form { margin-top: 10px; background-color: #0f172a; padding: 12px; border-radius: 10px; }
-        .form-group { margin-bottom: 12px; }
-        label { display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px; }
-        input, select, textarea, button { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #334155; background-color: #0f172a; color: white; font-size: 0.9rem; outline: none; }
-        .edit-inside-form input, .edit-inside-form select { background-color: #1e293b; }
-        button.btn-submit { background-color: var(--primary); color: #0f172a; font-weight: 600; cursor: pointer; border: none; margin-top: 10px; }
-        button.btn-save-edit { background-color: var(--success); color: #0f172a; font-weight: 600; border: none; margin-top: 8px; padding: 8px; font-size: 0.85rem; }
-        button.btn-cancel-edit { background-color: #334155; color: white; border: none; margin-top: 4px; padding: 8px; font-size: 0.85rem; }
-
-        .cat-manager-list { margin-top: 15px; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 10px; }
-        .cat-manager-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #334155; }
-        .cat-manager-item:last-child { border-bottom: none; }
-        .cat-btn-group { display: flex; gap: 5px; width: auto; }
-        .cat-mini-btn { padding: 4px 8px; font-size: 0.75rem; border-radius: 6px; cursor: pointer; border: 1px solid #334155; background: #0f172a; color: white; width: auto; }
-
-        .tabs { display: flex; margin-bottom: 15px; gap: 8px; background: #1e293b; padding: 4px; border-radius: 12px; }
-        .tab { flex: 1; padding: 10px; text-align: center; border-radius: 10px; cursor: pointer; font-size: 0.9rem; color: var(--text-muted); }
-        .tab.active { background: var(--bg-color); color: var(--primary); font-weight: bold; }
-
-        .accordion-section { margin-top: 10px; }
-        .accordion-header { background-color: #1e293b; border: 1px solid #334155; padding: 14px; border-radius: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-weight: 500; }
-        .accordion-content { display: none; padding: 8px 0; }
-        .list-container { display: flex; flex-direction: column; gap: 8px; }
-
-        .item-card { background-color: var(--card-bg); border: 1px solid #334155; padding: 12px; border-radius: 12px; margin-bottom: 4px; }
-        .item-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-weight: bold; }
-        .item-details { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 0.8rem; color: var(--text-muted); background: rgba(0,0,0,0.1); padding: 8px; border-radius: 8px; }
-        .item-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
-        .btn-action { background: #0f172a; border: 1px solid #334155; color: var(--text-muted); padding: 5px 10px; border-radius: 6px; font-size: 0.75rem; cursor: pointer; width: auto; }
-        .btn-edit-action { color: var(--primary); border-color: rgba(56,189,248,0.3); }
-        .btn-danger-action { color: var(--danger); border-color: rgba(248,113,113,0.3); }
-
-        .income-text { color: var(--success); }
-        .expense-text { color: var(--danger); }
-        .loan-text { color: var(--warning); }
-    </style>
+    </script>
 </head>
-<body>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans antialiased">
 
-<div class="container">
-    <header>
-        <h1>FamilyFinance</h1>
-    </header>
+    <div class="max-w-4xl mx-auto p-4 sm:p-6 space-y-6">
+        
+        <!-- כותרת ראשית -->
+        <header class="flex justify-between items-center bg-slate-800 p-4 rounded-2xl shadow-lg border border-slate-700">
+            <div>
+                <h1 class="text-2xl font-bold bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">FamilyFinance PRO</h1>
+                <p class="text-xs text-slate-400">ניהול תזרים מזומנים והלוואות חכם</p>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="openCategoryModal()" class="bg-slate-700 hover:bg-slate-600 text-xs px-3 py-2 rounded-xl transition font-medium border border-slate-600">ניהול קטגוריות</button>
+                <button onclick="openTransactionModal()" class="bg-blue-600 hover:bg-blue-500 text-xs px-4 py-2 rounded-xl transition font-medium shadow-lg shadow-blue-500/20">+ הוספת תנועה</button>
+            </div>
+        </header>
 
-    <div class="dashboard">
-        <div class="main-balance">
-            <span>תזרים פנוי חודשי (הכנסות פחות כל מה שיורד החודש)</span>
-            <h2 id="net-balance">₪0</h2>
+        <!-- דשבורד / סיכום ראשי -->
+        <section class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div class="bg-slate-800 p-4 rounded-2xl border border-slate-700 shadow-sm">
+                <span class="text-xs text-slate-400 block">הכנסות חודשיות</span>
+                <span id="total-income" class="text-lg sm:text-xl font-bold text-emerald-400">₪0</span>
+            </div>
+            <div class="bg-slate-800 p-4 rounded-2xl border border-slate-700 shadow-sm">
+                <span class="text-xs text-slate-400 block">הוצאות קבועות</span>
+                <span id="total-fixed" class="text-lg sm:text-xl font-bold text-rose-400">₪0</span>
+            </div>
+            <div class="bg-slate-800 p-4 rounded-2xl border border-slate-700 shadow-sm">
+                <span class="text-xs text-slate-400 block">הוצאות משתנות החודש</span>
+                <span id="total-variable" class="text-lg sm:text-xl font-bold text-amber-400">₪0</span>
+            </div>
+            <div class="bg-slate-800 p-4 rounded-2xl border border-slate-700 shadow-sm">
+                <span class="text-xs text-slate-400 block">החזרי הלוואות החודש</span>
+                <span id="total-loans" class="text-lg sm:text-xl font-bold text-indigo-400">₪0</span>
+            </div>
+        </section>
+
+        <!-- שורת תזרים פנוי מרכזית -->
+        <div class="bg-gradient-to-r from-blue-900/40 to-indigo-900/40 p-5 rounded-2xl border border-blue-500/30 flex justify-between items-center shadow-lg">
+            <div>
+                <span class="text-sm text-blue-200 block font-medium">תזרים פנוי אמיתי לחודש</span>
+                <span class="text-xs text-slate-400">הכנסות פחות כלל ההתחייבויות וההוצאות</span>
+            </div>
+            <span id="net-cashflow" class="text-2xl sm:text-3xl font-extrabold text-white">₪0</span>
         </div>
-        <div class="stats-grid">
-            <div class="stat-card">
-                <p>💰 <span id="lbl-dash-income">הכנסות חודשיות</span></p>
-                <h3 id="dash-income" class="income-text">₪0</h3>
-            </div>
-            <div class="stat-card">
-                <p>🏡 <span id="lbl-dash-fixed">הוצאות קבועות</span></p>
-                <h3 id="dash-fixed" class="expense-text">₪0</h3>
-            </div>
-            <div class="stat-card">
-                <p>🛒 יורד החודש (משתנות)</p>
-                <h3 id="dash-variable-monthly" class="expense-text">₪0</h3>
-            </div>
-            <div class="stat-card">
-                <p>📉 סך הכל יתרה (משתנות)</p>
-                <h3 id="dash-variable-total" class="text-muted">₪0</h3>
-            </div>
-            <div class="stat-card">
-                <p>🏦 יורד החודש (<span id="lbl-dash-loan-m">הלוואות</span>)</p>
-                <h3 id="dash-loan-monthly" class="loan-text">₪0</h3>
-            </div>
-            <div class="stat-card">
-                <p>📊 סך הכל חוב (<span id="lbl-dash-loan-t">הלוואות</span>)</p>
-                <h3 id="dash-loan-total" class="loan-text">₪0</h3>
-            </div>
+
+        <!-- מעבר בין טאבים (פעילים / ארכיון) -->
+        <div class="flex gap-2 border-b border-slate-700 pb-2">
+            <button onclick="switchTab('active')" id="tab-active-btn" class="px-4 py-2 text-sm font-semibold rounded-xl bg-blue-600 text-white transition">תנועות פעילות</button>
+            <button onclick="switchTab('archive')" id="tab-archive-btn" class="px-4 py-2 text-sm font-semibold rounded-xl bg-slate-800 text-slate-400 hover:text-white transition">ארכיון המערכת</button>
+        </div>
+
+        <!-- אזור הצגת התנועות (באקורדיונים לפי קטגוריות) -->
+        <main id="categories-container" class="space-y-4">
+            <!-- ממוזג דינמית דרך JavaScript -->
+        </main>
+    </div>
+
+    <!-- מודל הוספת/עריכת תנועה -->
+    <div id="transaction-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
+        <div class="bg-slate-800 border border-slate-700 w-full max-w-md rounded-2xl p-6 space-y-4 shadow-2xl">
+            <h3 id="modal-title" class="text-lg font-bold text-white">הוספת תנועה חדשה</h3>
+            <form id="transaction-form" onsubmit="handleFormSubmit(event)" class="space-y-3">
+                <input type="hidden" id="item-id">
+                <div>
+                    <label class="text-xs text-slate-400 block mb-1">שם התנועה</label>
+                    <input type="text" id="item-name" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500" placeholder="למשל: שכירות, משכנתא, סופר...">
+                </div>
+                <div>
+                    <label class="text-xs text-slate-400 block mb-1">קטגוריה</label>
+                    <select id="item-category" onchange="handleCategoryChange()" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                        <!-- מתמלא דינמית -->
+                    </select>
+                </div>
+                <div>
+                    <label class="text-xs text-slate-400 block mb-1">סכום (₪)</label>
+                    <input type="number" step="any" id="item-amount" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500" placeholder="0.00">
+                </div>
+
+                <!-- שדות דינמיים להוצאות קבועות (מחזוריות) -->
+                <div id="field-period" class="hidden">
+                    <label class="text-xs text-slate-400 block mb-1">מחזוריות</label>
+                    <select id="item-period" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                        <option value="monthly">חודשי</option>
+                        <option value="yearly">שנתי (יחולק אוטומטית ל-12)</option>
+                    </select>
+                </div>
+
+                <!-- שדות דינמיים להלוואות ותשלומים -->
+                <div id="field-loan-details" class="hidden space-y-3">
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-xs text-slate-400 block mb-1">תאריך לקיחה / התחלה</label>
+                            <input type="date" id="item-start-date" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-2 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-400 block mb-1">יום חיוב חודשי בבנק</label>
+                            <input type="number" min="1" max="31" id="item-billing-day" value="1" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-2 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                        </div>
+                    </div>
+                    <div id="loan-specific-fields" class="space-y-3">
+                        <div>
+                            <label class="text-xs text-slate-400 block mb-1">ריבית שנתית (%)</label>
+                            <input type="number" step="0.01" id="item-interest" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500" placeholder="למשל: 4.85">
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-400 block mb-1">משך ההלוואה בחודשים</label>
+                            <input type="number" id="item-duration" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500" placeholder="למשל: 12">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-2 pt-3">
+                    <button type="button" onclick="closeTransactionModal()" class="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-xl text-xs transition">ביטול</button>
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-xl text-xs font-medium transition">שמור תנועה</button>
+                </div>
+            </form>
         </div>
     </div>
 
-    <div class="action-row">
-        <button class="btn-action-main" onclick="toggleBox('main-form')">➕ הוספת תנועה</button>
-        <button class="btn-action-main secondary" onclick="toggleBox('manage-box')">⚙️ ניהול קטגוריות</button>
+    <!-- מודל ניהול קטגוריות -->
+    <div id="category-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
+        <div class="bg-slate-800 border border-slate-700 w-full max-w-md rounded-2xl p-6 space-y-4 shadow-2xl">
+            <h3 class="text-lg font-bold text-white">ניהול והוספת קטגוריות</h3>
+            <div id="categories-list-manage" class="space-y-2 max-h-48 overflow-y-auto pr-1">
+                <!-- נטען דינמית -->
+            </div>
+            <hr class="border-slate-700">
+            <form onsubmit="handleCategoryAdd(event)" class="space-y-3">
+                <h4 class="text-xs font-semibold text-slate-300">הוספת קטגוריה חדשה</h4>
+                <div>
+                    <input type="text" id="new-cat-name" required placeholder="שם הקטגוריה..." class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <select id="new-cat-base" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                        <option value="income">סוג בסיס: הכנסה</option>
+                        <option value="fixed">סוג בסיס: הוצאה קבועה</option>
+                        <option value="variable">סוג בסיס: הוצאה משתנה / תשלומים</option>
+                        <option value="loan">סוג בסיס: הלוואה</option>
+                    </select>
+                </div>
+                <div class="flex justify-end gap-2 pt-2">
+                    <button type="button" onclick="closeCategoryModal()" class="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-xl text-xs transition">סגור</button>
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-xl text-xs font-medium transition">הוסף קטגוריה</button>
+                </div>
+            </form>
+        </div>
     </div>
 
-    <div class="manage-box" id="manage-box">
-        <h3 style="font-size:1rem; margin-bottom:10px; color:var(--primary);">עריכת שמות קטגוריות קיימות</h3>
-        <div class="form-group">
-            <label>הכנסות</label>
-            <input type="text" id="cat-name-income" onchange="updateCategoryName('income', this.value)">
-        </div>
-        <div class="form-group">
-            <label>הוצאות קבועות</label>
-            <input type="text" id="cat-name-fixed" onchange="updateCategoryName('fixed', this.value)">
-        </div>
-        <div class="form-group">
-            <label>תשלומים שונים</label>
-            <input type="text" id="cat-name-variable" onchange="updateCategoryName('variable', this.value)">
-        </div>
-        <div class="form-group">
-            <label>הלוואות</label>
-            <input type="text" id="cat-name-loan" onchange="updateCategoryName('loan', this.value)">
-        </div>
-
-        <h3 style="font-size:1rem; margin-top:20px; margin-bottom:10px; color:var(--success);">הוספת קטגוריה חדשה מותאמת אישית</h3>
-        <div class="form-group">
-            <label>שם הקטגוריה החדשה</label>
-            <input type="text" id="new-cat-title" placeholder="למשל: רכב, חיסכון, חופשות">
-        </div>
-        <div class="form-group">
-            <label>סוג ההתנהגות הכלכלית</label>
-            <select id="new-cat-type">
-                <option value="fixed">הוצאה קבועה (סכום קבוע חודשי/שנתי)</option>
-                <option value="variable">תשלומים שונים (עסקאות עם תשלומים ותאריך סיום)</option>
-                <option value="income">הכנסה (מוסיף לתזרים הפנוי)</option>
-            </select>
-        </div>
-        <button class="btn-submit" style="background-color:var(--success);" onclick="addCustomCategory()">צור קטגוריה חדשה +</button>
-
-        <div class="cat-manager-list" id="custom-categories-list"></div>
-    </div>
-
-    <div class="add-form" id="main-form">
-        <div class="form-group">
-            <label>מה ברצונך להוסיף?</label>
-            <select id="main-type" onchange="switchFormType(this.value)"></select>
-        </div>
-
-        <div id="form-income">
-            <div class="form-group"><label>שם / תיאור</label><input type="text" id="inc-title" placeholder="משכורת, בונוס"></div>
-            <div class="form-group"><label>סכום</label><input type="number" id="inc-amount" placeholder="₪"></div>
-        </div>
-
-        <div id="form-loan" style="display:none;">
-            <div class="form-group"><label>שם ההלוואה</label><input type="text" id="loan-title"></div>
-            <div class="form-group"><label>סכום מקור (סך ההלוואה המקורית)</label><input type="number" id="loan-original" placeholder="₪"></div>
-            <div class="form-group"><label>ריבית שנתית (%)</label><input type="number" id="loan-interest" step="0.01" value="4.85"></div>
-            <div class="form-group"><label>כמה תשלומים (תקופה בחודשים)</label><input type="number" id="loan-total" value="12"></div>
-            <div class="form-group"><label>מתי יורד (יום בחודש)</label><input type="number" id="loan-day" min="1" max="31" value="1"></div>
-            <div class="form-group"><label>תאריך לקיחה / פתיחה</label><input type="date" id="loan-start"></div>
-            <div class="form-group"><label>היכן יורד (חשבון/כרטיס)</label><input type="text" id="loan-where"></div>
-        </div>
-
-        <div id="form-variable" style="display:none;">
-            <div class="form-group"><label>שם התשלום</label><input type="text" id="var-title"></div>
-            <div class="form-group"><label>סכום מקור (סך כל העסקה המקורית)</label><input type="number" id="var-original" placeholder="₪"></div>
-            <div class="form-group"><label>עלות חודשית</label><input type="number" id="var-amount" placeholder="₪"></div>
-            <div class="form-group"><label>כמה תשלומים (סך הכל)</label><input type="number" id="var-total"></div>
-            <div class="form-group"><label>תאריך התחלה</label><input type="date" id="var-start"></div>
-        </div>
-
-        <div id="form-fixed" style="display:none;">
-            <div class="form-group"><label>שם ההוצאה</label><input type="text" id="fix-title"></div>
-            <div class="form-group"><label>סכום</label><input type="number" id="fix-amount" placeholder="₪"></div>
-            <div class="form-group"><label>איפה יורד</label><input type="text" id="fix-where"></div>
-            <div class="form-group"><label>חודשי או שנתי</label><select id="fix-period"><option value="חודשי">חודשי</option><option value="שנתי">שנתי</option></select></div>
-            <div class="form-group"><label>הערות</label><textarea id="fix-notes"></textarea></div>
-        </div>
-
-        <button class="btn-submit" onclick="addNewItem()">הוסף תנועה +</button>
-    </div>
-
-    <div class="tabs">
-        <div class="tab active" id="tab-active" onclick="switchTab('active')">תנועות פעילות</div>
-        <div class="tab" id="tab-archived" onclick="switchTab('archived')">ארכיון המערכת</div>
-    </div>
-
-    <div id="dynamic-accordion-container"></div>
-</div>
-
-<script>
-    var categoryConfig = {
-        income: { label: "💰 הכנסות", baseType: "income" },
-        fixed: { label: "🏡 הוצאות קבועות", baseType: "fixed" },
-        variable: { label: "🛒 תשלומים שונים", baseType: "variable" },
-        loan: { label: "🏦 הלוואות", baseType: "loan" }
-    };
-
-    try {
-        var savedConfig = localStorage.getItem('family_finance_cat_config');
-        if (savedConfig) { categoryConfig = JSON.parse(savedConfig); }
-    } catch(e) { console.log('שגיאה בטעינת קטגוריות'); }
-
-    var items = [];
-    var editingId = null;
-    var currentView = 'active';
-
-    try {
-        var savedItems = localStorage.getItem('family_finance_data');
-        if (savedItems) { items = JSON.parse(savedItems); }
-    } catch(e) { console.log('שגיאה בטעינת הנתונים'); }
-
-    function saveToLocalStorage() {
-        try { localStorage.setItem('family_finance_data', JSON.stringify(items)); } catch(e) { console.log('שגיאה בשמירת הנתונים'); }
-    }
-
-    function saveConfigToLocalStorage() {
-        try { localStorage.setItem('family_finance_cat_config', JSON.stringify(categoryConfig)); } catch(e) { console.log('שגיאה בשמירת תצורת הקטגוריות'); }
-    }
-
-    function toggleBox(id) {
-        var el = document.getElementById(id);
-        var otherId = (id === 'main-form') ? 'manage-box' : 'main-form';
-        var otherEl = document.getElementById(otherId);
-        otherEl.style.display = 'none';
-        el.style.display = (el.style.display === 'block') ? 'none' : 'block';
-    }
-
-    function initCategoryInputs() {
-        if(document.getElementById('cat-name-income')) {
-            document.getElementById('cat-name-income').value = categoryConfig.income.label;
-            document.getElementById('cat-name-fixed').value = categoryConfig.fixed.label;
-            document.getElementById('cat-name-variable').value = categoryConfig.variable.label;
-            document.getElementById('cat-name-loan').value = categoryConfig.loan.label;
-        }
-        
-        var listContainer = document.getElementById('custom-categories-list');
-        if(listContainer) {
-            listContainer.innerHTML = '';
-            var count = 0;
-            for (var key in categoryConfig) {
-                if (key !== 'income' && key !== 'fixed' && key !== 'variable' && key !== 'loan') {
-                    count++;
-                    if(count === 1) {
-                        var h = document.createElement('h4');
-                        h.style.cssText = "font-size:0.85rem; margin-bottom:8px; color:var(--text-muted);";
-                        h.textContent = "קטגוריות שיצרת:";
-                        listContainer.appendChild(h);
-                    }
-                    createCustomCatRow(key, listContainer);
-                }
-            }
-        }
-        buildFormDropdown();
-    }
-
-    function createCustomCatRow(key, container) {
-        var row = document.createElement('div');
-        row.className = 'cat-manager-item';
-        row.innerHTML = '<span>' + categoryConfig[key].label + ' <small style="color:var(--text-muted)">(' + translateBaseType(categoryConfig[key].baseType) + ')</small></span>' +
-            '<div class="cat-btn-group">' +
-                '<button class="cat-mini-btn" onclick="renameCustomCategory(\'' + key + '\')">✏️ שם</button>' +
-                '<button class="cat-mini-btn" style="color:var(--danger);" onclick="deleteCustomCategory(\'' + key + '\')">🗑️ מחק</button>' +
-            '</div>';
-        container.appendChild(row);
-    }
-
-    function translateBaseType(bt) {
-        if(bt === 'income') return 'הכנסה';
-        if(bt === 'fixed') return 'קבוע';
-        if(bt === 'variable') return 'תשלומים';
-        return '';
-    }
-
-    function updateCategoryName(key, newVal) {
-        if(!newVal.trim()) return;
-        categoryConfig[key].label = newVal.trim();
-        saveConfigToLocalStorage();
-        initCategoryInputs();
-        renderAll();
-    }
-
-    function addCustomCategory() {
-        var title = document.getElementById('new-cat-title').value.trim();
-        var baseType = document.getElementById('new-cat-type').value;
-        if(!title) return alert('נא להזין שם לקטגוריה');
-        
-        var newKey = 'custom_' + Date.now();
-        categoryConfig[newKey] = { label: title, baseType: baseType };
-        
-        document.getElementById('new-cat-title').value = '';
-        saveConfigToLocalStorage();
-        initCategoryInputs();
-        renderAll();
-    }
-
-    function renameCustomCategory(key) {
-        var oldName = categoryConfig[key].label;
-        var newName = prompt('הזן שם חדש לקטגוריה:', oldName);
-        if(newName && newName.trim()) {
-            categoryConfig[key].label = newName.trim();
-            saveConfigToLocalStorage();
-            initCategoryInputs();
-            renderAll();
-        }
-    }
-
-    function deleteCustomCategory(key) {
-        var hasItems = items.some(function(i) { return i.displayCategory === key || (i.type === key); });
-        if(hasItems) {
-            if(!confirm('ישנן תנועות המשויכות לקטגוריה זו. מחיקת הקטגוריה תעביר אותן לקטגוריית הבסיס. להמשיך?')) return;
-            var base = categoryConfig[key].baseType;
-            items.forEach(function(i) {
-                if(i.displayCategory === key) i.displayCategory = base;
-                if(i.type === key) i.type = base;
-            });
-            saveToLocalStorage();
-        } else {
-            if(!confirm('למחוק את הקטגוריה הזו?')) return;
-        }
-        delete categoryConfig[key];
-        saveConfigToLocalStorage();
-        initCategoryInputs();
-        renderAll();
-    }
-
-    function buildFormDropdown() {
-        var sel = document.getElementById('main-type');
-        if(!sel) return;
-        var currSel = sel.value;
-        sel.innerHTML = '';
-        for (var key in categoryConfig) {
-            var opt = document.createElement('option');
-            opt.value = key;
-            opt.textContent = categoryConfig[key].label;
-            sel.appendChild(opt);
-        }
-        if(currSel && categoryConfig[currSel]) sel.value = currSel;
-        else sel.selectedIndex = 0;
-        switchFormType(sel.value);
-    }
-
-    function switchFormType(catKey) {
-        var baseType = categoryConfig[catKey].baseType;
-        document.getElementById('form-income').style.display = (baseType == 'income') ? 'block' : 'none';
-        document.getElementById('form-loan').style.display = (baseType == 'loan') ? 'block' : 'none';
-        document.getElementById('form-variable').style.display = (baseType == 'variable') ? 'block' : 'none';
-        document.getElementById('form-fixed').style.display = (baseType == 'fixed') ? 'block' : 'none';
-    }
-
-    // --- ⚖️ פונקציות חישוב מועדים כלליות ---
-    function parseDatesAndGetLeft(startDateStr, totalPayments, billingDay) {
-        if (!startDateStr || !totalPayments) return { left: 0, endStr: '-', passed: 0 };
-        
-        var parts = startDateStr.split('-');
-        var startYear = parseInt(parts[0], 10);
-        var startMonth = parseInt(parts[1], 10) - 1; 
-        var startDay = parts[2] ? parseInt(parts[2], 10) : 1;
-        
-        var total = parseInt(totalPayments, 10);
-        var bDay = billingDay ? parseInt(billingDay, 10) : 1;
-
-        var firstBillingYear = startYear;
-        var firstBillingMonth = startMonth;
-        if (startDay >= bDay) {
-            firstBillingMonth += 1; 
-        }
-        var firstBillingDate = new Date(firstBillingYear, firstBillingMonth, bDay);
-        
-        var end = new Date(firstBillingDate.getFullYear(), firstBillingDate.getMonth() + (total - 1), bDay);
-        var endStr = end.toLocaleDateString('he-IL');
-
-        var today = new Date();
-        var todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-        
-        if (todayZero < firstBillingDate) {
-            return { left: total, endStr: endStr, passed: 0 };
-        }
-
-        var passedMonths = (todayZero.getFullYear() - firstBillingDate.getFullYear()) * 12 + (todayZero.getMonth() - firstBillingDate.getMonth());
-        if (todayZero.getDate() >= bDay) {
-            passedMonths += 1;
-        }
-
-        var left = total - passedMonths;
-        if (left < 0) left = 0;
-        if (left > total) left = total;
-        
-        return { left: left, endStr: endStr, passed: passedMonths };
-    }
-
-    // --- 🏦 👑 לוגיקת שפיצר הרשמית להלוואות (חישוב מדויק ומסונכרן לבנק) 👑 🏦 ---
-    function calculateSpitzerLoan(originalAmount, annualInterestRate, totalPayments, startDateStr, billingDay) {
-        var p = parseFloat(originalAmount) || 0;
-        var rYear = parseFloat(annualInterestRate) || 0;
-        var n = parseInt(totalPayments, 10) || 0;
-
-        if (p <= 0 || n <= 0) {
-            return { monthlyPayment: 0, remainingBalance: 0, leftPayments: 0, endStr: '-' };
-        }
-
-        // 1. חישוב החזר חודשי מדויק לפי נוסחת שפיצר
-        var monthlyPayment = 0;
-        if (rYear === 0) {
-            monthlyPayment = p / n;
-        } else {
-            var rMonthly = (rYear / 100) / 12; // ריבית חודשית
-            monthlyPayment = p * (rMonthly * Math.pow(1 + rMonthly, n)) / (Math.pow(1 + rMonthly, n) - 1);
-        }
-
-        // 2. קבלת נתוני המועדים והתשלומים שעברו
-        var dt = parseDatesAndGetLeft(startDateStr, n, billingDay);
-        
-        // 3. בניית לוח סילוקין פנימי כדי למצוא את יתרת הקרן האמיתית לסילוק בחודש הנוכחי
-        var currentRemainingPrincipal = p;
-        if (rYear > 0) {
-            var rMonthly = (rYear / 100) / 12;
-            for (var i = 0; i < dt.passed; i++) {
-                if (i >= n) break;
-                var interestForMonth = currentRemainingPrincipal * rMonthly;
-                var principalForMonth = monthlyPayment - interestForMonth;
-                currentRemainingPrincipal -= principalForMonth;
-            }
-        } else {
-            currentRemainingPrincipal = p - (monthlyPayment * dt.passed);
-        }
-
-        if (currentRemainingPrincipal < 0 || dt.left === 0) currentRemainingPrincipal = 0;
-
-        return {
-            monthlyPayment: Math.round(monthlyPayment), // עיגול לשקל הקרוב (למשל 685)
-            remainingBalance: Math.round(currentRemainingPrincipal), // יתרת הקרן המדויקת לבנק
-            leftPayments: dt.left,
-            endStr: dt.endStr
+    <!-- לוגיקת ה-JavaScript המלאה -->
+    <script>
+        // מצב אפליקציה ואחסון מקומי
+        let state = JSON.parse(localStorage.getItem('family_finance_state')) || {
+            currentTab: 'active',
+            categories: [
+                { id: 'cat_income', name: 'הכנסות שוטפות', baseType: 'income', isDefault: true },
+                { id: 'cat_fixed', name: 'הוצאות קבועות', baseType: 'fixed', isDefault: true },
+                { id: 'cat_variable', name: 'תשלומים ומשתנות', baseType: 'variable', isDefault: true },
+                { id: 'cat_loans', name: 'הלוואות והחזרים', baseType: 'loan', isDefault: true }
+            ],
+            items: []
         };
-    }
 
-    function addNewItem() {
-        var catKey = document.getElementById('main-type').value;
-        var baseType = categoryConfig[catKey].baseType;
-        
-        var obj = { id: Date.now(), type: baseType, displayCategory: catKey, isArchived: false };
-
-        if (baseType === 'income') {
-            obj.title = document.getElementById('inc-title').value.trim();
-            obj.amount = parseFloat(document.getElementById('inc-amount').value);
-            if(!obj.title || isNaN(obj.amount)) return alert('מלא שם וסכום');
-            document.getElementById('inc-title').value = ''; document.getElementById('inc-amount').value = '';
-        } 
-        else if (baseType === 'loan') {
-            obj.title = document.getElementById('loan-title').value.trim();
-            obj.originalAmount = parseFloat(document.getElementById('loan-original').value) || 0;
-            obj.interest = parseFloat(document.getElementById('loan-interest').value) || 0;
-            obj.total = parseInt(document.getElementById('loan-total').value, 10) || 12;
-            obj.day = parseInt(document.getElementById('loan-day').value, 10) || 1;
-            obj.start = document.getElementById('loan-start').value;
-            obj.where = document.getElementById('loan-where').value;
-            
-            if(!obj.title || !obj.originalAmount || !obj.start) return alert('נא למלא: שם הלוואה, סכום מקור ותאריך לקיחה');
-            
-            // חישוב מקדים של שפיצר לשמירת ההחזר הבסיסי
-            var spitzer = calculateSpitzerLoan(obj.originalAmount, obj.interest, obj.total, obj.start, obj.day);
-            obj.amount = spitzer.monthlyPayment; // שומר את ה-685 ש"ח המעוגל
-
-            document.getElementById('loan-title').value=''; document.getElementById('loan-original').value='';
-            document.getElementById('loan-interest').value='4.85'; document.getElementById('loan-total').value='12'; 
-            document.getElementById('loan-day').value='1'; document.getElementById('loan-start').value=''; document.getElementById('loan-where').value='';
-        } 
-        else if (baseType === 'variable') {
-            obj.title = document.getElementById('var-title').value.trim();
-            obj.originalAmount = parseFloat(document.getElementById('var-original').value) || 0;
-            obj.amount = parseFloat(document.getElementById('var-amount').value);
-            obj.total = document.getElementById('var-total').value;
-            obj.start = document.getElementById('var-start').value;
-            if(!obj.title || isNaN(obj.amount)) return alert('מלא שם ועלות חודשית');
-            document.getElementById('var-title').value=''; document.getElementById('var-original').value='';
-            document.getElementById('var-amount').value=''; document.getElementById('var-total').value=''; 
-            document.getElementById('var-start').value='';
-        } 
-        else if (baseType === 'fixed') {
-            obj.title = document.getElementById('fix-title').value.trim();
-            obj.amount = parseFloat(document.getElementById('fix-amount').value);
-            obj.where = document.getElementById('fix-where').value;
-            obj.period = document.getElementById('fix-period').value;
-            obj.notes = document.getElementById('fix-notes').value;
-            if(!obj.title || isNaN(obj.amount)) return alert('מלא שם וסכום');
-            document.getElementById('fix-title').value=''; document.getElementById('fix-amount').value='';
-            document.getElementById('fix-where').value=''; document.getElementById('fix-notes').value='';
+        function saveState() {
+            localStorage.setItem('family_finance_state', JSON.stringify(state));
+            render();
         }
 
-        items.push(obj);
-        saveToLocalStorage();
-        document.getElementById('main-form').style.display = 'none';
-        renderAll();
-        
-        var blockEl = document.getElementById('sec-' + catKey);
-        if(blockEl) blockEl.style.display = 'block';
-    }
-
-    function archiveItem(id) {
-        var idx = items.findIndex(function(i) { return i.id === id; });
-        if(idx !== -1) { items[idx].isArchived = true; saveToLocalStorage(); renderAll(); }
-    }
-
-    function unarchiveItem(id) {
-        var idx = items.findIndex(function(i) { return i.id === id; });
-        if(idx !== -1) { items[idx].isArchived = false; saveToLocalStorage(); renderAll(); }
-    }
-
-    function deletePermanently(id) {
-        if(confirm('למחוק לצמיתות מהמערכת?')) {
-            items = items.filter(function(i) { return i.id !== id; });
-            saveToLocalStorage();
-            renderAll();
-        }
-    }
-
-    function startEdit(id) { editingId = id; renderAll(); }
-    function cancelEdit() { editingId = null; renderAll(); }
-
-    function saveInlineEdit(id) {
-        var idx = items.findIndex(function(i) { return i.id === id; });
-        if (idx === -1) return;
-        var item = items[idx];
-
-        var titleVal = document.getElementById('edit-title-' + id).value.trim();
-        if (!titleVal) return alert('נא להזין כותרת תקינה');
-
-        item.title = titleVal;
-
-        if (item.type === 'fixed') {
-            item.amount = parseFloat(document.getElementById('edit-amount-' + id).value) || 0;
-            item.where = document.getElementById('edit-where-' + id).value;
-            item.period = document.getElementById('edit-period-' + id).value;
-            item.notes = document.getElementById('edit-notes-' + id).value;
-        } else if (item.type === 'variable') {
-            item.amount = parseFloat(document.getElementById('edit-amount-' + id).value) || 0;
-            item.originalAmount = parseFloat(document.getElementById('edit-original-' + id).value) || 0;
-            item.total = document.getElementById('edit-total-' + id).value;
-            item.start = document.getElementById('edit-start-' + id).value;
-        } else if (item.type === 'loan') {
-            item.originalAmount = parseFloat(document.getElementById('edit-original-' + id).value) || 0;
-            item.interest = parseFloat(document.getElementById('edit-interest-' + id).value) || 0;
-            item.total = document.getElementById('edit-total-' + id).value;
-            item.day = document.getElementById('edit-day-' + id).value;
-            item.start = document.getElementById('edit-start-' + id).value;
-            item.where = document.getElementById('edit-where-' + id).value;
-            
-            // עדכון מחדש של ההחזר החודשי המעוגל בשפיצר על בסיס השינויים
-            var spitzer = calculateSpitzerLoan(item.originalAmount, item.interest, item.total, item.start, item.day);
-            item.amount = spitzer.monthlyPayment;
-        } else if (item.type === 'income') {
-            item.amount = parseFloat(document.getElementById('edit-amount-' + id).value) || 0;
+        function getBaseCategory(catId) {
+            const cat = state.categories.find(c => c.id === catId);
+            return cat ? cat.baseType : 'fixed';
         }
 
-        editingId = null;
-        saveToLocalStorage();
-        renderAll();
-    }
-
-    function switchTab(tab) {
-        currentView = tab;
-        document.getElementById('tab-active').className = (tab === 'active') ? 'tab active' : 'tab';
-        document.getElementById('tab-archived').className = (tab === 'archived') ? 'tab active' : 'tab';
-        renderAll();
-    }
-
-    function rebuildAccordionContainers() {
-        var container = document.getElementById('dynamic-accordion-container');
-        if(!container) return;
-        var openStates = {};
-        for (var key in categoryConfig) {
-            var oldEl = document.getElementById('sec-' + key);
-            if(oldEl) { openStates[key] = oldEl.style.display; }
+        // חישוב לוח שפיצר והחזר חודשי
+        function calculateSpitzerPayment(principal, annualRate, months) {
+            if (!annualRate || annualRate <= 0) return principal / months;
+            let monthlyRate = (annualRate / 100) / 12;
+            let payment = principal * (monthlyRate * Math.pow(1 + monthlyRate, months)) / (Math.pow(1 + monthlyRate, months) - 1);
+            return Math.round(payment);
         }
-        container.innerHTML = '';
-        for (var key in categoryConfig) {
-            var sec = document.createElement('div');
-            sec.className = 'accordion-section';
-            var disp = openStates[key] || 'none';
-            sec.innerHTML = '<div class="accordion-header" onclick="var c=document.getElementById(\'sec-' + key + '\'); c.style.display=(c.style.display==\'block\')?\'none\':\'block\';">' + categoryConfig[key].label + ' ▼</div>' +
-                '<div class="accordion-content" id="sec-' + key + '" style="display:' + disp + '"><div id="list-' + key + '" class="list-container"></div></div>';
-            container.appendChild(sec);
-        }
-    }
 
-    function renderAll() {
-        rebuildAccordionContainers();
-        
-        document.getElementById('lbl-dash-income').textContent = categoryConfig.income.label + " חודשיות";
-        document.getElementById('lbl-dash-fixed').textContent = categoryConfig.fixed.label;
-        document.getElementById('lbl-dash-loan-m').textContent = categoryConfig.loan.label;
-        document.getElementById('lbl-dash-loan-t').textContent = "יתרת קרן " + categoryConfig.loan.label;
+        // בדיקת פעילות הלוואה בחודש הנוכחי לפי חוקי מועדים
+        function isLoanActiveThisMonth(item) {
+            if (!item.startDate) return true;
+            let start = new Date(item.startDate);
+            let now = new Date();
+            let billingDay = item.billingDay || 1;
 
-        var sumInc = 0, sumFix = 0, sumVarMonthly = 0, sumVarTotalLeft = 0, sumLoanMonthly = 0, sumLoanTotalLeft = 0, monthlyExpenses = 0;
-
-        for (var i = 0; i < items.length; i++) {
-            var item = items[i];
-            if (!item.isArchived) {
-                if (item.type === 'income') {
-                    sumInc += item.amount;
-                } else if (item.type === 'fixed') {
-                    var mAmount = (item.period === 'שנתי') ? (item.amount / 12) : item.amount;
-                    sumFix += item.amount;
-                    monthlyExpenses += mAmount;
-                } else if (item.type === 'variable') {
-                    var dt = parseDatesAndGetLeft(item.start, item.total, 1);
-                    sumVarTotalLeft += (item.amount * dt.left);
-                    if(dt.left > 0) {
-                        sumVarMonthly += item.amount;
-                        monthlyExpenses += item.amount;
-                    }
-                } else if (item.type === 'loan') {
-                    // חישוב שפיצר דינמי לצורך ה-Dashboard והסיכומים
-                    var loanCalc = calculateSpitzerLoan(item.originalAmount, item.interest, item.total, item.start, item.day);
-                    sumLoanTotalLeft += loanCalc.remainingBalance; // יתרת הקרן האמיתית המעודכנת
-                    if(loanCalc.leftPayments > 0) {
-                        sumLoanMonthly += loanCalc.monthlyPayment; // ההחזר החודשי המדויק (למשל 685)
-                        monthlyExpenses += loanCalc.monthlyPayment;
-                    }
-                }
+            // חוק חישוב חיוב ראשון
+            let firstBilling = new Date(start.getFullYear(), start.getMonth(), billingDay);
+            if (start.getDate() >= billingDay) {
+                firstBilling.setMonth(firstBilling.getMonth() + 1);
             }
+
+            // חוק תאריך סיום (חודש אחד פחות)
+            let duration = parseInt(item.duration) || 12;
+            let lastBilling = new Date(firstBilling);
+            lastBilling.setMonth(lastBilling.getMonth() + duration - 1);
+
+            let currentMonthCompare = new Date(now.getFullYear(), now.getMonth(), billingDay);
+            return currentMonthCompare >= firstBilling && currentMonthCompare <= lastBilling;
         }
 
-        for (var j = 0; j < items.length; j++) {
-            var item = items[j];
-            var cKey = item.displayCategory || item.type;
-            if(!categoryConfig[cKey]) cKey = item.type;
+        function isItemActiveThisMonth(item) {
+            const base = getBaseCategory(item.categoryId);
+            if (base === 'loan') return isLoanActiveThisMonth(item);
+            return true;
+        }
 
-            var show = (currentView === 'active' && !item.isArchived) || (currentView === 'archived' && item.isArchived);
-            
-            if (show) {
-                var card = document.createElement('div');
-                card.className = 'item-card';
-                var isEditing = (editingId === item.id);
+        // עדכון דשבורד מרכזי עם התיקון המלא (סינון ארכיון + המרה למספרים)
+        function updateDashboard() {
+            const activeItems = state.items.filter(item => !item.archived);
 
-                if (isEditing) {
-                    var editHtml = '<div class="edit-inside-form">' +
-                        '<div class="form-group"><label>שם / כותרת</label><input type="text" id="edit-title-' + item.id + '" value="' + item.title + '"></div>';
+            const totalIncome = activeItems
+                .filter(item => getBaseCategory(item.categoryId) === 'income')
+                .reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
 
-                    if (item.type === 'fixed') {
-                        editHtml += '<div class="form-group"><label>סכום</label><input type="number" id="edit-amount-' + item.id + '" value="' + item.amount + '"></div>' +
-                            '<div class="form-group"><label>איפה יורד</label><input type="text" id="edit-where-' + item.id + '" value="' + (item.where || '') + '"></div>' +
-                            '<div class="form-group"><label>תדירות</label><select id="edit-period-' + item.id + '"><option value="חודשי"' + (item.period === 'חודשי' ? ' selected' : '') + '>חודשי</option><option value="שנתי"' + (item.period === 'שנתי' ? ' selected' : '') + '>שנתי</option></select></div>' +
-                            '<div class="form-group"><label>הערות</label><textarea id="edit-notes-' + item.id + '">' + (item.notes || '') + '</textarea></div>';
-                    } else if (item.type === 'variable') {
-                        editHtml += '<div class="form-group"><label>סכום מקור</label><input type="number" id="edit-original-' + item.id + '" value="' + (item.originalAmount || '') + '"></div>' +
-                            '<div class="form-group"><label>עלות חודשית</label><input type="number" id="edit-amount-' + item.id + '" value="' + item.amount + '"></div>' +
-                            '<div class="form-group"><label>סך תשלומים</label><input type="number" id="edit-total-' + item.id + '" value="' + (item.total || '') + '"></div>' +
-                            '<div class="form-group"><label>תאריך התחלה</label><input type="date" id="edit-start-' + item.id + '" value="' + (item.start || '') + '"></div>';
-                    } else if (item.type === 'loan') {
-                        editHtml += '<div class="form-group"><label>סכום מקור (קרן הלוואה)</label><input type="number" id="edit-original-' + item.id + '" value="' + (item.originalAmount || '') + '"></div>' +
-                            '<div class="form-group"><label>ריבית שנתית (%)</label><input type="number" step="0.01" id="edit-interest-' + item.id + '" value="' + (item.interest || '') + '"></div>' +
-                            '<div class="form-group"><label>סך חודשי תקופה</label><input type="number" id="edit-total-' + item.id + '" value="' + (item.total || '') + '"></div>' +
-                            '<div class="form-group"><label>יום חיוב בחודש</label><input type="number" id="edit-day-' + item.id + '" value="' + (item.day || '1') + '"></div>' +
-                            '<div class="form-group"><label>תאריך לקיחה</label><input type="date" id="edit-start-' + item.id + '" value="' + (item.start || '') + '"></div>' +
-                            '<div class="form-group"><label>היכן יורד</label><input type="text" id="edit-where-' + item.id + '" value="' + (item.where || '') + '"></div>';
-                    } else {
-                        editHtml += '<div class="form-group"><label>סכום</label><input type="number" id="edit-amount-' + item.id + '" value="' + item.amount + '"></div>';
+            const totalFixed = activeItems
+                .filter(item => getBaseCategory(item.categoryId) === 'fixed')
+                .reduce((sum, item) => {
+                    let amount = parseFloat(item.amount) || 0;
+                    if (item.period === 'yearly') amount = amount / 12;
+                    return sum + amount;
+                }, 0);
+
+            const totalVariable = activeItems
+                .filter(item => getBaseCategory(item.categoryId) === 'variable')
+                .reduce((sum, item) => {
+                    if (isItemActiveThisMonth(item)) {
+                        return sum + (parseFloat(item.monthlyPayment) || parseFloat(item.amount) || 0);
                     }
+                    return sum;
+                }, 0);
 
-                    editHtml += '<button class="btn-save-edit" onclick="saveInlineEdit(' + item.id + ')">💾 שמור שינויים</button>' +
-                        '<button class="btn-cancel-edit" onclick="cancelEdit()">ביטול</button>' +
-                        '</div>';
-                    card.innerHTML = editHtml;
+            const totalLoans = activeItems
+                .filter(item => getBaseCategory(item.categoryId) === 'loan')
+                .reduce((sum, item) => {
+                    if (isLoanActiveThisMonth(item)) {
+                        return sum + (parseFloat(item.monthlyPayment) || 0);
+                    }
+                    return sum;
+                }, 0);
+
+            const netCashFlow = totalIncome - (totalFixed + totalVariable + totalLoans);
+
+            document.getElementById('total-income').textContent = `₪${totalIncome.toLocaleString('he-IL', {maximumFractionDigits: 2})}`;
+            document.getElementById('total-fixed').textContent = `₪${totalFixed.toLocaleString('he-IL', {maximumFractionDigits: 2})}`;
+            document.getElementById('total-variable').textContent = `₪${totalVariable.toLocaleString('he-IL', {maximumFractionDigits: 2})}`;
+            document.getElementById('total-loans').textContent = `₪${totalLoans.toLocaleString('he-IL', {maximumFractionDigits: 2})}`;
+            document.getElementById('net-cashflow').textContent = `₪${netCashFlow.toLocaleString('he-IL', {maximumFractionDigits: 2})}`;
+        }
+
+        // רינדור ממשק המשתמש
+        function render() {
+            updateDashboard();
+            const container = document.getElementById('categories-container');
+            container.innerHTML = '';
+
+            const filteredItems = state.items.filter(item => state.currentTab === 'archive' ? item.archived : !item.archived);
+
+            state.categories.forEach(cat => {
+                const catItems = filteredItems.filter(item => item.categoryId === cat.id);
+                
+                let html = `
+                    <div class="bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden shadow-sm">
+                        <div class="p-4 bg-slate-800/80 flex justify-between items-center border-b border-slate-700/50">
+                            <h2 class="font-bold text-sm text-slate-200">${cat.name} (${catItems.length})</h2>
+                            <span class="text-xs text-slate-400">סוג: ${cat.baseType}</span>
+                        </div>
+                        <div class="divide-y divide-slate-700/40">
+                `;
+
+                if (catItems.length === 0) {
+                    html += `<div class="p-4 text-center text-xs text-slate-500">אין תנועות בקטגוריה זו</div>`;
                 } else {
-                    var actionButtons = '';
-                    if (!item.isArchived) {
-                        actionButtons = '<button class="btn-action btn-edit-action" onclick="startEdit(' + item.id + ')">✏️ עריכה</button>' +
-                                        '<button class="btn-action" onclick="archiveItem(' + item.id + ')">📦 ארכיון</button>';
-                    } else {
-                        actionButtons = '<button class="btn-action btn-edit-action" onclick="startEdit(' + item.id + ')">✏️ עריכה</button>' +
-                                        '<button class="btn-action" onclick="unarchiveItem(' + item.id + ')">🔄 החזר לתנועות</button>' +
-                                        '<button class="btn-action btn-danger-action" onclick="deletePermanently(' + item.id + ')">🗑️ מחיקה סופית</button>';
-                    }
+                    catItems.forEach(item => {
+                        let subDetails = '';
+                        if (cat.baseType === 'loan') {
+                            subDetails = `החזר חודשי: ₪${item.monthlyPayment || item.amount}`;
+                        } else if (cat.baseType === 'fixed' && item.period === 'yearly') {
+                            subDetails = `שנתי (כ-₪${Math.round((item.amount/12))} לחודש)`;
+                        }
 
-                    if (item.type === 'income') {
-                        card.innerHTML = '<div class="item-top"><span>' + item.title + '</span><span class="income-text">₪' + item.amount.toLocaleString() + '</span></div>' +
-                                         '<div class="item-actions">' + actionButtons + '</div>';
-                    } 
-                    else if (item.type === 'fixed') {
-                        card.innerHTML = '<div class="item-top"><span>' + item.title + '</span><span class="expense-text">₪' + item.amount.toLocaleString() + ' (' + item.period + ')</span></div>' +
-                                         '<div class="item-details"><div>איפה יורד: ' + (item.where || '-') + '</div><div>הערות: ' + (item.notes || '-') + '</div></div>' +
-                                         '<div class="item-actions">' + actionButtons + '</div>';
-                    } 
-                    else if (item.type === 'variable') {
-                        var dt = parseDatesAndGetLeft(item.start, item.total, 1);
-                        var origStr = item.originalAmount ? '₪' + item.originalAmount.toLocaleString() : '-';
-                        card.innerHTML = '<div class="item-top"><span>' + item.title + '</span><span class="expense-text">₪' + item.amount.toLocaleString() + ' לחודש</span></div>' +
-                                         '<div class="item-details">' +
-                                         '<div>סכום מקור: ' + origStr + '</div><div>תשלומים: ' + item.total + '</div>' +
-                                         '<div>תאריך התחלה: ' + (item.start ? new Date(item.start).toLocaleDateString('he-IL') : '-') + '</div>' +
-                                         '<div>תאריך סיום: ' + dt.endStr + '</div><div style="color:var(--primary); grid-column: span 2;">חודשים שנשארו: ' + dt.left + '</div>' +
-                                         '</div><div class="item-actions">' + actionButtons + '</div>';
-                    } 
-                    else if (item.type === 'loan') {
-                        var loanCalc = calculateSpitzerLoan(item.originalAmount, item.interest, item.total, item.start, item.day);
-                        var origStr = item.originalAmount ? '₪' + item.originalAmount.toLocaleString() : '-';
-                        card.innerHTML = '<div class="item-top"><span>' + item.title + '</span><span class="loan-text">₪' + loanCalc.monthlyPayment.toLocaleString() + ' החזר</span></div>' +
-                                         '<div class="item-details">' +
-                                         '<div>סכום מקור: ' + origStr + '</div><div>היכן יורד: ' + (item.where || '-') + '</div>' +
-                                         '<div>ריבית: ' + (item.interest || '0') + '%</div><div>חיוב חודשי: ' + (item.day || '1') + ' בחודש</div>' +
-                                         '<div>תאריך פתיחה: ' + (item.start ? new Date(item.start).toLocaleDateString('he-IL') : '-') + '</div>' +
-                                         '<div>חיוב אחרון: ' + loanCalc.endStr + '</div>' +
-                                         '<div style="color:var(--success)">קרן לסילוק בבנק: ₪' + loanCalc.remainingBalance.toLocaleString() + '</div>' +
-                                         '<div style="color:var(--warning)">חודשים שנותרו: ' + loanCalc.leftPayments + '</div>' +
-                                         '</div><div class="item-actions">' + actionButtons + '</div>';
-                    }
+                        html += `
+                            <div class="p-4 flex justify-between items-center hover:bg-slate-700/20 transition">
+                                <div>
+                                    <div class="font-medium text-sm text-white">${item.name}</div>
+                                    <div class="text-xs text-slate-400">${subDetails}</div>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <span class="font-bold text-sm text-slate-200">₪${parseFloat(item.amount).toLocaleString()}</span>
+                                    <div class="flex gap-1">
+                                        <button onclick="toggleArchive('${item.id}')" class="text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded-lg text-slate-300 transition">${item.archived ? 'שחזר' : 'ארכיון'}</button>
+                                        <button onclick="deleteItem('${item.id}')" class="text-xs bg-rose-900/40 hover:bg-rose-900/60 px-2 py-1 rounded-lg text-rose-300 transition">מחק</button>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
                 }
 
-                var targetList = document.getElementById('list-' + cKey);
-                if(targetList) targetList.appendChild(card);
+                html += `</div></div>`;
+                container.innerHTML += html;
+            });
+        }
+
+        function switchTab(tab) {
+            state.currentTab = tab;
+            document.getElementById('tab-active-btn').className = tab === 'active' ? 'px-4 py-2 text-sm font-semibold rounded-xl bg-blue-600 text-white transition' : 'px-4 py-2 text-sm font-semibold rounded-xl bg-slate-800 text-slate-400 hover:text-white transition';
+            document.getElementById('tab-archive-btn').className = tab === 'archive' ? 'px-4 py-2 text-sm font-semibold rounded-xl bg-blue-600 text-white transition' : 'px-4 py-2 text-sm font-semibold rounded-xl bg-slate-800 text-slate-400 hover:text-white transition';
+            render();
+        }
+
+        // ניהול מודלים
+        function openTransactionModal() {
+            document.getElementById('transaction-form').reset();
+            document.getElementById('item-id').value = '';
+            document.getElementById('modal-title').textContent = 'הוספת תנועה חדשה';
+            
+            const select = document.getElementById('item-category');
+            select.innerHTML = state.categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+            
+            handleCategoryChange();
+            document.getElementById('transaction-modal').classList.remove('hidden');
+            document.getElementById('transaction-modal').classList.add('flex');
+        }
+
+        function closeTransactionModal() {
+            document.getElementById('transaction-modal').classList.add('hidden');
+            document.getElementById('transaction-modal').classList.remove('flex');
+        }
+
+        function handleCategoryChange() {
+            const catId = document.getElementById('item-category').value;
+            const base = getBaseCategory(catId);
+            
+            document.getElementById('field-period').classList.toggle('hidden', base !== 'fixed');
+            document.getElementById('field-loan-details').classList.toggle('hidden', base !== 'loan');
+            document.getElementById('loan-specific-fields').classList.toggle('hidden', base !== 'loan');
+        }
+
+        function handleFormSubmit(event) {
+            event.preventDefault();
+            const catId = document.getElementById('item-category').value;
+            const base = getBaseCategory(catId);
+            const amount = parseFloat(document.getElementById('item-amount').value) || 0;
+
+            let newItem = {
+                id: 'item_' + Date.now(),
+                name: document.getElementById('item-name').value,
+                categoryId: catId,
+                amount: amount,
+                archived: false
+            };
+
+            if (base === 'fixed') {
+                newItem.period = document.getElementById('item-period').value;
+            } else if (base === 'loan') {
+                newItem.startDate = document.getElementById('item-start-date').value;
+                newItem.billingDay = parseInt(document.getElementById('item-billing-day').value) || 1;
+                newItem.interest = parseFloat(document.getElementById('item-interest').value) || 0;
+                newItem.duration = parseInt(document.getElementById('item-duration').value) || 12;
+                newItem.monthlyPayment = calculateSpitzerPayment(amount, newItem.interest, newItem.duration);
+            }
+
+            state.items.push(newItem);
+            saveState();
+            closeTransactionModal();
+        }
+
+        function toggleArchive(id) {
+            const item = state.items.find(i => i.id === id);
+            if (item) {
+                item.archived = !item.archived;
+                saveState();
             }
         }
 
-        document.getElementById('dash-income').textContent = '₪' + sumInc.toLocaleString();
-        document.getElementById('dash-fixed').textContent = '₪' + sumFix.toLocaleString();
-        document.getElementById('dash-variable-monthly').textContent = '₪' + sumVarMonthly.toLocaleString();
-        document.getElementById('dash-variable-total').textContent = '₪' + sumVarTotalLeft.toLocaleString();
-        document.getElementById('dash-loan-monthly').textContent = '₪' + sumLoanMonthly.toLocaleString();
-        document.getElementById('dash-loan-total').textContent = '₪' + sumLoanTotalLeft.toLocaleString();
+        function deleteItem(id) {
+            if (confirm('האם אתה নিশ্চিত שברצונך למחוק תנועה זו?')) {
+                state.items = state.items.filter(i => i.id !== id);
+                saveState();
+            }
+        }
 
-        var net = sumInc - monthlyExpenses;
-        document.getElementById('net-balance').textContent = '₪' + Math.round(net).toLocaleString();
-        document.getElementById('net-balance').className = net >= 0 ? 'income-text' : 'expense-text';
-    }
+        function openCategoryModal() {
+            updateCategoryManageList();
+            document.getElementById('category-modal').classList.remove('hidden');
+            document.getElementById('category-modal').classList.add('flex');
+        }
 
-    initCategoryInputs();
-    renderAll();
-</script>
+        function closeCategoryModal() {
+            document.getElementById('category-modal').classList.add('hidden');
+            document.getElementById('category-modal').classList.remove('flex');
+        }
+
+        function updateCategoryManageList() {
+            const list = document.getElementById('categories-list-manage');
+            list.innerHTML = state.categories.map(c => `
+                <div class="flex justify-between items-center bg-slate-900 p-2 rounded-xl text-xs border border-slate-700">
+                    <span>${c.name} (${c.baseType})</span>
+                    ${!c.isDefault ? `<button onclick="deleteCategory('${c.id}')" class="text-rose-400 hover:text-rose-300">מחק</button>` : '<span class="text-slate-500">ברירת מחדל</span>'}
+                </div>
+            `).join('');
+        }
+
+        function handleCategoryAdd(event) {
+            event.preventDefault();
+            const name = document.getElementById('new-cat-name').value;
+            const baseType = document.getElementById('new-cat-base').value;
+
+            state.categories.push({
+                id: 'cat_' + Date.now(),
+                name: name,
+                baseType: baseType,
+                isDefault: false
+            });
+
+            saveState();
+            document.getElementById('new-cat-name').value = '';
+            updateCategoryManageList();
+        }
+
+        function deleteCategory(id) {
+            state.categories = state.categories.filter(c => c.id !== id);
+            state.items.forEach(i => {
+                if (i.categoryId === id) i.categoryId = state.categories[0].id;
+            });
+            saveState();
+            updateCategoryManageList();
+        }
+
+        // הרצה ראשונית
+        render();
+    </script>
 </body>
 </html>
