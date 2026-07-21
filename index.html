@@ -229,6 +229,19 @@
         if (savedItems) { items = JSON.parse(savedItems); }
     } catch(e) { console.log('שגיאה בטעינת הנתונים'); }
 
+    function getEffectiveType(item) {
+        if (item.type === 'income' || item.type === 'fixed' || item.type === 'variable' || item.type === 'loan') {
+            return item.type;
+        }
+        if (item.displayCategory && categoryConfig[item.displayCategory] && categoryConfig[item.displayCategory].baseType) {
+            return categoryConfig[item.displayCategory].baseType;
+        }
+        if (categoryConfig[item.type] && categoryConfig[item.type].baseType) {
+            return categoryConfig[item.type].baseType;
+        }
+        return item.type;
+    }
+
     function saveToLocalStorage() {
         try { localStorage.setItem('family_finance_data', JSON.stringify(items)); } catch(e) { console.log('שגיאה בשמירת הנתונים'); }
     }
@@ -416,20 +429,20 @@
 
         if (baseType === 'income') {
             obj.title = document.getElementById('inc-title').value.trim();
-            obj.amount = parseFloat(document.getElementById('inc-amount').value);
-            if(!obj.title || isNaN(obj.amount)) return alert('מלא שם וסכום');
+            obj.amount = parseFloat(document.getElementById('inc-amount').value) || 0;
+            if(!obj.title || !obj.amount) return alert('מלא שם וסכום');
             document.getElementById('inc-title').value = ''; document.getElementById('inc-amount').value = '';
         } 
         else if (baseType === 'loan') {
             obj.title = document.getElementById('loan-title').value.trim();
             obj.originalAmount = parseFloat(document.getElementById('loan-original').value) || 0;
-            obj.amount = parseFloat(document.getElementById('loan-amount').value);
+            obj.amount = parseFloat(document.getElementById('loan-amount').value) || 0;
             obj.where = document.getElementById('loan-where').value;
             obj.interest = document.getElementById('loan-interest').value;
             obj.day = document.getElementById('loan-day').value;
             obj.total = document.getElementById('loan-total').value;
             obj.start = document.getElementById('loan-start').value;
-            if(!obj.title || isNaN(obj.amount)) return alert('מלא שם וסכום החזר');
+            if(!obj.title || !obj.amount) return alert('מלא שם וסכום החזר');
             document.getElementById('loan-title').value=''; document.getElementById('loan-original').value='';
             document.getElementById('loan-amount').value=''; document.getElementById('loan-where').value=''; 
             document.getElementById('loan-interest').value=''; document.getElementById('loan-day').value='1'; 
@@ -438,21 +451,21 @@
         else if (baseType === 'variable') {
             obj.title = document.getElementById('var-title').value.trim();
             obj.originalAmount = parseFloat(document.getElementById('var-original').value) || 0;
-            obj.amount = parseFloat(document.getElementById('var-amount').value);
+            obj.amount = parseFloat(document.getElementById('var-amount').value) || 0;
             obj.total = document.getElementById('var-total').value;
             obj.start = document.getElementById('var-start').value;
-            if(!obj.title || isNaN(obj.amount)) return alert('מלא שם ועלות חודשית');
+            if(!obj.title || !obj.amount) return alert('מלא שם ועלות חודשית');
             document.getElementById('var-title').value=''; document.getElementById('var-original').value='';
             document.getElementById('var-amount').value=''; document.getElementById('var-total').value=''; 
             document.getElementById('var-start').value='';
         } 
         else if (baseType === 'fixed') {
             obj.title = document.getElementById('fix-title').value.trim();
-            obj.amount = parseFloat(document.getElementById('fix-amount').value);
+            obj.amount = parseFloat(document.getElementById('fix-amount').value) || 0;
             obj.where = document.getElementById('fix-where').value;
             obj.period = document.getElementById('fix-period').value;
             obj.notes = document.getElementById('fix-notes').value;
-            if(!obj.title || isNaN(obj.amount)) return alert('מלא שם וסכום');
+            if(!obj.title || !obj.amount) return alert('מלא שם וסכום');
             document.getElementById('fix-title').value=''; document.getElementById('fix-amount').value='';
             document.getElementById('fix-where').value=''; document.getElementById('fix-notes').value='';
         }
@@ -491,11 +504,12 @@
         var idx = items.findIndex(function(i) { return i.id === id; });
         if (idx === -1) return;
         var item = items[idx];
+        var eType = getEffectiveType(item);
 
         var titleVal = document.getElementById('edit-title-' + id).value.trim();
-        var amountVal = parseFloat(document.getElementById('edit-amount-' + id).value);
+        var amountVal = parseFloat(document.getElementById('edit-amount-' + id).value) || 0;
 
-        if (!titleVal || isNaN(amountVal)) {
+        if (!titleVal || !amountVal) {
             alert('נא להזין שם וסכום תקינים');
             return;
         }
@@ -503,15 +517,15 @@
         item.title = titleVal;
         item.amount = amountVal;
 
-        if (item.type === 'fixed') {
+        if (eType === 'fixed') {
             item.where = document.getElementById('edit-where-' + id).value;
             item.period = document.getElementById('edit-period-' + id).value;
             item.notes = document.getElementById('edit-notes-' + id).value;
-        } else if (item.type === 'variable') {
+        } else if (eType === 'variable') {
             item.originalAmount = parseFloat(document.getElementById('edit-original-' + id).value) || 0;
             item.total = document.getElementById('edit-total-' + id).value;
             item.start = document.getElementById('edit-start-' + id).value;
-        } else if (item.type === 'loan') {
+        } else if (eType === 'loan') {
             item.originalAmount = parseFloat(document.getElementById('edit-original-' + id).value) || 0;
             item.where = document.getElementById('edit-where-' + id).value;
             item.interest = document.getElementById('edit-interest-' + id).value;
@@ -563,30 +577,30 @@
 
         for (var i = 0; i < items.length; i++) {
             var item = items[i];
-            var cKey = item.displayCategory || item.type;
-            if(!categoryConfig[cKey]) cKey = item.type;
+            var eType = getEffectiveType(item);
 
             if (!item.isArchived) {
-                if (item.type === 'income') {
-                    sumInc += item.amount;
-                } else if (item.type === 'fixed') {
-                    // חישוב העלות החודשית היחסית
-                    var mAmount = (item.period === 'שנתי') ? (item.amount / 12) : item.amount;
-                    sumFix += mAmount; // מעכשיו כרטיס הדשבורד מציג את העלות החודשית
+                var amt = parseFloat(item.amount) || 0;
+                if (eType === 'income') {
+                    sumInc += amt;
+                } else if (eType === 'fixed') {
+                    var isYearly = (item.period === 'שנתי' || item.period === 'yearly');
+                    var mAmount = isYearly ? (amt / 12) : amt;
+                    sumFix += mAmount;
                     monthlyExpenses += mAmount;
-                } else if (item.type === 'variable') {
+                } else if (eType === 'variable') {
                     var dt = parseDatesAndGetLeft(item.start, item.total, 1);
-                    sumVarTotalLeft += (item.amount * dt.left);
+                    sumVarTotalLeft += (amt * dt.left);
                     if(dt.left > 0) {
-                        sumVarMonthly += item.amount;
-                        monthlyExpenses += item.amount;
+                        sumVarMonthly += amt;
+                        monthlyExpenses += amt;
                     }
-                } else if (item.type === 'loan') {
+                } else if (eType === 'loan') {
                     var dt = parseDatesAndGetLeft(item.start, item.total, item.day);
-                    sumLoanTotalLeft += (item.amount * dt.left);
+                    sumLoanTotalLeft += (amt * dt.left);
                     if(dt.left > 0) {
-                        sumLoanMonthly += item.amount;
-                        monthlyExpenses += item.amount;
+                        sumLoanMonthly += amt;
+                        monthlyExpenses += amt;
                     }
                 }
             }
@@ -596,6 +610,7 @@
             var item = items[j];
             var cKey = item.displayCategory || item.type;
             if(!categoryConfig[cKey]) cKey = item.type;
+            var eType = getEffectiveType(item);
 
             var show = (currentView === 'active' && !item.isArchived) || (currentView === 'archived' && item.isArchived);
             
@@ -606,19 +621,19 @@
 
                 if (isEditing) {
                     var editHtml = '<div class="edit-inside-form">' +
-                        '<div class="form-group"><label>שם / כותרת</label><input type="text" id="edit-title-' + item.id + '" value="' + item.title + '"></div>';
+                        '<div class="form-group"><label>שם / כותרת</label><input type="text" id="edit-title-' + item.id + '" value="' + (item.title || '') + '"></div>';
 
-                    if (item.type === 'fixed') {
+                    if (eType === 'fixed') {
                         editHtml += '<div class="form-group"><label>סכום</label><input type="number" id="edit-amount-' + item.id + '" value="' + item.amount + '"></div>' +
                             '<div class="form-group"><label>איפה יורד</label><input type="text" id="edit-where-' + item.id + '" value="' + (item.where || '') + '"></div>' +
                             '<div class="form-group"><label>תדירות</label><select id="edit-period-' + item.id + '"><option value="חודשי"' + (item.period === 'חודשי' ? ' selected' : '') + '>חודשי</option><option value="שנתי"' + (item.period === 'שנתי' ? ' selected' : '') + '>שנתי</option></select></div>' +
                             '<div class="form-group"><label>הערות</label><textarea id="edit-notes-' + item.id + '">' + (item.notes || '') + '</textarea></div>';
-                    } else if (item.type === 'variable') {
+                    } else if (eType === 'variable') {
                         editHtml += '<div class="form-group"><label>סכום מקור</label><input type="number" id="edit-original-' + item.id + '" value="' + (item.originalAmount || '') + '"></div>' +
                             '<div class="form-group"><label>עלות חודשית</label><input type="number" id="edit-amount-' + item.id + '" value="' + item.amount + '"></div>' +
                             '<div class="form-group"><label>סך תשלומים</label><input type="number" id="edit-total-' + item.id + '" value="' + (item.total || '') + '"></div>' +
                             '<div class="form-group"><label>תאריך התחלה</label><input type="date" id="edit-start-' + item.id + '" value="' + (item.start || '') + '"></div>';
-                    } else if (item.type === 'loan') {
+                    } else if (eType === 'loan') {
                         editHtml += '<div class="form-group"><label>סכום מקור</label><input type="number" id="edit-original-' + item.id + '" value="' + (item.originalAmount || '') + '"></div>' +
                             '<div class="form-group"><label>החזר חודשי</label><input type="number" id="edit-amount-' + item.id + '" value="' + item.amount + '"></div>' +
                             '<div class="form-group"><label>היכן יורד</label><input type="text" id="edit-where-' + item.id + '" value="' + (item.where || '') + '"></div>' +
@@ -645,30 +660,34 @@
                                         '<button class="btn-action btn-danger-action" onclick="deletePermanently(' + item.id + ')">🗑️ מחיקה סופית</button>';
                     }
 
-                    if (item.type === 'income') {
-                        card.innerHTML = '<div class="item-top"><span>' + item.title + '</span><span class="income-text">₪' + item.amount.toLocaleString() + '</span></div>' +
+                    var amtStr = (parseFloat(item.amount) || 0).toLocaleString();
+
+                    if (eType === 'income') {
+                        card.innerHTML = '<div class="item-top"><span>' + item.title + '</span><span class="income-text">₪' + amtStr + '</span></div>' +
                                          '<div class="item-actions">' + actionButtons + '</div>';
                     } 
-                    else if (item.type === 'fixed') {
-                        var mDisp = (item.period === 'שנתי') ? ' (כ-₪' + Math.round(item.amount / 12).toLocaleString() + ' לחודש)' : '';
-                        card.innerHTML = '<div class="item-top"><span>' + item.title + '</span><span class="expense-text">₪' + item.amount.toLocaleString() + ' (' + item.period + ')' + mDisp + '</span></div>' +
+                    else if (eType === 'fixed') {
+                        var periodText = item.period || 'חודשי';
+                        var isYearly = (periodText === 'שנתי' || periodText === 'yearly');
+                        var mDisp = isYearly ? ' (כ-₪' + Math.round((item.amount || 0) / 12).toLocaleString() + ' לחודש)' : '';
+                        card.innerHTML = '<div class="item-top"><span>' + item.title + '</span><span class="expense-text">₪' + amtStr + ' (' + periodText + ')' + mDisp + '</span></div>' +
                                          '<div class="item-details"><div>איפה יורד: ' + (item.where || '-') + '</div><div>הערות: ' + (item.notes || '-') + '</div></div>' +
                                          '<div class="item-actions">' + actionButtons + '</div>';
                     } 
-                    else if (item.type === 'variable') {
+                    else if (eType === 'variable') {
                         var dt = parseDatesAndGetLeft(item.start, item.total, 1);
                         var origStr = item.originalAmount ? '₪' + item.originalAmount.toLocaleString() : '-';
-                        card.innerHTML = '<div class="item-top"><span>' + item.title + '</span><span class="expense-text">₪' + item.amount.toLocaleString() + ' לחודש</span></div>' +
+                        card.innerHTML = '<div class="item-top"><span>' + item.title + '</span><span class="expense-text">₪' + amtStr + ' לחודש</span></div>' +
                                          '<div class="item-details">' +
-                                         '<div>סכום מקור: ' + origStr + '</div><div>תשלומים: ' + item.total + '</div>' +
+                                         '<div>סכום מקור: ' + origStr + '</div><div>תשלומים: ' + (item.total || '-') + '</div>' +
                                          '<div>תאריך התחלה: ' + (item.start ? new Date(item.start).toLocaleDateString('he-IL') : '-') + '</div>' +
                                          '<div>תאריך סיום: ' + dt.endStr + '</div><div style="color:var(--primary); grid-column: span 2;">חודשים שנשארו: ' + dt.left + '</div>' +
                                          '</div><div class="item-actions">' + actionButtons + '</div>';
                     } 
-                    else if (item.type === 'loan') {
+                    else if (eType === 'loan') {
                         var dt = parseDatesAndGetLeft(item.start, item.total, item.day);
                         var origStr = item.originalAmount ? '₪' + item.originalAmount.toLocaleString() : '-';
-                        card.innerHTML = '<div class="item-top"><span>' + item.title + '</span><span class="loan-text">₪' + item.amount.toLocaleString() + ' החזר</span></div>' +
+                        card.innerHTML = '<div class="item-top"><span>' + item.title + '</span><span class="loan-text">₪' + amtStr + ' החזר</span></div>' +
                                          '<div class="item-details">' +
                                          '<div>סכום מקור: ' + origStr + '</div><div>היכן יורד: ' + (item.where || '-') + '</div>' +
                                          '<div>ריבית: ' + (item.interest || '0') + '%</div><div>חיוב חודשי: ' + (item.day || '1') + ' בחודש</div>' +
