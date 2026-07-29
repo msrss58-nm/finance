@@ -525,6 +525,179 @@
     }
 
     renderMockUI();
+
+    // =====================================================================================
+    // ===== Stage C: "story engine" — pure functions over mockItems/mockCategoryConfig  =====
+    // ===== NOT wired to any screen yet. Reads mockItems/mockCategoryConfig below only.  =====
+    // ===== Does not touch MOCK_DATA above (that stays Stage B's display-only source),   =====
+    // ===== does not touch localStorage, does not touch the real app's items/config.     =====
+    // =====================================================================================
+
+    // mockCategoryConfig mirrors the real categoryConfig shape (key -> {label, baseType}),
+    // same 4 built-in keys as the real app, constant Mock values only.
+    var mockCategoryConfig = {
+        income: { label: "💰 הכנסות", baseType: "income" },
+        fixed: { label: "🏡 הוצאות קבועות", baseType: "fixed" },
+        variable: { label: "🛒 תשלומים שונים", baseType: "variable" },
+        loan: { label: "🏦 הלוואות", baseType: "loan" }
+    };
+
+    // mockItems mirrors the real items[] shape (id, type, displayCategory, isArchived + per-type
+    // fields) as closely as possible, with constant Mock values only. One item (id 7) is archived
+    // on purpose, to verify the engine correctly excludes archived items like the real app does.
+    // Note: "monthsLeft" on loan items is a Mock-only convenience field standing in for what
+    // parseDatesAndGetLeft() would compute for real — Stage C performs no date arithmetic itself.
+    var mockItems = [
+        { id: 1, type: "income", displayCategory: "income", isArchived: false, title: "משכורת", amount: 10000 },
+        { id: 2, type: "income", displayCategory: "income", isArchived: false, title: "הכנסה נוספת — פרילנס", amount: 1500 },
+        { id: 3, type: "fixed", displayCategory: "fixed", isArchived: false, title: "שכירות", amount: 3000, where: "bank", period: "monthly", notes: "", cardLast4: "" },
+        { id: 4, type: "fixed", displayCategory: "fixed", isArchived: false, title: "מנוי חדר כושר", amount: 200, where: "credit", period: "monthly", notes: "", cardLast4: "1234" },
+        { id: 5, type: "fixed", displayCategory: "fixed", isArchived: false, title: "ביטוח דירה", amount: 640, where: "credit", period: "monthly", notes: "", cardLast4: "1234" },
+        { id: 6, type: "fixed", displayCategory: "fixed", isArchived: false, title: "אינטרנט וטלוויזיה", amount: 150, where: "credit", period: "monthly", notes: "", cardLast4: "5678" },
+        { id: 7, type: "fixed", displayCategory: "fixed", isArchived: true, title: "מנוי ישן שבוטל", amount: 99, where: "credit", period: "monthly", notes: "", cardLast4: "1234" },
+        { id: 8, type: "loan", displayCategory: "loan", isArchived: false, title: "הלוואת רכב", originalAmount: 24000, amount: 890, where: "bank", interest: 4.5, day: 5, total: 24, start: "2025-08-05", monthsLeft: 16 },
+        { id: 9, type: "loan", displayCategory: "loan", isArchived: false, title: "הלוואה אישית", originalAmount: 6000, amount: 500, where: "bank", interest: 6, day: 10, total: 12, start: "2026-02-10", monthsLeft: 8 },
+        { id: 10, type: "variable", displayCategory: "variable", isArchived: false, title: "מקרר — תשלום 3 מתוך 10", originalAmount: 3500, amount: 350, total: 10, start: "2026-05-05" },
+        { id: 11, type: "dated", displayCategory: "dated", isArchived: false, title: "ביטוח רכב שנתי", amount: 1200, start: "2026-08-15" }
+    ];
+
+    // Ready-made Mock snapshot values (income/expenses/balance). getMonthSnapshot() below is a
+    // pure wrapper around these constants — it performs no computation of its own, so it cannot
+    // encode or contradict the real app's balance-inclusion rules. Real computation is deferred
+    // to Stage D, wired to the actual items/categoryConfig and existing render logic.
+    var mockSnapshot = { income: 11500, expenses: 6930, balance: 4570 };
+
+    // ----- Safe pure functions: simple filtering/summation over mockItems, no dates, no forecast -----
+
+    function getFixedCreditCardTotals(items) {
+        var total = 0;
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            if (it.type === 'fixed' && !it.isArchived && it.where === 'credit') { total += it.amount; }
+        }
+        return total;
+    }
+
+    function getFixedBankVsCreditSplit(items) {
+        var bank = 0, credit = 0;
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            if (it.type === 'fixed' && !it.isArchived) {
+                if (it.where === 'credit') { credit += it.amount; } else { bank += it.amount; }
+            }
+        }
+        return { bank: bank, credit: credit };
+    }
+
+    function getTotalFixedCommitments(items) {
+        var total = 0;
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            if (it.type === 'fixed' && !it.isArchived) { total += it.amount; }
+        }
+        return total;
+    }
+
+    // Pure wrapper around mockSnapshot — performs NO income/expense/balance computation of its
+    // own (no summation over items, no inclusion/exclusion rules). The `items` parameter is kept
+    // only for call-signature stability with buildNarrative() below; it is intentionally unused.
+    function getMonthSnapshot(items) {
+        return { income: mockSnapshot.income, expenses: mockSnapshot.expenses, balance: mockSnapshot.balance };
+    }
+
+    function getRecentActivity(items, count) {
+        var n = count || 5;
+        var active = [];
+        for (var i = 0; i < items.length; i++) {
+            if (!items[i].isArchived) { active.push(items[i]); }
+        }
+        return active.slice(-n).reverse();
+    }
+
+    // monthsLeft is read directly from the Mock item (see mockItems comment above) — no date
+    // arithmetic is performed here; the multiplication itself is a plain, non-business calculation.
+    function getLoansRemainingSummary(items) {
+        var totalRemaining = 0;
+        var loanCount = 0;
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            if (it.type === 'loan' && !it.isArchived && typeof it.monthsLeft === 'number') {
+                totalRemaining += it.amount * it.monthsLeft;
+                loanCount++;
+            }
+        }
+        return { totalRemaining: totalRemaining, loanCount: loanCount };
+    }
+
+    // ----- Stubs: date/forecast-dependent insights. No computation — real logic is copied verbatim -----
+    // ----- from getBillingRange / parseDatesAndGetLeft / computeForecast() only in Stage D.        -----
+
+    function getBiggestUpcomingCharge(items) {
+        // Stub for Stage C — determining "biggest upcoming charge" requires the real
+        // getBillingRange()/parseDatesAndGetLeft() date logic, which Stage C must not reimplement.
+        // Real implementation arrives in Stage D via the copied-verbatim real functions.
+        return null;
+    }
+
+    function getProjectedBalanceAfterUpcoming(items) {
+        // Stub for Stage C — depends on real upcoming-charge date resolution (see above). Real
+        // implementation arrives in Stage D.
+        return null;
+    }
+
+    function getForecastWarning(items) {
+        // Stub for Stage C — depends on the real computeForecast() (6-month simulation), which is
+        // copied verbatim only in Stage D, never reimplemented here.
+        return null;
+    }
+
+    function getDatedMonthOverMonthChange(items) {
+        // Stub for Stage C — depends on real multi-month "dated" history, which this single-month
+        // Mock dataset does not model. Real implementation arrives in Stage D.
+        return null;
+    }
+
+    // ----- buildNarrative: assembles human sentences ("story of the money") from the safe -----
+    // ----- functions' output only. Stub-backed fields are left null/omitted, never invented. -----
+
+    function buildNarrative(items, categoryConfig) {
+        var creditTotal = getFixedCreditCardTotals(items);
+        var split = getFixedBankVsCreditSplit(items);
+        var totalCommitments = getTotalFixedCommitments(items);
+        var snapshot = getMonthSnapshot(items);
+        var recent = getRecentActivity(items, 5);
+        var loans = getLoansRemainingSummary(items);
+
+        var sentences = {};
+
+        sentences.creditCardTotal = creditTotal > 0
+            ? 'סך חיובי כרטיס האשראי מהוצאות קבועות עומד על ₪' + creditTotal + '.'
+            : 'אין כרגע הוצאות קבועות המחויבות בכרטיס אשראי.';
+
+        sentences.bankVsCredit = 'מתוך ההוצאות הקבועות: ₪' + split.bank + ' מחויבות בחשבון הבנק, ו-₪' + split.credit + ' בכרטיס אשראי.';
+
+        sentences.totalCommitments = 'סך ההתחייבויות הקבועות שלך עומד על ₪' + totalCommitments + ' לחודש.';
+
+        sentences.monthSnapshot = snapshot.balance >= 0
+            ? 'החודש: הכנסות ₪' + snapshot.income + ', הוצאות ₪' + snapshot.expenses + ', ונשארת עם יתרה חיובית של ₪' + snapshot.balance + '.'
+            : 'החודש: הכנסות ₪' + snapshot.income + ', הוצאות ₪' + snapshot.expenses + ' — היתרה שלילית בסך ₪' + Math.abs(snapshot.balance) + '.';
+
+        sentences.loansRemaining = loans.loanCount > 0
+            ? 'נותרו לך ₪' + loans.totalRemaining + ' בסך הכול ב-' + loans.loanCount + ' הלוואות פעילות.'
+            : 'אין לך כרגע הלוואות פעילות.';
+
+        sentences.recentActivity = recent.length > 0
+            ? 'הפעילות האחרונה כוללת ' + recent.length + ' תנועות.'
+            : 'אין עדיין פעילות להצגה.';
+
+        // Stub-backed narrative fields — intentionally left null (never invented), pending Stage D:
+        sentences.biggestUpcomingCharge = null;
+        sentences.projectedBalanceAfterUpcoming = null;
+        sentences.forecastWarning = null;
+        sentences.datedMonthOverMonthChange = null;
+
+        return sentences;
+    }
 </script>
 
 </body>

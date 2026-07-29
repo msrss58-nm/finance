@@ -86,3 +86,13 @@
 - **סבב ליטוש חזותי קצר** (אושר בנפרד, באותו שלב): הרמת ה-FAB, הבלטת הלשונית הפעילה בניווט (pill רקע), שיפור עיצוב כרטיסי התובנות (אייקון, רקע לפי טון, טיפוגרפיה), וליטושי spacing/טיפוגרפיה נקודתיים — כל השינויים ב-`index-preview-v2.html` בלבד, ללא שינוי ניווט/MOCK_DATA/לוגיקה.
 - **לא נגעו כלל**: `index.html`, `styles.css`, `app.js`, `index-preview.html` (v1), `Design/`. אין שום שינוי בהתנהגות המערכת הפעילה.
 - **commit**: `feat: complete cockpit preview v2 phase 2`, כולל רק `index-preview-v2.html` + עדכוני CURRENT_STATUS.md/CHANGELOG.md/TODO.md (לא `WORKFLOW.md`, לא `Design/`, לא `index-preview.html`). ממתין לאישור מפורש למעבר לשלב ג׳ (שכבת "מנוע הסיפור").
+
+## 30/07/2026 — שלב ג׳ של תוכנית המימוש (Cockpit / Preview v2) — שכבת "מנוע הסיפור" על Mock בלבד
+לפי אישור מפורש לבצע רק שלב ג׳ (אפשרות א׳ המצומצמת מתוך שתי החלופות שהוצגו): נבנה בתוך [index-preview-v2.html](index-preview-v2.html) **בלבד** מנגנון "מנוע הסיפור" — תוספתי-בלבד, קורא-בלבד.
+- **מבני נתונים חדשים**: `mockItems` (11 פריטים, מחקים את צורת `items[]` האמיתית, כולל פריט אחד מאורכב בכוונה), `mockCategoryConfig` (מחקה את `categoryConfig` האמיתי), `mockSnapshot` (ערכי הכנסות/הוצאות/יתרה קבועים) — נפרדים לגמרי מ-`MOCK_DATA` של שלב ב׳.
+- **7 פונקציות מלאות**: `getFixedCreditCardTotals`, `getFixedBankVsCreditSplit`, `getTotalFixedCommitments`, `getMonthSnapshot`, `getRecentActivity`, `getLoansRemainingSummary`, `buildNarrative`.
+- **תיקון בו-במקום (אושר בנפרד, באותו שלב)**: `getMonthSnapshot()` תוקנה מחישוב-סכימה-על-items לעטיפה טהורה סביב `mockSnapshot` בלבד — כדי שלא תוכל לסתור את כללי היתרה הפנויה של המערכת האמיתית. שאר 6 הפונקציות ו-4 ה-Stubs לא נגעו בתיקון.
+- **4 Stubs מפורשים**: `getBiggestUpcomingCharge`, `getProjectedBalanceAfterUpcoming`, `getForecastWarning`, `getDatedMonthOverMonthChange` — כולן מחזירות `null` עם הערה בקוד שהמימוש האמיתי (`getBillingRange`/`parseDatesAndGetLeft`/`computeForecast`, מועתקות כלשונן) שייך לשלב ד׳.
+- **אימות**: `node --check` + סקריפט VM שמריץ את בלוק ה-`<script>` המדויק מהקובץ בפועל מול `mockItems`/`mockCategoryConfig` האמיתיים. 38 בדיקות עברו (כולל הוכחה ש-`getMonthSnapshot([])`/`getMonthSnapshot(null)` מחזירות תוצאה זהה ל-Mock המלא — אין חישוב על items).
+- **לא נגעו כלל**: `index.html`, `styles.css`, `app.js`, `index-preview.html` (v1), `Design/`, `PROJECT_CONTEXT.md`, `WORKFLOW.md`. אין חיבור ל-UI, ל-localStorage, לנתונים אמיתיים, או ללוגיקה העסקית הקיימת.
+- **commit**: `feat: complete cockpit preview v2 phase 3`, כולל רק `index-preview-v2.html` + עדכוני CURRENT_STATUS.md/CHANGELOG.md/TODO.md. ממתין לאישור מפורש למעבר לשלב ד׳ (חיבור מבוקר ללוגיקה הקיימת) — טרם התחיל.

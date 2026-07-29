@@ -139,8 +139,21 @@
 
 **חשוב להדגיש:** זהו עדיין קובץ **Preview v2 נפרד ובלתי-תלוי** — `index.html` (המערכת הפעילה), `styles.css`, ו-`app.js` **לא נגעו כלל**, ואין שום שינוי בהתנהגות האפליקציה הקיימת שהמשתמש משתמש בה בפועל.
 
+## שלב ג׳ של תוכנית המימוש — הושלם (30/07/2026)
+נבנה בתוך **[index-preview-v2.html](index-preview-v2.html) בלבד** שכבת "מנוע הסיפור" — תוספתית-בלבד, קוראת-בלבד, **ללא חיבור ל-UI, ל-localStorage, לנתונים אמיתיים, או ללוגיקה העסקית הקיימת**.
+
+**מבני נתונים חדשים:** `mockItems` (11 פריטים, מחקים את צורת `items[]` האמיתית — כולל פריט אחד מאורכב בכוונה לבדיקת סינון), `mockCategoryConfig` (מחקה את `categoryConfig` האמיתי, 4 קטגוריות מובנות), `mockSnapshot` (ערכי הכנסות/הוצאות/יתרה קבועים). כל אלה **נפרדים לגמרי** מ-`MOCK_DATA` של שלב ב׳ שממשיך להזין את התצוגה ללא שינוי.
+
+**7 פונקציות מלאות (Pure Functions בטוחות, על Mock בלבד):** `getFixedCreditCardTotals`, `getFixedBankVsCreditSplit`, `getTotalFixedCommitments`, `getMonthSnapshot`, `getRecentActivity`, `getLoansRemainingSummary`, `buildNarrative`. **חשוב:** לאחר תיקון שבוצע באותו שלב, `getMonthSnapshot()` היא **עטיפה טהורה בלבד** סביב `mockSnapshot` — היא **אינה מבצעת שום חישוב עסקי** (לא סכימה, לא סינון), כדי שלא תוכל לסתור בשום צורה את כללי היתרה הפנויה של המערכת האמיתית.
+
+**4 Stubs מפורשים (ללא חישוב, ללא המצאת נתון):** `getBiggestUpcomingCharge`, `getProjectedBalanceAfterUpcoming`, `getForecastWarning`, `getDatedMonthOverMonthChange` — כולן מחזירות `null`, עם הערה בקוד שהמימוש האמיתי (`getBillingRange`/`parseDatesAndGetLeft`/`computeForecast`, מועתקות כלשונן) שייך לשלב ד׳ בלבד.
+
+**אימות שבוצע:** סקריפט Node.js שמחלץ את בלוק ה-`<script>` המדויק מתוך הקובץ בפועל ומריץ אותו ב-VM עם `localStorage`/`document`/`confirm` מדומים. **38 בדיקות עברו** — סכימות, הדרת פריט מאורכב, `getMonthSnapshot` (כולל הוכחה שקריאה עם `items=[]`/`items=null` מחזירה תוצאה זהה — כלומר אין חישוב על items בכלל), `getRecentActivity`, `getLoansRemainingSummary`, כל 4 ה-Stubs (מחזירות `null`, לא זורקות שגיאה), `buildNarrative` (כולל ניסוח שונה ליתרה חיובית/שלילית ול"אין הלוואות"), ואימות שאף קריאה לא כתבה למפתח `localStorage` אמיתי כלשהו.
+
+**אין עדיין חיבור ל-UI, ל-localStorage, לנתונים אמיתיים, או ללוגיקה העסקית הקיימת** — כל הפונקציות מוגדרות אך אינן נקראות מ-`renderMockUI()` או מכל handler קיים אחר.
+
 ## המשימה האחרונה שבוצעה
-ב-29/07/2026: הושלם שלב ב׳ של תוכנית המימוש המאושרת ל-Cockpit (Preview v2) — מבנה 4 המסכים + CSS + נתוני Mock קבועים, כולל סבב ליטוש חזותי קצר, הכול בתוך `index-preview-v2.html` בלבד. עודכנו קובצי התיעוד. commit לשלב ב׳ בוצע (ראו CHANGELOG.md לפרטי ה-hash).
+ב-30/07/2026: הושלם שלב ג׳ של תוכנית המימוש המאושרת ל-Cockpit (Preview v2) — שכבת "מנוע הסיפור" (7 פונקציות מלאות + 4 Stubs + `buildNarrative`) על מבני Mock ייעודיים, מאומתת ב-38 בדיקות Node. עודכנו קובצי התיעוד. commit לשלב ג׳ בוצע (ראו CHANGELOG.md לפרטי ה-hash).
 
 ## נקודת ההמשך הנוכחית
-שלב ב׳ הושלם ונשמר ב-commit. **שלב ג׳ הוא נקודת ההתחלה הבאה**: בניית שכבת "מנוע הסיפור" התוספתית-בלבד (`getMonthSnapshot`, `getUpcomingKnownCharges`, `getBiggestUpcomingCharge`, `getProjectedBalanceAfterUpcoming`, `getFixedCreditCardTotals`, `getFixedBankVsCreditSplit`, `getTotalFixedCommitments`, `getLoansRemainingSummary`, `getForecastWarning`, `getDatedMonthOverMonthChange`, `getRecentActivity`, `buildNarrative`) — קוראת בלבד מ-`items`/`categoryConfig`, לא כותבת/משנה סכימה. **ממתין לאישור מפורש מהמשתמש לפני תחילת שלב ג׳.** נקודות פתוחות ישנות שעדיין לא הוכרעו: (1) app.js/styles.css הלא-מקושרים, (2) בדיקות עתידיות שנותרו (loan/dated/income), (3) שגיאת favicon.ico (לא דחוף), (4) גורלו הסופי של `Design/` ושל `index-preview.html` (v1) בריפו — untracked כרגע, לא הוחלט אם/מתי להוסיף ל-Git או להסיר, (5) שינוי לא-קשור ב-`WORKFLOW.md` שעדיין ממתין ל-commit נפרד משלו.
+שלב ג׳ הושלם ונשמר ב-commit. **שלב ד׳ הוא נקודת ההתחלה הבאה — טרם התחיל**: חיבור מבוקר ללוגיקה הקיימת (העתקת `addNewItem`, `saveInlineEdit`, `archiveItem`, `deletePermanently`, `computeForecast`, `parseDatesAndGetLeft`, `getBillingRange` וכו׳ כלשונן, וחיבורן למפתחות ה-Preview משלב א׳ ולמבנה משלב ב׳/ג׳ — כולל השלמת 4 ה-Stubs עם הלוגיקה האמיתית). **ממתין לאישור מפורש מהמשתמש לפני תחילת שלב ד׳.** נקודות פתוחות ישנות שעדיין לא הוכרעו: (1) app.js/styles.css הלא-מקושרים, (2) בדיקות עתידיות שנותרו (loan/dated/income), (3) שגיאת favicon.ico (לא דחוף), (4) גורלו הסופי של `Design/` ושל `index-preview.html` (v1) בריפו — untracked כרגע, לא הוחלט אם/מתי להוסיף ל-Git או להסיר, (5) שינוי לא-קשור ב-`WORKFLOW.md` שעדיין ממתין ל-commit נפרד משלו.
