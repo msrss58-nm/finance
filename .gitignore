@@ -1,0 +1,17 @@
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+
+# Temporary / scratch directories
+tmp/
+temp/
+scratch/
