@@ -708,8 +708,7 @@
                 } else if (item.type === 'fixed') {
                     sumExp += (item.period === 'שנתי') ? (item.amount / 12) : item.amount;
                 } else if (item.type === 'variable') {
-                    var range = getBillingRange(item.start, item.total, 1);
-                    if (range && isBillingActiveInMonth(range, d.getFullYear(), d.getMonth())) sumExp += item.amount;
+                    // תשלומים שונים למעקב/תצוגה בלבד - לא נכללים בתחזית
                 } else if (item.type === 'loan') {
                     var range2 = getBillingRange(item.start, item.total, item.day);
                     if (range2 && isBillingActiveInMonth(range2, d.getFullYear(), d.getMonth())) sumExp += item.amount;
@@ -852,10 +851,10 @@
                     monthlyExpenses += mAmount;
                     catStats[cKey].monthly += mAmount;
                 } else if (item.type === 'variable') {
+                    // תשלומים שונים למעקב/תצוגה בלבד - לא נכללים ביתרה הפנויה (ההשפעה בפועל מגיעה מחיוב כרטיס האשראי שנרשם בנפרד)
                     var dt = parseDatesAndGetLeft(item.start, item.total, 1);
                     catStats[cKey].totalLeft += (item.amount * dt.left);
                     if(dt.left > 0) {
-                        monthlyExpenses += item.amount;
                         catStats[cKey].monthly += item.amount;
                     }
                 } else if (item.type === 'loan') {
