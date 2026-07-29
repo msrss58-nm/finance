@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FamilyFinance — Cockpit (Preview v2)</title>
+<style>
+    body {
+        font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+        background: #f4f5f7;
+        color: #1a1a1a;
+        margin: 0;
+        padding: 24px;
+        text-align: center;
+    }
+    .stage-banner {
+        max-width: 480px;
+        margin: 40px auto;
+        background: #fff;
+        border: 1px solid #e2e2e2;
+        border-radius: 12px;
+        padding: 24px;
+    }
+    .stage-banner h1 { font-size: 20px; margin: 0 0 12px; }
+    .stage-banner p { font-size: 14px; color: #555; line-height: 1.6; margin: 8px 0; }
+    .status-line { font-size: 13px; color: #0a7d3d; margin-top: 16px; }
+    .btn-reset {
+        margin-top: 16px;
+        padding: 8px 16px;
+        border: 1px solid #c00;
+        color: #c00;
+        background: #fff;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+    }
+    .btn-reset:hover { background: #fee; }
+</style>
+</head>
+<body>
+
+<div class="stage-banner">
+    <h1>FamilyFinance — Cockpit (Preview v2)</h1>
+    <p>שלב א׳ בלבד: שלד קובץ ואסטרטגיית בטיחות נתונים.</p>
+    <p>ה-UI של ה-Cockpit ייבנה בשלב ב׳. כאן רק מוודאים שמפתחות ה-Preview נטענים/מאותחלים כראוי, ושהנתונים האמיתיים לא נגעו בהם.</p>
+    <div class="status-line" id="status-line"></div>
+    <button class="btn-reset" onclick="resetPreviewV2Data()">איפוס נתוני Preview v2</button>
+</div>
+
+<script>
+    // ===== Preview v2-only: separate localStorage keys, never touch the real app's data or v1's preview data =====
+    var PREVIEW_DATA_KEY = 'family_finance_preview_v2_data';
+    var PREVIEW_CONFIG_KEY = 'family_finance_preview_v2_cat_config';
+    var REAL_DATA_KEY = 'family_finance_data';
+    var REAL_CONFIG_KEY = 'family_finance_cat_config';
+
+    var DEFAULT_CATEGORY_CONFIG_JSON = JSON.stringify({
+        income: { label: "💰 הכנסות", baseType: "income" },
+        fixed: { label: "🏡 הוצאות קבועות", baseType: "fixed" },
+        variable: { label: "🛒 תשלומים שונים", baseType: "variable" },
+        loan: { label: "🏦 הלוואות", baseType: "loan" }
+    });
+
+    (function seedPreviewV2IfNeeded() {
+        try {
+            if (localStorage.getItem(PREVIEW_DATA_KEY) === null) {
+                var realData = localStorage.getItem(REAL_DATA_KEY);
+                localStorage.setItem(PREVIEW_DATA_KEY, realData !== null ? realData : '[]');
+            }
+        } catch (e) { console.log('שגיאה באתחול נתוני Preview v2'); }
+
+        try {
+            if (localStorage.getItem(PREVIEW_CONFIG_KEY) === null) {
+                var realConfig = localStorage.getItem(REAL_CONFIG_KEY);
+                localStorage.setItem(PREVIEW_CONFIG_KEY, realConfig !== null ? realConfig : DEFAULT_CATEGORY_CONFIG_JSON);
+            }
+        } catch (e) { console.log('שגיאה באתחול תצורת קטגוריות ל-Preview v2'); }
+    })();
+
+    function resetPreviewV2Data() {
+        if (!confirm('לאפס את נתוני Preview v2 ולהעתיק מחדש את הנתונים מהאפליקציה הראשית? פעולה זו מוחקת רק את עותק ה-Preview v2, לא את הנתונים האמיתיים ולא את נתוני Preview v1.')) return;
+        try {
+            localStorage.removeItem(PREVIEW_DATA_KEY);
+            localStorage.removeItem(PREVIEW_CONFIG_KEY);
+        } catch (e) { console.log('שגיאה באיפוס נתוני Preview v2'); }
+        location.reload();
+    }
+
+    (function reportStatus() {
+        var itemCount = 0;
+        var catCount = 0;
+        try {
+            var items = JSON.parse(localStorage.getItem(PREVIEW_DATA_KEY) || '[]');
+            itemCount = items.length;
+        } catch (e) {}
+        try {
+            var cfg = JSON.parse(localStorage.getItem(PREVIEW_CONFIG_KEY) || '{}');
+            catCount = Object.keys(cfg).length;
+        } catch (e) {}
+        document.getElementById('status-line').textContent =
+            'מפתחות Preview v2 טעונים: ' + itemCount + ' תנועות, ' + catCount + ' קטגוריות (מפתחות אמיתיים לא נגעו).';
+    })();
+</script>
+
+</body>
+</html>
