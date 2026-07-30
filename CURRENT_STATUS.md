@@ -152,8 +152,31 @@
 
 **אין עדיין חיבור ל-UI, ל-localStorage, לנתונים אמיתיים, או ללוגיקה העסקית הקיימת** — כל הפונקציות מוגדרות אך אינן נקראות מ-`renderMockUI()` או מכל handler קיים אחר.
 
+## שלב ד׳ של תוכנית המימוש — הושלם (30/07/2026, טרם ב-commit)
+נבנה בתוך **[index-preview-v2.html](index-preview-v2.html) בלבד** חיבור מלא בין שכבת "מנוע הסיפור" (שלב ג׳) לבין לוגיקת החישוב האמיתית ונתוני ה-Preview ב-localStorage. כל 7 תתי-השלבים (ד׳.1–ד׳.7) הושלמו ואומתו.
+
+- **ד׳.1 — העתקה מילולית**: `getBillingRange` ו-`parseDatesAndGetLeft` הועתקו כלשונן מ-`index.html`, ללא שינוי לוגי.
+- **ד׳.2 — קריאה בטוחה מ-Preview**: נוספו `loadPreviewItems()`/`loadPreviewCategoryConfig()` — קוראות **אך ורק** מ-`PREVIEW_DATA_KEY`/`PREVIEW_CONFIG_KEY` (לעולם לא מהמפתחות האמיתיים), עם נפילה בטוחה למערך/אובייקט ריק בפני JSON פגום או מפתח חסר.
+- **ד׳.3 — חיבור 6 פונקציות שלב ג׳ לנתונים אמיתיים**: `getFixedCreditCardTotals`, `getFixedBankVsCreditSplit`, `getTotalFixedCommitments`, `getMonthSnapshot`, `getRecentActivity`, `getLoansRemainingSummary` — עברו מחישוב על Mock קבוע לחישוב אמיתי על `items`/`categoryConfig` שנטענו מה-Preview, כולל תיקון המרת הוצאה קבועה שנתית לחודשית (`amount / 12`) בשלוש הפונקציות הראשונות, תואם בדיוק ל-`renderAll()`.
+- **ד׳.4 — `buildPreviewNarrativeData()`**: עטיפה חדשה שקוראת ל-`buildNarrative(items, categoryConfig)` **פעם אחת בלבד** — נמנע חישוב כפול.
+- **ד׳.5 — חיבור מסך הבית**: `renderHomeScreenFromRealData()` מעדכן מנתונים אמיתיים את `hero-amount`, `snapshot-income`, `snapshot-expenses`, `snapshot-balance`, `hero-narrative` ו-`recent-activity-list`. **`hero-status` נשאר במכוון לא מחובר** (מציג טקסט קבוע "תמונת מצב חודשית") — אין שדה נרטיב מתאים בלי המצאת לוגיקה חדשה.
+- **ד׳.6 — 4 ה-Stubs ומסך התובנות**: `getBiggestUpcomingCharge`, `getProjectedBalanceAfterUpcoming`, `getForecastWarning`, `getDatedMonthOverMonthChange` מומשו במלואן על בסיס `computeForecast`/`getBillingRange`/`isBillingActiveInMonth` (מועתקות כלשונן). `renderInsightsScreenFromRealData()` מציג כרטיסי תובנה אמיתיים (חיובי כרטיס אשראי, יתרת הלוואות, ואזהרת תחזית) — כרטיס "אזהרת תחזית" **מושמט ולא מוצג** כשאין אזהרה, בהיעדר מצב-ריק מוגדר בעיצוב.
+  - **תיקון באג (audit, באותו שלב)**: נמצא ותוקן ערבוב בין `items` הגלובלי לבין הפרמטר שהתקבל בפונקציות `getBiggestUpcomingCharge`/`getProjectedBalanceAfterUpcoming`/`getForecastWarning` — הפרמטר שונה ל-`sourceItems` ומועבר במפורש ל-`computeForecast()`, כך שהתחזית תמיד מחושבת על אותו מערך שהפונקציה נקראה איתו, ולא על עירוב עם הגלובלי.
+- **ד׳.7 — בדיקות אינטגרציה מקיפות**: דוח בדיקות מול `index.html` (349 בדיקות, 342 עברו) הסתיים ב-**PASS**, עם ההערות הידועות בלבד (ראו "נקודות פתוחות" למטה).
+
+**מנגנון בטיחות `PREVIEW_*`**: נבדק מחדש לאורך כל שלב ד׳ ונשאר מבודד לחלוטין ממפתחות הנתונים האמיתיים (`family_finance_data`/`family_finance_cat_config`) — אין אף קריאת כתיבה חדשה אליהם או קריאה מהם בשלב ד׳; כל קריאות ה-`setItem`/`removeItem` בקובץ שייכות אך ורק למנגנון ה-seed/איפוס המקורי משלב א׳.
+
+**`index.html`** (המערכת הפעילה) — **לא נגע בו כלל** לאורך שלב ד׳.
+
+**סטטוס**: כל השינויים קיימים ב-working directory בלבד (`index-preview-v2.html`), **טרם נשמרו ב-commit**.
+
 ## המשימה האחרונה שבוצעה
-ב-30/07/2026: הושלם שלב ג׳ של תוכנית המימוש המאושרת ל-Cockpit (Preview v2) — שכבת "מנוע הסיפור" (7 פונקציות מלאות + 4 Stubs + `buildNarrative`) על מבני Mock ייעודיים, מאומתת ב-38 בדיקות Node. עודכנו קובצי התיעוד. commit לשלב ג׳ בוצע (ראו CHANGELOG.md לפרטי ה-hash).
+ב-30/07/2026: הושלם שלב ד׳ (ד׳.1–ד׳.7) של תוכנית המימוש המאושרת ל-Cockpit (Preview v2) — חיבור שכבת "מנוע הסיפור" ללוגיקה העסקית האמיתית ולנתוני ה-Preview, חיבור מסכי בית ותובנות, ותיקון באג ערבוב `items` גלובלי/פרמטרי. דוח בדיקות אינטגרציה (349 בדיקות, 342 עברו) הסתיים ב-PASS. עודכנו קובצי התיעוד. **טרם בוצע commit לשלב ד׳.**
 
 ## נקודת ההמשך הנוכחית
-שלב ג׳ הושלם ונשמר ב-commit. **שלב ד׳ הוא נקודת ההתחלה הבאה — טרם התחיל**: חיבור מבוקר ללוגיקה הקיימת (העתקת `addNewItem`, `saveInlineEdit`, `archiveItem`, `deletePermanently`, `computeForecast`, `parseDatesAndGetLeft`, `getBillingRange` וכו׳ כלשונן, וחיבורן למפתחות ה-Preview משלב א׳ ולמבנה משלב ב׳/ג׳ — כולל השלמת 4 ה-Stubs עם הלוגיקה האמיתית). **ממתין לאישור מפורש מהמשתמש לפני תחילת שלב ד׳.** נקודות פתוחות ישנות שעדיין לא הוכרעו: (1) app.js/styles.css הלא-מקושרים, (2) בדיקות עתידיות שנותרו (loan/dated/income), (3) שגיאת favicon.ico (לא דחוף), (4) גורלו הסופי של `Design/` ושל `index-preview.html` (v1) בריפו — untracked כרגע, לא הוחלט אם/מתי להוסיף ל-Git או להסיר, (5) שינוי לא-קשור ב-`WORKFLOW.md` שעדיין ממתין ל-commit נפרד משלו.
+שלב ד׳ (ד׳.1–ד׳.7) הושלם במלואו ומאומת, אך טרם נשמר ב-commit. שלושה נושאים ממתינים להכרעה, ללא סדר עדיפות שנקבע:
+1. ביצוע commit מסודר לשינויים המצטברים של שלב ד׳ (קובץ יחיד: `index-preview-v2.html`).
+2. החלטה האם/מתי לעבור ל"שלב ה׳" — **טרם הוחלט** מה בדיוק יכלול (ראו TODO.md).
+3. טיפול נפרד בנושאים ישנים שאינם קשורים לעבודת ה-Cockpit: שינוי לא-committed ב-`WORKFLOW.md`, וגורלם הסופי של `index-preview.html` (v1) ו-`Design/` (untracked, טרם הוכרע).
+
+נקודות פתוחות נוספות שעדיין לא הוכרעו: (1) app.js/styles.css הלא-מקושרים, (2) בדיקות עתידיות שנותרו (loan/dated/income), (3) שגיאת favicon.ico (לא דחוף).

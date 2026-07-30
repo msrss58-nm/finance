@@ -382,7 +382,7 @@
     var MOCK_DATA = {
         hero: {
             amount: "₪4,320",
-            statusLabel: "מצב תקין",
+            statusLabel: "תמונת מצב חודשית",
             narrative: "יש לך מרווח בטוח החודש. אפשר להמשיך כרגיל."
         },
         snapshot: {
@@ -527,14 +527,18 @@
     renderMockUI();
 
     // =====================================================================================
-    // ===== Stage C: "story engine" — pure functions over mockItems/mockCategoryConfig  =====
-    // ===== NOT wired to any screen yet. Reads mockItems/mockCategoryConfig below only.  =====
-    // ===== Does not touch MOCK_DATA above (that stays Stage B's display-only source),   =====
-    // ===== does not touch localStorage, does not touch the real app's items/config.     =====
+    // ===== Stage C/D.3: "story engine" — pure functions, generic over WHATEVER items[]/  =====
+    // ===== categoryConfig object is passed to them. As of Stage D.3 none of them read     =====
+    // ===== mockItems/mockCategoryConfig/mockSnapshot internally anymore — callers decide  =====
+    // ===== the data source. mockItems/mockCategoryConfig/mockSnapshot below are kept ONLY =====
+    // ===== as fixtures for tests (Stage A/B/C already rely on them); they are otherwise   =====
+    // ===== inert. NOT wired to any screen yet — no automatic call site exists in this     =====
+    // ===== file for any of these functions. Does not touch MOCK_DATA above (Stage B's     =====
+    // ===== display-only source) or localStorage.                                         =====
     // =====================================================================================
 
     // mockCategoryConfig mirrors the real categoryConfig shape (key -> {label, baseType}),
-    // same 4 built-in keys as the real app, constant Mock values only.
+    // same 4 built-in keys as the real app, constant Mock values only. Kept as a test fixture.
     var mockCategoryConfig = {
         income: { label: "💰 הכנסות", baseType: "income" },
         fixed: { label: "🏡 הוצאות קבועות", baseType: "fixed" },
@@ -545,8 +549,10 @@
     // mockItems mirrors the real items[] shape (id, type, displayCategory, isArchived + per-type
     // fields) as closely as possible, with constant Mock values only. One item (id 7) is archived
     // on purpose, to verify the engine correctly excludes archived items like the real app does.
-    // Note: "monthsLeft" on loan items is a Mock-only convenience field standing in for what
-    // parseDatesAndGetLeft() would compute for real — Stage C performs no date arithmetic itself.
+    // Kept as a test fixture only. Note: "monthsLeft" on loan items was a Mock-only convenience
+    // field for Stage C's getLoansRemainingSummary(); as of Stage D.3 that function now computes
+    // `left` for real via parseDatesAndGetLeft(), so this field is no longer read by any function
+    // — left in place harmlessly rather than stripped, since nothing depends on its absence.
     var mockItems = [
         { id: 1, type: "income", displayCategory: "income", isArchived: false, title: "משכורת", amount: 10000 },
         { id: 2, type: "income", displayCategory: "income", isArchived: false, title: "הכנסה נוספת — פרילנס", amount: 1500 },
@@ -561,19 +567,27 @@
         { id: 11, type: "dated", displayCategory: "dated", isArchived: false, title: "ביטוח רכב שנתי", amount: 1200, start: "2026-08-15" }
     ];
 
-    // Ready-made Mock snapshot values (income/expenses/balance). getMonthSnapshot() below is a
-    // pure wrapper around these constants — it performs no computation of its own, so it cannot
-    // encode or contradict the real app's balance-inclusion rules. Real computation is deferred
-    // to Stage D, wired to the actual items/categoryConfig and existing render logic.
+    // Ready-made Mock snapshot values (income/expenses/balance). Used by Stage C's getMonthSnapshot()
+    // as a placeholder wrapper. As of Stage D.3, getMonthSnapshot() computes for real from its
+    // `items` parameter (see below) and no longer reads this constant — kept only as a test fixture.
     var mockSnapshot = { income: 11500, expenses: 6930, balance: 4570 };
 
-    // ----- Safe pure functions: simple filtering/summation over mockItems, no dates, no forecast -----
+    // ----- Safe pure functions: generic filtering/summation over whatever items[] is passed in --
+
+    // Period-conversion note (applies to all three functions below): renderAll() in index.html
+    // always converts yearly fixed items to a monthly figure (amount/12) before summing them into
+    // catStats[cKey].monthly — the one real "fixed" aggregation that exists today. All three
+    // fixed-total functions below apply the same conversion, so getFixedCreditCardTotals +
+    // getFixedBankVsCreditSplit.bank/.credit always agree with getTotalFixedCommitments — no
+    // second, inconsistent source of truth between these three closely-related aggregations.
 
     function getFixedCreditCardTotals(items) {
         var total = 0;
         for (var i = 0; i < items.length; i++) {
             var it = items[i];
-            if (it.type === 'fixed' && !it.isArchived && it.where === 'credit') { total += it.amount; }
+            if (it.type === 'fixed' && !it.isArchived && it.where === 'credit') {
+                total += (it.period === 'שנתי') ? (it.amount / 12) : it.amount;
+            }
         }
         return total;
     }
@@ -583,26 +597,73 @@
         for (var i = 0; i < items.length; i++) {
             var it = items[i];
             if (it.type === 'fixed' && !it.isArchived) {
-                if (it.where === 'credit') { credit += it.amount; } else { bank += it.amount; }
+                var mAmount = (it.period === 'שנתי') ? (it.amount / 12) : it.amount;
+                if (it.where === 'credit') { credit += mAmount; } else { bank += mAmount; }
             }
         }
         return { bank: bank, credit: credit };
     }
 
+    // Mirrors renderAll()'s fixed-item handling in index.html exactly: catStats[cKey].monthly for
+    // baseType 'fixed' always includes both bank AND credit (no `where` filter — matches the
+    // approved "dashboard tile shows everything" decision), and always period-converts yearly
+    // items. Reads only `items` — no DOM, no catStats (which only exists during a real render).
     function getTotalFixedCommitments(items) {
         var total = 0;
         for (var i = 0; i < items.length; i++) {
             var it = items[i];
-            if (it.type === 'fixed' && !it.isArchived) { total += it.amount; }
+            if (it.type === 'fixed' && !it.isArchived) {
+                total += (it.period === 'שנתי') ? (it.amount / 12) : it.amount;
+            }
         }
         return total;
     }
 
-    // Pure wrapper around mockSnapshot — performs NO income/expense/balance computation of its
-    // own (no summation over items, no inclusion/exclusion rules). The `items` parameter is kept
-    // only for call-signature stability with buildNarrative() below; it is intentionally unused.
+    // Copied verbatim (income/expense inclusion logic only) from renderAll() in index.html — same
+    // structure, same conditions, same edge cases, sourced ONLY from index.html (never app.js,
+    // which lacks the variable-exclusion and fixed/credit-exclusion rules applied here):
+    //   - isArchived items are excluded entirely.
+    //   - variable is never added to expenses (tracking-only; comment preserved from the source).
+    //   - fixed: yearly period is converted to a monthly figure; where==='credit' is excluded from
+    //     expenses; any other value (including legacy/undefined) is treated as bank and included.
+    //   - loan: uses parseDatesAndGetLeft() (copied verbatim in Stage D.1); included only when
+    //     dt.left > 0 — this intentionally preserves the same known inconsistency documented in
+    //     the Stage-D scoping report (a not-yet-started future loan can already count today,
+    //     because parseDatesAndGetLeft returns the full total while "before first billing").
+    //   - dated: included only when its exact year+month matches the current year+month.
+    // catStats/per-category bookkeeping is intentionally omitted — this function only needs the
+    // two totals, not a per-category breakdown.
     function getMonthSnapshot(items) {
-        return { income: mockSnapshot.income, expenses: mockSnapshot.expenses, balance: mockSnapshot.balance };
+        var sumInc = 0, monthlyExpenses = 0;
+        for (var i = 0; i < items.length; i++) {
+            var item = items[i];
+            if (!item.isArchived) {
+                if (item.type === 'income') {
+                    sumInc += item.amount;
+                } else if (item.type === 'fixed') {
+                    var mAmount = (item.period === 'שנתי') ? (item.amount / 12) : item.amount;
+                    if (item.where !== 'credit') {
+                        monthlyExpenses += mAmount;
+                    }
+                } else if (item.type === 'variable') {
+                    // תשלומים שונים למעקב/תצוגה בלבד - לא נכללים ביתרה הפנויה (ההשפעה בפועל מגיעה מחיוב כרטיס האשראי שנרשם בנפרד)
+                } else if (item.type === 'loan') {
+                    var dt = parseDatesAndGetLeft(item.start, item.total, item.day);
+                    if (dt.left > 0) {
+                        monthlyExpenses += item.amount;
+                    }
+                } else if (item.type === 'dated') {
+                    if (item.start) {
+                        var itemDate = new Date(item.start);
+                        var now = new Date();
+                        if (itemDate.getFullYear() === now.getFullYear() && itemDate.getMonth() === now.getMonth()) {
+                            monthlyExpenses += item.amount;
+                        }
+                    }
+                }
+            }
+        }
+        return { income: sumInc, expenses: monthlyExpenses, balance: sumInc - monthlyExpenses };
     }
 
     function getRecentActivity(items, count) {
@@ -614,47 +675,151 @@
         return active.slice(-n).reverse();
     }
 
-    // monthsLeft is read directly from the Mock item (see mockItems comment above) — no date
-    // arithmetic is performed here; the multiplication itself is a plain, non-business calculation.
+    // Uses parseDatesAndGetLeft() (copied verbatim from index.html in Stage D.1) to get `left` —
+    // no independent date arithmetic here. totalRemaining mirrors renderAll()'s
+    // catStats[cKey].totalLeft accumulation (amount * dt.left, unconditional — a loan whose
+    // dt.left is 0 simply contributes 0). loanCount is a new metric with no real-app equivalent
+    // to copy; it counts loans that still have payments left (dt.left > 0), i.e. not yet fully paid.
     function getLoansRemainingSummary(items) {
         var totalRemaining = 0;
         var loanCount = 0;
         for (var i = 0; i < items.length; i++) {
             var it = items[i];
-            if (it.type === 'loan' && !it.isArchived && typeof it.monthsLeft === 'number') {
-                totalRemaining += it.amount * it.monthsLeft;
-                loanCount++;
+            if (it.type === 'loan' && !it.isArchived) {
+                var dt = parseDatesAndGetLeft(it.start, it.total, it.day);
+                totalRemaining += it.amount * dt.left;
+                if (dt.left > 0) { loanCount++; }
             }
         }
         return { totalRemaining: totalRemaining, loanCount: loanCount };
     }
 
-    // ----- Stubs: date/forecast-dependent insights. No computation — real logic is copied verbatim -----
-    // ----- from getBillingRange / parseDatesAndGetLeft / computeForecast() only in Stage D.        -----
+    // ----- Stage D.6 Part B: real implementations, built only on top of computeForecast()/  -----
+    // ----- getBillingRange()/isBillingActiveInMonth() (all copied verbatim above) — no new  -----
+    // ----- date arithmetic invented here.                                                   -----
 
-    function getBiggestUpcomingCharge(items) {
-        // Stub for Stage C — determining "biggest upcoming charge" requires the real
-        // getBillingRange()/parseDatesAndGetLeft() date logic, which Stage C must not reimplement.
-        // Real implementation arrives in Stage D via the copied-verbatim real functions.
+    // "Biggest upcoming charge" is searched only within computeForecast()'s own 6-month range
+    // (current month + 5 ahead) — no new range is invented. Only `loan` and `dated` items are
+    // considered "charges" (income is never a charge, fixed is deliberately excluded — see the
+    // Stage D.6 audit report: the approved insight definition is "loan/dated בעלי תאריך ידוע"
+    // only); a loan counts in a given month using the exact same
+    // getBillingRange()+isBillingActiveInMonth() test computeForecast() itself uses for its loan
+    // branch; a dated item counts using the same exact-year+month test computeForecast() uses
+    // for its dated branch. Archived items are skipped, matching computeForecast()'s own
+    // `if (item.isArchived) continue;`. Returns null when no such charge exists anywhere in the
+    // 6-month window.
+    //
+    // Audit fix: renamed the parameter from `items` to `sourceItems` (it was shadowing the
+    // file-global `items` in a way that invited confusion) and now passes it explicitly into
+    // computeForecast(sourceItems), so the returned month/label always come from a forecast
+    // computed over the SAME array this function was called with — never a mix with the global.
+    function getBiggestUpcomingCharge(sourceItems) {
+        var forecastMonths = computeForecast(sourceItems);
+        var now = new Date();
+        var best = null;
+        for (var m = 0; m < forecastMonths.length; m++) {
+            var d = new Date(now.getFullYear(), now.getMonth() + m, 1);
+            for (var i = 0; i < sourceItems.length; i++) {
+                var item = sourceItems[i];
+                if (item.isArchived) continue;
+                var amount = null;
+                if (item.type === 'loan') {
+                    var range = getBillingRange(item.start, item.total, item.day);
+                    if (range && isBillingActiveInMonth(range, d.getFullYear(), d.getMonth())) { amount = item.amount; }
+                } else if (item.type === 'dated' && item.start) {
+                    var itemDate = new Date(item.start);
+                    if (itemDate.getFullYear() === d.getFullYear() && itemDate.getMonth() === d.getMonth()) { amount = item.amount; }
+                }
+                if (amount !== null && (best === null || amount > best.amount)) {
+                    best = { amount: amount, month: forecastMonths[m].label, monthIndex: m, label: item.title };
+                }
+            }
+        }
+        return best;
+    }
+
+    // Reuses getBiggestUpcomingCharge()'s result to find WHICH month is relevant, then reads that
+    // exact month's `net` straight out of computeForecast()'s own output — no separate/parallel
+    // forecast is computed. Returns null when there is no relevant upcoming charge to project after.
+    //
+    // Audit fix: parameter renamed to `sourceItems`; both computeForecast(sourceItems) and
+    // getBiggestUpcomingCharge(sourceItems) now receive the same explicit array — previously
+    // this read the file-global `items` here regardless of what was passed in.
+    function getProjectedBalanceAfterUpcoming(sourceItems) {
+        var charge = getBiggestUpcomingCharge(sourceItems);
+        if (charge === null) { return null; }
+        var forecastMonths = computeForecast(sourceItems);
+        var monthData = forecastMonths[charge.monthIndex];
+        if (!monthData) { return null; }
+        return { balance: monthData.net, month: monthData.label };
+    }
+
+    // Uses computeForecast()'s own numbers directly: the first (soonest) month whose `net` is
+    // negative, if any — the exact same "negative balance" concept CURRENT_STATUS.md already
+    // documented as sourced from computeForecast(). No new risk tiers/ratings are invented; the
+    // message reuses the "יתרה שלילית" phrasing already established in buildNarrative's own
+    // monthSnapshot sentence (not new vocabulary like "מסוכן"/"קריטי"). Returns null when no
+    // month in the 6-month range has a negative net.
+    //
+    // Audit fix: parameter renamed to `sourceItems` and now passed explicitly into
+    // computeForecast(sourceItems) — previously this function's `items` parameter was never read
+    // at all, and it always evaluated the file-global `items` regardless of what was passed in.
+    function getForecastWarning(sourceItems) {
+        var forecastMonths = computeForecast(sourceItems);
+        for (var m = 0; m < forecastMonths.length; m++) {
+            if (forecastMonths[m].net < 0) {
+                var monthData = forecastMonths[m];
+                return {
+                    type: 'negative_balance',
+                    month: monthData.label,
+                    balance: monthData.net,
+                    message: 'ב-' + monthData.label + ' צפויה יתרה שלילית של ₪' + Math.abs(Math.round(monthData.net)) + '.'
+                };
+            }
+        }
         return null;
     }
 
-    function getProjectedBalanceAfterUpcoming(items) {
-        // Stub for Stage C — depends on real upcoming-charge date resolution (see above). Real
-        // implementation arrives in Stage D.
-        return null;
-    }
-
-    function getForecastWarning(items) {
-        // Stub for Stage C — depends on the real computeForecast() (6-month simulation), which is
-        // copied verbatim only in Stage D, never reimplemented here.
-        return null;
-    }
-
+    // Compares dated-item totals between the CURRENT calendar month and the PREVIOUS calendar
+    // month (the one immediately before it — not part of computeForecast()'s forward-looking
+    // range, so this reads `items` directly), using the exact same "exact year+month match" test
+    // already used identically for dated items in both computeForecast() and getMonthSnapshot().
+    // Returns both an absolute amount and a percentage; percentage is explicitly null (never
+    // NaN/Infinity) when the previous month's total is 0, since a percentage change from zero is
+    // not meaningful. Returns null (not an object) only when there are no dated items anywhere in
+    // items — that's the sole "no dated data" case; if dated items exist elsewhere but not in
+    // either of these two months, both totals are simply 0 and changePercent is null.
     function getDatedMonthOverMonthChange(items) {
-        // Stub for Stage C — depends on real multi-month "dated" history, which this single-month
-        // Mock dataset does not model. Real implementation arrives in Stage D.
-        return null;
+        var hasDatedItems = items.some(function (it) { return it.type === 'dated' && !it.isArchived; });
+        if (!hasDatedItems) { return null; }
+
+        var now = new Date();
+        var currentMonthDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        var previousMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+        var currentMonthTotal = 0, previousMonthTotal = 0;
+        for (var i = 0; i < items.length; i++) {
+            var item = items[i];
+            if (item.type !== 'dated' || item.isArchived || !item.start) { continue; }
+            var itemDate = new Date(item.start);
+            if (itemDate.getFullYear() === currentMonthDate.getFullYear() && itemDate.getMonth() === currentMonthDate.getMonth()) {
+                currentMonthTotal += item.amount;
+            } else if (itemDate.getFullYear() === previousMonthDate.getFullYear() && itemDate.getMonth() === previousMonthDate.getMonth()) {
+                previousMonthTotal += item.amount;
+            }
+        }
+
+        var changeAmount = currentMonthTotal - previousMonthTotal;
+        var changePercent = (previousMonthTotal !== 0) ? ((changeAmount / previousMonthTotal) * 100) : null;
+
+        return {
+            currentMonthLabel: currentMonthDate.toLocaleDateString('he-IL', { month: 'short' }),
+            previousMonthLabel: previousMonthDate.toLocaleDateString('he-IL', { month: 'short' }),
+            currentMonthTotal: currentMonthTotal,
+            previousMonthTotal: previousMonthTotal,
+            changeAmount: changeAmount,
+            changePercent: changePercent
+        };
     }
 
     // ----- buildNarrative: assembles human sentences ("story of the money") from the safe -----
@@ -690,14 +855,334 @@
             ? 'הפעילות האחרונה כוללת ' + recent.length + ' תנועות.'
             : 'אין עדיין פעילות להצגה.';
 
-        // Stub-backed narrative fields — intentionally left null (never invented), pending Stage D:
-        sentences.biggestUpcomingCharge = null;
-        sentences.projectedBalanceAfterUpcoming = null;
-        sentences.forecastWarning = null;
-        sentences.datedMonthOverMonthChange = null;
+        // Stage D.6: these 4 fields are no longer Stub-backed — connected to the real
+        // implementations. Only these 4 assignments changed; everything above is untouched.
+        var biggestCharge = getBiggestUpcomingCharge(items);
+        sentences.biggestUpcomingCharge = biggestCharge
+            ? 'החיוב הצפוי הגדול ביותר בחודשים הקרובים הוא ' + biggestCharge.label + ' על סך ₪' + biggestCharge.amount + ' (' + biggestCharge.month + ').'
+            : null;
+
+        var projectedBalance = getProjectedBalanceAfterUpcoming(items);
+        sentences.projectedBalanceAfterUpcoming = projectedBalance
+            ? 'לאחר החיוב הזה, היתרה הצפויה ב-' + projectedBalance.month + ' עומדת על ₪' + projectedBalance.balance + '.'
+            : null;
+
+        var warning = getForecastWarning(items);
+        sentences.forecastWarning = warning ? warning.message : null;
+
+        var datedChange = getDatedMonthOverMonthChange(items);
+        sentences.datedMonthOverMonthChange = datedChange
+            ? 'החיובים החד-פעמיים ' + (datedChange.changeAmount >= 0 ? 'עלו' : 'ירדו') + ' ב-₪' + Math.abs(datedChange.changeAmount) + ' לעומת ' + datedChange.previousMonthLabel + '.'
+            : null;
 
         return sentences;
     }
+
+    // =====================================================================================
+    // ===== Stage D.1/D.6 Part A: infrastructure only — verbatim copies of the real app's    =====
+    // ===== date-billing and forecast logic from index.html (getBillingRange,                =====
+    // ===== parseDatesAndGetLeft added in D.1; isBillingActiveInMonth + computeForecast       =====
+    // ===== added in D.6), unmodified. Not wired to mockItems or localStorage.                =====
+    // =====================================================================================
+
+    // --- ⚖️ לוגיקת חישוב מועדים ותשלומים שנותרו מעודכנת ומסונכרנת לחלוטין ---
+    function getBillingRange(startDateStr, totalPayments, billingDay) {
+        if (!startDateStr || !totalPayments) return null;
+
+        var parts = startDateStr.split('-');
+        var startYear = parseInt(parts[0], 10);
+        var startMonth = parseInt(parts[1], 10) - 1;
+        var startDay = parts[2] ? parseInt(parts[2], 10) : 1;
+
+        var total = parseInt(totalPayments, 10);
+        var bDay = billingDay ? parseInt(billingDay, 10) : 1;
+
+        // קביעת חודש החיוב הראשון בפועל
+        var firstBillingMonth = startMonth;
+        if (startDay >= bDay) {
+            firstBillingMonth += 1;
+        }
+        var firstBillingDate = new Date(startYear, firstBillingMonth, bDay);
+
+        // קביעת תאריך חיוב אחרון (הוספת סך תשלומים פחות 1)
+        var lastBillingDate = new Date(firstBillingDate.getFullYear(), firstBillingDate.getMonth() + (total - 1), bDay);
+
+        return { first: firstBillingDate, last: lastBillingDate, bDay: bDay, total: total };
+    }
+
+    function parseDatesAndGetLeft(startDateStr, totalPayments, billingDay) {
+        var range = getBillingRange(startDateStr, totalPayments, billingDay);
+        if (!range) return { left: 0, endStr: '-' };
+
+        var endStr = range.last.toLocaleDateString('he-IL');
+
+        // חישוב מדויק של תשלומים שנותרו ביחס להיום
+        var today = new Date();
+        var todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+        // אם היום הנוכחי מוקדם ממועד החיוב הראשון בפועל - נשארו כל התשלומים
+        if (todayZero < range.first) {
+            return { left: range.total, endStr: endStr };
+        }
+
+        // חישוב מספר חודשי החיוב המלאים שעברו
+        var passedMonths = (todayZero.getFullYear() - range.first.getFullYear()) * 12 + (todayZero.getMonth() - range.first.getMonth());
+
+        // אם עברנו או הגענו ליום החיוב בחודש הנוכחי, החודש הנוכחי נחשב ככזה שירד
+        if (todayZero.getDate() >= range.bDay) {
+            passedMonths += 1;
+        }
+
+        var left = range.total - passedMonths;
+        if (left < 0) left = 0;
+        if (left > range.total) left = range.total;
+
+        return { left: left, endStr: endStr };
+    }
+
+    // Copied verbatim from index.html — used only by computeForecast() below, for the loan branch.
+    function isBillingActiveInMonth(range, year, monthIndex) {
+        var firstYm = range.first.getFullYear() * 12 + range.first.getMonth();
+        var lastYm = range.last.getFullYear() * 12 + range.last.getMonth();
+        var targetYm = year * 12 + monthIndex;
+        return targetYm >= firstYm && targetYm <= lastYm;
+    }
+
+    // Copied verbatim from index.html, with exactly one minimal, backward-compatible addition
+    // made in the follow-up audit fix: an optional `itemsOverride` parameter. No business
+    // condition, no month range, no per-type calculation, no field name, no output shape was
+    // touched — only the local data-source variable name changed (items -> forecastItems) so
+    // that callers who explicitly pass a different item array (e.g. the 3 fixed stub functions
+    // below) are guaranteed to get a forecast computed over THAT array, not the file-global
+    // `items`. Called with no argument (as index.html itself always does), forecastItems falls
+    // back to the same global `items` as before — byte-identical behavior to the original copy.
+    // The known inconsistency with renderAll()/getMonthSnapshot() (documented in the Stage-D
+    // scoping report: fixed excludes credit, variable is fully excluded, loan uses
+    // getBillingRange+isBillingActiveInMonth per-month rather than the left>0 gate) is preserved
+    // exactly as-is — not reconciled, not "fixed".
+    function computeForecast(itemsOverride) {
+        var forecastItems = Array.isArray(itemsOverride) ? itemsOverride : items;
+        var now = new Date();
+        var months = [];
+        for (var m = 0; m < 6; m++) {
+            var d = new Date(now.getFullYear(), now.getMonth() + m, 1);
+            var sumInc = 0, sumExp = 0;
+            for (var i = 0; i < forecastItems.length; i++) {
+                var item = forecastItems[i];
+                if (item.isArchived) continue;
+                if (item.type === 'income') {
+                    sumInc += item.amount;
+                } else if (item.type === 'fixed') {
+                    if (item.where !== 'credit') {
+                        sumExp += (item.period === 'שנתי') ? (item.amount / 12) : item.amount;
+                    }
+                } else if (item.type === 'variable') {
+                    // תשלומים שונים למעקב/תצוגה בלבד - לא נכללים בתחזית
+                } else if (item.type === 'loan') {
+                    var range2 = getBillingRange(item.start, item.total, item.day);
+                    if (range2 && isBillingActiveInMonth(range2, d.getFullYear(), d.getMonth())) sumExp += item.amount;
+                } else if (item.type === 'dated') {
+                    if (item.start) {
+                        var itemDate = new Date(item.start);
+                        if (itemDate.getFullYear() === d.getFullYear() && itemDate.getMonth() === d.getMonth()) sumExp += item.amount;
+                    }
+                }
+            }
+            months.push({ label: d.toLocaleDateString('he-IL', { month: 'short' }), net: sumInc - sumExp });
+        }
+        return months;
+    }
+
+    // =====================================================================================
+    // ===== Stage D.2: read-only connection to Preview localStorage data.                  =====
+    // ===== Reads ONLY PREVIEW_DATA_KEY / PREVIEW_CONFIG_KEY (never REAL_DATA_KEY /         =====
+    // ===== REAL_CONFIG_KEY). No setItem/removeItem anywhere in this section. Not wired to  =====
+    // ===== any Stage C function, mockItems, mockCategoryConfig, buildNarrative, or UI —    =====
+    // ===== `items`/`categoryConfig` below are declared and loaded, nothing more.           =====
+    // =====================================================================================
+
+    function loadPreviewItems() {
+        var raw = localStorage.getItem(PREVIEW_DATA_KEY);
+        var parsed;
+        try {
+            parsed = JSON.parse(raw);
+        } catch (e) {
+            parsed = null;
+        }
+        // Safe fallback: anything that isn't actually an array (missing key, corrupt JSON,
+        // wrong type) becomes an empty items list — never throws, never invents item data.
+        return Array.isArray(parsed) ? parsed : [];
+    }
+
+    function loadPreviewCategoryConfig() {
+        var raw = localStorage.getItem(PREVIEW_CONFIG_KEY);
+        var parsed;
+        try {
+            parsed = JSON.parse(raw);
+        } catch (e) {
+            parsed = null;
+        }
+        var isPlainObject = parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed);
+        if (isPlainObject) { return parsed; }
+        // Safe fallback: missing key, corrupt JSON, or wrong type (array/null/primitive) falls
+        // back to the same DEFAULT_CATEGORY_CONFIG_JSON already used by seedPreviewV2IfNeeded()
+        // in Stage A — the real app's own known-good default shape, not Stage C's mock data.
+        try {
+            return JSON.parse(DEFAULT_CATEGORY_CONFIG_JSON);
+        } catch (e2) {
+            return {};
+        }
+    }
+
+    var items = loadPreviewItems();
+    var categoryConfig = loadPreviewCategoryConfig();
+
+    // =====================================================================================
+    // ===== Stage D.4 (revised, option ג׳): orchestration only — connects buildNarrative()  =====
+    // ===== to the REAL Preview items/categoryConfig loaded above (Stage D.2), with a       =====
+    // ===== single call. buildNarrative() itself already calls each of the 6 real Stage D.3 =====
+    // ===== functions internally exactly once — this function does NOT call them separately =====
+    // ===== beforehand, to avoid computing every value twice. Defined here (after            =====
+    // ===== items/categoryConfig are assigned) for readability; not called automatically     =====
+    // ===== anywhere in this file — no UI, no DOM, no renderMockUI wiring, no localStorage   =====
+    // ===== access of its own. buildNarrative() itself is untouched.                         =====
+    // =====================================================================================
+
+    function buildPreviewNarrativeData() {
+        return { narrative: buildNarrative(items, categoryConfig) };
+    }
+
+    // =====================================================================================
+    // ===== Stage D.5: Home screen only — replaces its Mock-fed elements with real data    =====
+    // ===== from items/categoryConfig via getMonthSnapshot()/getRecentActivity()/           =====
+    // ===== buildPreviewNarrativeData(). Reads only items/categoryConfig (already loaded     =====
+    // ===== above) — never localStorage directly, never MOCK_DATA/mockItems/mockCategoryConfig=====
+    // ===== /mockSnapshot. Touches ONLY: hero-amount, hero-narrative, snapshot-income,        =====
+    // ===== snapshot-expenses, snapshot-balance, recent-activity-list. Does NOT touch          =====
+    // ===== hero-status, attention-list, transactions-list, insights-feed, or category-list —  =====
+    // ===== see the Stage D.5 report for why each of those stays Mock for now.                =====
+    // =====================================================================================
+
+    // Mirrors index.html's own currency-display convention exactly ('₪' + rounded, locale-
+    // formatted number — toLocaleString() already prefixes a '-' for negative values on its own,
+    // same as renderAll()'s '#net-balance' rendering). Not a new design — reused verbatim pattern.
+    function formatHomeCurrency(n) {
+        return '₪' + Math.round(n).toLocaleString();
+    }
+
+    // Presentational icon-per-type lookup only (no business meaning). Reuses the exact emoji
+    // already established elsewhere in this file for the same base types (DEFAULT_CATEGORY_CONFIG_JSON,
+    // MOCK_DATA.categories) — 'dated' has no built-in category in the real app, so it gets the
+    // same 📅 already used for a dated-like entry in Stage B's MOCK_DATA.recentActivity.
+    var HOME_ITEM_ICON_BY_TYPE = { income: '💰', fixed: '🏡', variable: '🛒', loan: '🏦', dated: '📅' };
+
+    // Adapts one real item[] entry into the exact {icon,title,date,amount,type} shape that the
+    // existing renderTxList()/tx-row markup already expects (unchanged since Stage B) — no HTML,
+    // CSS, or structure changes; only the data going in is real instead of Mock.
+    function mapItemToHomeTxRow(item) {
+        var icon = HOME_ITEM_ICON_BY_TYPE[item.type] || '💳';
+        var title = item.title || '';
+        // Missing-date convention copied from index.html itself (e.g. renderAll()'s dated/loan/
+        // variable cards: `item.start ? new Date(item.start).toLocaleDateString('he-IL') : '-'`).
+        var date = item.start ? new Date(item.start).toLocaleDateString('he-IL') : '-';
+        var amountNum = (typeof item.amount === 'number' && !isNaN(item.amount)) ? item.amount : 0;
+        // Same sign/prefix convention Stage B's MOCK_DATA already used: income shown plain,
+        // every other type shown with a leading "-" to read as an outflow.
+        var amount = (item.type === 'income') ? formatHomeCurrency(amountNum) : ('-' + formatHomeCurrency(amountNum));
+        var cssType = (item.type === 'income') ? 'income' : 'expense';
+        return { icon: icon, title: title, date: date, amount: amount, type: cssType };
+    }
+
+    function renderHomeScreenFromRealData() {
+        var snapshot = getMonthSnapshot(items);
+
+        document.getElementById('hero-amount').textContent = formatHomeCurrency(snapshot.balance);
+        document.getElementById('snapshot-income').textContent = formatHomeCurrency(snapshot.income);
+        document.getElementById('snapshot-expenses').textContent = formatHomeCurrency(snapshot.expenses);
+        document.getElementById('snapshot-balance').textContent = formatHomeCurrency(snapshot.balance);
+
+        // hero-status (the small status pill) is intentionally left untouched — there is no
+        // narrative field that maps to a short status label without inventing new wording or
+        // logic (it would require the still-unimplemented getForecastWarning). See report.
+        var narrativeResult = buildPreviewNarrativeData().narrative;
+        document.getElementById('hero-narrative').textContent = narrativeResult.monthSnapshot;
+
+        // Same row count the existing (Mock) Home design showed (4).
+        var recent = getRecentActivity(items, 4).map(mapItemToHomeTxRow);
+        renderTxList('recent-activity-list', recent);
+    }
+
+    // Called once, after items/categoryConfig (and everything Stage D.3/D.4 depend on) are
+    // already loaded — this is the only ordering guarantee needed; see the Stage D.5 report for
+    // why renderMockUI()'s own (earlier, unmoved) call site is not a problem in practice.
+    renderHomeScreenFromRealData();
+
+    // =====================================================================================
+    // ===== Stage D.6 Part D: Insights screen only — replaces insights-feed's Mock-fed      =====
+    // ===== cards with real ones, reusing the exact same insight-card markup/classes         =====
+    // ===== (unchanged since Stage B). Does not touch the Home, Transactions, or Settings     =====
+    // ===== screens, MOCK_DATA, or localStorage.                                              =====
+    // =====================================================================================
+
+    function renderInsightsScreenFromRealData() {
+        var narrativeResult = buildPreviewNarrativeData().narrative;
+        var cards = [];
+
+        // Same 3 topics the original Mock cards showed, same order, same titles — only the
+        // dynamic content (value/note) is now real.
+        cards.push({
+            title: 'סך חיובי כרטיס אשראי החודש',
+            value: formatHomeCurrency(getFixedCreditCardTotals(items)),
+            note: narrativeResult.creditCardTotal,
+            tone: 'normal'
+        });
+
+        cards.push({
+            title: 'יתרת הלוואות שנותרו',
+            value: formatHomeCurrency(getLoansRemainingSummary(items).totalRemaining),
+            note: narrativeResult.loansRemaining,
+            tone: 'normal'
+        });
+
+        // narrative.forecastWarning is null when there is no negative-balance month ahead. There
+        // is no existing "empty state" markup for this specific card to fall back to, and
+        // inventing new "everything's fine" wording is explicitly out of scope — so this card is
+        // simply omitted (not rendered) rather than shown with invented text. See the Stage D.6
+        // report for this judgment call.
+        var warning = getForecastWarning(items);
+        if (warning) {
+            cards.push({
+                title: 'אזהרת תחזית',
+                value: formatHomeCurrency(warning.balance),
+                note: narrativeResult.forecastWarning,
+                tone: 'warning'
+            });
+        }
+
+        // Markup below is byte-for-byte identical to renderMockUI()'s insights-block (Stage B) —
+        // same classes, same nesting, same tone-icon logic — only `cards` is a real-data array
+        // instead of MOCK_DATA.insights.
+        var html = '';
+        for (var k = 0; k < cards.length; k++) {
+            var c = cards[k];
+            var isWarning = c.tone === 'warning';
+            var toneClass = isWarning ? ' warning' : '';
+            var toneIcon = isWarning ? '⚠️' : '📊';
+            html += '<div class="insight-card' + toneClass + '">' +
+                '<div class="insight-icon">' + toneIcon + '</div>' +
+                '<div class="insight-body">' +
+                    '<div class="insight-title">' + escapeHtml(c.title) + '</div>' +
+                    '<div class="insight-value">' + escapeHtml(c.value) + '</div>' +
+                    '<div class="insight-note">' + escapeHtml(c.note) + '</div>' +
+                '</div>' +
+            '</div>';
+        }
+        document.getElementById('insights-feed').innerHTML = html;
+    }
+
+    // Called once, after items/categoryConfig and the Home render above — same ordering
+    // guarantee, no code moved.
+    renderInsightsScreenFromRealData();
 </script>
 
 </body>

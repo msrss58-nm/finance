@@ -78,6 +78,19 @@
 - **אימות**: הורץ סקריפט Node.js שמחלץ את בלוק ה-`<script>` המדויק מתוך הקובץ בפועל (לא עותק משוכתב) ומריץ אותו מול `localStorage`/`confirm`/`document`/`location.reload` מדומים. 20 בדיקות עברו: seed נכון, אי-דריסה בטעינה חוזרת, איפוס פוגע רק במפתחות v2, ביטול איפוס לא משנה כלום, וסביבה ריקה מקבלת ברירות מחדל תקינות. **לא בוצעה בדיקת דפדפן מלאה** — אין עדיין UI להראות; זו מתוכננת לשלב ה׳ לאחר שלבים ב׳-ד׳.
 - **בוצע commit** (`32416eb feat: complete cockpit preview stage A`) בענף `feature/cockpit-preview-v2`.
 
+## 30/07/2026 — שלב ד׳ של תוכנית המימוש (Cockpit / Preview v2) — חיבור ללוגיקה הקיימת ולנתוני Preview (טרם ב-commit)
+לפי אישור מפורש להמשיך לשלב ד׳ מתוך 5 השלבים המאושרים: הושלמו כל 7 תתי-השלבים (ד׳.1–ד׳.7) בתוך [index-preview-v2.html](index-preview-v2.html) בלבד.
+- **ד׳.1**: `getBillingRange`/`parseDatesAndGetLeft` הועתקו כלשונן מ-`index.html`.
+- **ד׳.2**: נוספו `loadPreviewItems()`/`loadPreviewCategoryConfig()` — קריאה-בלבד ממפתחות `PREVIEW_DATA_KEY`/`PREVIEW_CONFIG_KEY`, לעולם לא מהמפתחות האמיתיים.
+- **ד׳.3**: 6 הפונקציות מלאות משלב ג׳ (`getFixedCreditCardTotals`, `getFixedBankVsCreditSplit`, `getTotalFixedCommitments`, `getMonthSnapshot`, `getRecentActivity`, `getLoansRemainingSummary`) חוברו לנתונים אמיתיים, כולל תיקון המרת הוצאה קבועה שנתית לחודשית.
+- **ד׳.4**: `buildPreviewNarrativeData()` — קריאה יחידה ל-`buildNarrative()`, ללא חישוב כפול.
+- **ד׳.5**: מסך הבית חובר לנתונים אמיתיים (`hero-amount`, `snapshot-income/expenses/balance`, `hero-narrative`, `recent-activity-list`) — `hero-status` נשאר קבוע במכוון (אין שדה נרטיב מתאים בלי המצאת לוגיקה).
+- **ד׳.6**: 4 ה-Stubs (`getBiggestUpcomingCharge`, `getProjectedBalanceAfterUpcoming`, `getForecastWarning`, `getDatedMonthOverMonthChange`) מומשו במלואם על בסיס `computeForecast`/`getBillingRange`/`isBillingActiveInMonth` המועתקים כלשונן; מסך התובנות חובר לנתונים אמיתיים (כרטיס "אזהרת תחזית" מושמט כשאין אזהרה). **תוקן באג audit**: ערבוב `items` גלובלי מול פרמטרי בשלוש הפונקציות הראשונות — נפתר ע"י שינוי שם הפרמטר ל-`sourceItems` והעברתו במפורש ל-`computeForecast()`.
+- **ד׳.7**: בדיקות אינטגרציה מקיפות מול `index.html` — 349 בדיקות, 342 עברו, **PASS** עם הערות ידועות בלבד (hero-status לא מחובר; כרטיס "אזהרת תחזית" מושמט כשאין אזהרה; אי-עקביות מכוונת ומתועדת בין `renderAll`/`getMonthSnapshot` לבין `computeForecast` לגבי הלוואה עתידית — לא לתקן).
+- **מנגנון בטיחות**: מפתחות `PREVIEW_*` נבדקו ונשארו מבודדים לחלוטין מהמפתחות האמיתיים לאורך כל שלב ד׳ — אין כתיבה חדשה אליהם, כל ה-`setItem`/`removeItem` בקובץ שייכים למנגנון ה-seed/איפוס המקורי משלב א׳ בלבד.
+- **`index.html`** — לא נגע בו כלל.
+- **סטטוס**: כל השינויים קיימים ב-working directory בלבד (`index-preview-v2.html`), **טרם נשמרו ב-commit**.
+
 ## 29/07/2026 — שלב ב׳ של תוכנית המימוש (Cockpit / Preview v2) — מבנה ו-CSS עם נתוני Mock
 לפי אישור מפורש לבצע רק שלב ב׳: נבנה בתוך [index-preview-v2.html](index-preview-v2.html) **בלבד** מבנה ה-UI המלא של ה-Cockpit + CSS מלא, לפי ה-Wireframe שאושר — **ללא כל חיבור ללוגיקה עסקית וללא חישובים**, מוזן אך ורק ע"י אובייקט `MOCK_DATA` קבוע בקוד. מנגנון הבטיחות של שלב א׳ (מפתחות Preview v2, seed חד-פעמי, כפתור איפוס) נשאר **ללא שינוי בקוד** — רק הוזז ויזואלית למסך ההגדרות.
 - **מעטפת אפליקציה**: כותרת עליונה, ניווט תחתון קבוע (4 טאבים), כפתור הוספה צף (FAB) עם חלונית "פעולות מהירות" (פתיחה/סגירה חזותית בלבד, ללא שמירה).
