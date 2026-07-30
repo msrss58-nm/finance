@@ -487,15 +487,9 @@
         }
         document.getElementById('insights-feed').innerHTML = insightsHtml;
 
-        var catHtml = '';
-        for (var m = 0; m < MOCK_DATA.categories.length; m++) {
-            var c = MOCK_DATA.categories[m];
-            catHtml += '<div class="category-row">' +
-                '<div class="cat-label">' + c.icon + ' ' + escapeHtml(c.label) + '</div>' +
-                '<div class="cat-edit">עריכה (בקרוב)</div>' +
-            '</div>';
-        }
-        document.getElementById('category-list').innerHTML = catHtml;
+        // category-list is no longer rendered from MOCK_DATA.categories here — see Stage E.1's
+        // renderSettingsScreenFromRealData() below, which renders it from the real categoryConfig
+        // instead. This function no longer reads MOCK_DATA.categories at all.
     }
 
     // ===== Screen navigation (UI state only) =====
@@ -1183,6 +1177,39 @@
     // Called once, after items/categoryConfig and the Home render above — same ordering
     // guarantee, no code moved.
     renderInsightsScreenFromRealData();
+
+    // =====================================================================================
+    // ===== Stage E.1: Settings screen only — replaces category-list's Mock-fed rows       =====
+    // ===== with the real categoryConfig loaded above (Stage D.2's loadPreviewCategoryConfig()). =====
+    // ===== Display only: no add/edit/delete/save logic, no localStorage access of its own — =====
+    // ===== reads only the already-loaded `categoryConfig` variable. Does not touch Home,     =====
+    // ===== Transactions, or Insights screens, or MOCK_DATA.                                 =====
+    // =====================================================================================
+
+    // Same markup/classes renderMockUI() used for this row (category-row/cat-label/cat-edit) —
+    // "עריכה (בקרוב)" stays as static, non-interactive text (no onclick), exactly as it already
+    // was in the Mock version; only the data source changes. categoryConfig keys are iterated in
+    // whatever order Object.keys() returns them (insertion order in practice) — no sorting logic
+    // invented. A missing/non-string `label` on a malformed entry falls back to the category key
+    // itself, so a corrupt entry still renders something safe instead of "undefined" or a crash.
+    function renderSettingsScreenFromRealData() {
+        var html = '';
+        var keys = Object.keys(categoryConfig || {});
+        for (var i = 0; i < keys.length; i++) {
+            var key = keys[i];
+            var cfg = categoryConfig[key];
+            var label = (cfg && typeof cfg.label === 'string' && cfg.label) ? cfg.label : key;
+            html += '<div class="category-row">' +
+                '<div class="cat-label">' + escapeHtml(label) + '</div>' +
+                '<div class="cat-edit">עריכה (בקרוב)</div>' +
+            '</div>';
+        }
+        document.getElementById('category-list').innerHTML = html;
+    }
+
+    // Called once, after items/categoryConfig and the two renders above — same ordering
+    // guarantee, no code moved.
+    renderSettingsScreenFromRealData();
 </script>
 
 </body>
