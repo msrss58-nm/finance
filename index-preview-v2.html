@@ -468,7 +468,9 @@
         document.getElementById('attention-list').innerHTML = attentionHtml;
 
         renderTxList('recent-activity-list', MOCK_DATA.recentActivity);
-        renderTxList('transactions-list', MOCK_DATA.transactions);
+        // transactions-list is no longer rendered from MOCK_DATA.transactions here — see Stage
+        // E.2's renderTransactionsScreenFromRealData() below, which renders it from real `items`
+        // instead. This function no longer reads MOCK_DATA.transactions at all.
 
         var insightsHtml = '';
         for (var k = 0; k < MOCK_DATA.insights.length; k++) {
@@ -508,6 +510,13 @@
         var btns = document.querySelectorAll('.filter-btn');
         for (var i = 0; i < btns.length; i++) { btns[i].classList.remove('active'); }
         document.getElementById('filter-' + name).classList.add('active');
+
+        // Stage E.2: the filter is now functional — re-renders transactions-list for the real
+        // items matching the selected filter. Previously this function only toggled the button's
+        // CSS class and never touched the list itself. renderTransactionsScreenFromRealData() is
+        // defined later in this file (function declarations are hoisted, so the forward reference
+        // here is safe — same pattern already used throughout this file).
+        renderTransactionsScreenFromRealData(name);
     }
 
     // ===== Quick actions sheet open/close (visual only — no save logic yet) =====
@@ -1078,7 +1087,14 @@
         var title = item.title || '';
         // Missing-date convention copied from index.html itself (e.g. renderAll()'s dated/loan/
         // variable cards: `item.start ? new Date(item.start).toLocaleDateString('he-IL') : '-'`).
-        var date = item.start ? new Date(item.start).toLocaleDateString('he-IL') : '-';
+        // Stage E.2 fix: index.html's own convention assumes `item.start`, when present, is
+        // always a valid date string (it's only ever written by the app's own <input type="date">
+        // fields) — a guarantee real Preview data upholds too. This function additionally guards
+        // against a non-date-parseable `start` (missing entirely, empty string, or a genuinely
+        // invalid value) so it never surfaces JS's raw "Invalid Date" text — falls back to the
+        // same '-' used for the missing-date case instead.
+        var startDate = item.start ? new Date(item.start) : null;
+        var date = (startDate && !isNaN(startDate.getTime())) ? startDate.toLocaleDateString('he-IL') : '-';
         var amountNum = (typeof item.amount === 'number' && !isNaN(item.amount)) ? item.amount : 0;
         // Same sign/prefix convention Stage B's MOCK_DATA already used: income shown plain,
         // every other type shown with a leading "-" to read as an outflow.
@@ -1210,6 +1226,57 @@
     // Called once, after items/categoryConfig and the two renders above — same ordering
     // guarantee, no code moved.
     renderSettingsScreenFromRealData();
+
+    // =====================================================================================
+    // ===== Stage E.2: Transactions screen only — replaces transactions-list's Mock-fed    =====
+    // ===== rows with real items from Preview data (items, loaded above via Stage D.2's     =====
+    // ===== loadPreviewItems()), and makes the active/archived filter functional (previously =====
+    // ===== cosmetic-only: setTxFilter() only toggled the button's CSS class). Reuses         =====
+    // ===== mapItemToHomeTxRow()/renderTxList() unchanged from Stage D.5 — same row markup,   =====
+    // ===== same icon/date/amount conventions already established and tested for Home's       =====
+    // ===== recent-activity-list. Search stays disabled (out of scope for this stage; the      =====
+    // ===== input's `disabled` attribute in the HTML is untouched). Display only: no add/      =====
+    // ===== edit/archive/restore/delete logic, no localStorage writes of its own.              =====
+    // =====================================================================================
+
+    // `id` is assigned as Date.now() at creation in the real app (see addNewItem() in
+    // index.html) and items are always appended via items.push() — so `id` order already matches
+    // insertion/chronological order for every real item, regardless of type. This is the same
+    // convention getRecentActivity() (Stage C) already relies on implicitly (array order); sorting
+    // explicitly by `id` here (rather than trusting array order) is a defensive equivalent that's
+    // needed because this renders the FULL filtered list, not just a slice off the end. Crucially,
+    // `id` exists on every item type (unlike `start`, which income/fixed items don't have at
+    // all) — so this is a safe, universal chronological key that never depends on a type-specific
+    // date field being present. A missing/non-numeric `id` (corrupt data) is treated as 0 (sorts
+    // as the oldest possible item) rather than producing NaN-driven order or throwing.
+    function safeItemId(item) {
+        var n = item && item.id;
+        return (typeof n === 'number' && isFinite(n)) ? n : 0;
+    }
+
+    // Filters by isArchived to match the real app's own convention exactly (currentView
+    // active/archived test in renderAll(): `(currentView === 'active' && !item.isArchived) ||
+    // (currentView === 'archived' && item.isArchived)`) — a missing/undefined `isArchived` on a
+    // malformed item is treated as falsy (active), same as `!item.isArchived` would evaluate.
+    // Sorted newest-first (descending `id`) — the same "most recent first" direction
+    // getRecentActivity()'s `.slice(-n).reverse()` already shows for the Home screen, kept
+    // consistent here. mapItemToHomeTxRow() (Stage D.5, unchanged) converts each real item into
+    // the exact {icon,title,date,amount,type} shape renderTxList() already expects; items with no
+    // `start` (income/fixed) fall back to '-' for the date column via that same existing function
+    // — no new date-formatting logic invented here.
+    function renderTransactionsScreenFromRealData(filterName) {
+        var wantArchived = (filterName === 'archived');
+        var filtered = items.filter(function (it) {
+            return !!(it && it.isArchived) === wantArchived;
+        });
+        filtered.sort(function (a, b) { return safeItemId(b) - safeItemId(a); });
+        renderTxList('transactions-list', filtered.map(mapItemToHomeTxRow));
+    }
+
+    // Called once, after items/categoryConfig and the renders above — same ordering guarantee.
+    // 'active' matches the filter button that already has the `active` CSS class by default in
+    // the HTML (filter-active), so the initial render matches the initially-selected filter.
+    renderTransactionsScreenFromRealData('active');
 </script>
 
 </body>
