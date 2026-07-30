@@ -36,7 +36,10 @@
         min-height: 100vh;
         position: relative;
         background: var(--color-bg);
-        padding-bottom: 130px;
+        /* Stage F.1 fix: was 130px, which let the FAB (bottom:88px + 56px tall = its top edge
+           sits 144px above the viewport bottom) visually overlap the last content row. 176px
+           leaves a clear ~32px gap above the FAB's top edge for any screen's last row. */
+        padding-bottom: 176px;
     }
 
     @media (min-width: 700px) {
@@ -68,7 +71,9 @@
         box-shadow: var(--shadow);
     }
     .hero-gauge .hero-label { font-size: 13px; opacity: .85; }
-    .hero-gauge .hero-amount { font-size: 40px; font-weight: 700; margin: 4px 0; }
+    /* Stage F.1 follow-up: same bidi isolation as .tx-amount — negative balances rendered as
+       "13,050-₪" instead of "-₪13,050" inside the surrounding RTL page. Display-only, value unchanged. */
+    .hero-gauge .hero-amount { font-size: 40px; font-weight: 700; margin: 4px 0; direction: ltr; unicode-bidi: isolate; }
     .hero-gauge .status-pill {
         display: inline-block; background: rgba(255,255,255,.2);
         padding: 4px 12px; border-radius: 20px; font-size: 12px; margin-top: 4px;
@@ -82,7 +87,9 @@
         text-align: center; box-shadow: var(--shadow);
     }
     .snapshot-card .label { font-size: 10.5px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: .3px; }
-    .snapshot-card .value { font-size: 15px; font-weight: 700; margin-top: 5px; }
+    /* Stage F.1 follow-up: same bidi isolation fix as .tx-amount/.hero-amount — snapshot-balance
+       is the only one of the 3 snapshot cards that can go negative. Display-only, value unchanged. */
+    .snapshot-card .value { font-size: 15px; font-weight: 700; margin-top: 5px; direction: ltr; unicode-bidi: isolate; }
     .snapshot-card.income .value { color: var(--color-primary); }
     .snapshot-card.expenses .value { color: var(--color-danger); }
 
@@ -109,7 +116,12 @@
     .tx-info { flex: 1; min-width: 0; }
     .tx-title { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .tx-date { font-size: 11.5px; color: var(--color-text-muted); margin-top: 2px; }
-    .tx-amount { font-size: 14px; font-weight: 700; white-space: nowrap; }
+    /* Stage F.1 fix: isolates the amount text as its own LTR run so the browser's bidi algorithm
+       renders "-₪3,200" in that literal left-to-right order — without this, the leading "-"
+       character (a bidi-neutral character) gets visually displaced to the far side inside the
+       surrounding RTL page, rendering as "₪3,200-" instead. Pure display fix — the underlying
+       string/value built by JS is unchanged. */
+    .tx-amount { font-size: 14px; font-weight: 700; white-space: nowrap; direction: ltr; unicode-bidi: isolate; }
     .tx-amount.income { color: var(--color-primary); }
     .tx-amount.expense { color: var(--color-danger); }
 
@@ -139,7 +151,9 @@
     }
     .insight-body { flex: 1; min-width: 0; }
     .insight-title { font-size: 11.5px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: .3px; font-weight: 600; }
-    .insight-value { font-size: 21px; font-weight: 800; margin-top: 5px; letter-spacing: -.2px; }
+    /* Stage F.1 follow-up: same bidi isolation fix as .tx-amount/.hero-amount/.snapshot-card .value
+       — the forecast-warning insight card's value can be negative. Display-only, value unchanged. */
+    .insight-value { font-size: 21px; font-weight: 800; margin-top: 5px; letter-spacing: -.2px; direction: ltr; unicode-bidi: isolate; }
     .insight-card.warning .insight-value { color: var(--color-warning); }
     .insight-note { font-size: 12.5px; color: var(--color-text); margin-top: 6px; line-height: 1.55; opacity: .82; }
 
@@ -208,6 +222,13 @@
         margin-bottom: 10px; font-size: 14px; cursor: pointer; font-family: inherit;
     }
     .quick-action-btn .qa-icon { font-size: 18px; }
+    /* Stage F.1 fix: these 3 actions aren't wired to any save logic yet (clicking them today
+       just closes the sheet) — this visual treatment makes that clear instead of looking like a
+       fully working button. Matches the existing "עריכה (בקרוב)" convention already used in the
+       Settings category list for the same "not active yet" concept. */
+    .quick-action-btn.disabled { opacity: .55; cursor: not-allowed; }
+    .quick-action-btn .qa-label { flex: 1; }
+    .quick-action-btn .qa-soon { font-size: 11.5px; color: var(--color-text-muted); }
     .quick-action-close {
         width: 100%; text-align: center; padding: 10px; background: none; border: none;
         color: var(--color-text-muted); font-size: 13px; margin-top: 4px; cursor: pointer; font-family: inherit;
@@ -220,7 +241,7 @@
 
     <div class="app-header">
         <h1>FamilyFinance</h1>
-        <div class="subtitle">Cockpit — Preview v2 · נתוני Mock בלבד</div>
+        <div class="subtitle">Cockpit — Preview v2 · נתוני Preview</div>
     </div>
 
     <!-- ===== מסך 1: בית (Cockpit) ===== -->
@@ -310,14 +331,14 @@
 <div class="quick-actions-overlay" id="quick-actions-overlay" onclick="toggleQuickActions(false)">
     <div class="quick-actions-sheet" onclick="event.stopPropagation()">
         <h3>הוספת תנועה</h3>
-        <button type="button" class="quick-action-btn" onclick="toggleQuickActions(false)">
-            <span class="qa-icon">💸</span><span>הוצאה חדשה</span>
+        <button type="button" class="quick-action-btn disabled" title="עדיין לא פעיל" onclick="toggleQuickActions(false)">
+            <span class="qa-icon">💸</span><span class="qa-label">הוצאה חדשה</span><span class="qa-soon">(בקרוב)</span>
         </button>
-        <button type="button" class="quick-action-btn" onclick="toggleQuickActions(false)">
-            <span class="qa-icon">💰</span><span>הכנסה חדשה</span>
+        <button type="button" class="quick-action-btn disabled" title="עדיין לא פעיל" onclick="toggleQuickActions(false)">
+            <span class="qa-icon">💰</span><span class="qa-label">הכנסה חדשה</span><span class="qa-soon">(בקרוב)</span>
         </button>
-        <button type="button" class="quick-action-btn" onclick="toggleQuickActions(false)">
-            <span class="qa-icon">🏦</span><span>הלוואה חדשה</span>
+        <button type="button" class="quick-action-btn disabled" title="עדיין לא פעיל" onclick="toggleQuickActions(false)">
+            <span class="qa-icon">🏦</span><span class="qa-label">הלוואה חדשה</span><span class="qa-soon">(בקרוב)</span>
         </button>
         <button type="button" class="quick-action-close" onclick="toggleQuickActions(false)">ביטול</button>
     </div>
@@ -768,7 +789,10 @@
                     type: 'negative_balance',
                     month: monthData.label,
                     balance: monthData.net,
-                    message: 'ב-' + monthData.label + ' צפויה יתרה שלילית של ₪' + Math.abs(Math.round(monthData.net)) + '.'
+                    // Stage F.1 fix: uses formatHomeCurrency() (Stage D.5) instead of a raw number,
+                    // so this message matches the same '₪' + thousands-separator formatting used
+                    // everywhere else (previously e.g. "₪6000" instead of "₪6,000").
+                    message: 'ב-' + monthData.label + ' צפויה יתרה שלילית של ' + formatHomeCurrency(Math.abs(monthData.net)) + '.'
                 };
             }
         }
@@ -830,8 +854,11 @@
 
         var sentences = {};
 
+        // Stage F.1 fix: formatHomeCurrency() instead of a raw number, so this matches the
+        // insight-value formatting on the Insights screen (previously e.g. "₪220" was fine only
+        // because it's under 1000 — a 4-digit value would have shown without a thousands separator).
         sentences.creditCardTotal = creditTotal > 0
-            ? 'סך חיובי כרטיס האשראי מהוצאות קבועות עומד על ₪' + creditTotal + '.'
+            ? 'סך חיובי כרטיס האשראי מהוצאות קבועות עומד על ' + formatHomeCurrency(creditTotal) + '.'
             : 'אין כרגע הוצאות קבועות המחויבות בכרטיס אשראי.';
 
         sentences.bankVsCredit = 'מתוך ההוצאות הקבועות: ₪' + split.bank + ' מחויבות בחשבון הבנק, ו-₪' + split.credit + ' בכרטיס אשראי.';
@@ -842,8 +869,10 @@
             ? 'החודש: הכנסות ₪' + snapshot.income + ', הוצאות ₪' + snapshot.expenses + ', ונשארת עם יתרה חיובית של ₪' + snapshot.balance + '.'
             : 'החודש: הכנסות ₪' + snapshot.income + ', הוצאות ₪' + snapshot.expenses + ' — היתרה שלילית בסך ₪' + Math.abs(snapshot.balance) + '.';
 
+        // Stage F.1 fix: formatHomeCurrency() instead of a raw number — same reasoning as
+        // creditCardTotal above (e.g. previously showed "26100" instead of "26,100").
         sentences.loansRemaining = loans.loanCount > 0
-            ? 'נותרו לך ₪' + loans.totalRemaining + ' בסך הכול ב-' + loans.loanCount + ' הלוואות פעילות.'
+            ? 'נותרו לך ' + formatHomeCurrency(loans.totalRemaining) + ' בסך הכול ב-' + loans.loanCount + ' הלוואות פעילות.'
             : 'אין לך כרגע הלוואות פעילות.';
 
         sentences.recentActivity = recent.length > 0
@@ -1058,11 +1087,16 @@
     // ===== see the Stage D.5 report for why each of those stays Mock for now.                =====
     // =====================================================================================
 
-    // Mirrors index.html's own currency-display convention exactly ('₪' + rounded, locale-
-    // formatted number — toLocaleString() already prefixes a '-' for negative values on its own,
-    // same as renderAll()'s '#net-balance' rendering). Not a new design — reused verbatim pattern.
+    // Originally mirrored index.html's own '#net-balance' convention exactly ('₪' + rounded,
+    // locale-formatted number). Stage F.1 follow-up fix: for a negative n, that produced the sign
+    // as part of the locale-formatted number AFTER the already-prepended '₪' (e.g. "₪-13,050")
+    // — visually wrong regardless of bidi ("-13,050₪" once rendered in the surrounding RTL page).
+    // Now explicitly puts a leading '-' before '₪' for negative values (magnitude via Math.abs,
+    // same numeric value — display-only change, no calculation touched). Positive values are
+    // byte-identical to before.
     function formatHomeCurrency(n) {
-        return '₪' + Math.round(n).toLocaleString();
+        var rounded = Math.round(n);
+        return (rounded < 0 ? '-₪' : '₪') + Math.abs(rounded).toLocaleString();
     }
 
     // Presentational icon-per-type lookup only (no business meaning). Reuses the exact emoji
