@@ -199,6 +199,10 @@
     .tx-menu-item:hover, .tx-menu-item:focus-visible {
         background: var(--color-bg); outline: none;
     }
+    /* Stage G.3: permanent-delete menu item — same .tx-menu-item base, only the text color
+       changes to signal a destructive action (no separate confirm dialog is built; the browser's
+       own confirm() handles that, per approved product decision). */
+    .tx-menu-item-danger { color: var(--color-danger); }
 
     /* ===== Transactions screen: search + filter (visual only) ===== */
     .search-bar input {
@@ -580,6 +584,11 @@
                 '<button type="button" class="tx-menu-toggle" data-item-id="' + safeId + '" aria-label="' + escapeHtml('פעולות עבור ' + t.title) + '" onclick="toggleRowMenu(this)">⋮</button>' +
                 '<div class="tx-menu-dropdown">' +
                     '<button type="button" class="tx-menu-item" data-item-id="' + safeId + '" onclick="handleRowMenuAction(this)">' + escapeHtml(actionLabel) + '</button>' +
+                    // Stage G.3: second, destructive menu item — same data-item-id-only wiring
+                    // convention as the button above (id never enters a concatenated onclick
+                    // string), routed to its own handler (handleDeleteMenuAction) further below
+                    // rather than handleRowMenuAction(), which stays archive/restore-only.
+                    '<button type="button" class="tx-menu-item tx-menu-item-danger" data-item-id="' + safeId + '" onclick="handleDeleteMenuAction(this)">' + escapeHtml('מחק לצמיתות') + '</button>' +
                 '</div>' +
             '</div>';
         }
@@ -1561,6 +1570,17 @@
         renderAllPreviewScreens();
     }
 
+    // Stage G.3: permanent delete — removes the item from the in-memory `items` array entirely
+    // (not just an isArchived flip), then persists/re-renders through the same Stage G.1
+    // infrastructure as archive/restore. A missing id is a strict no-op, same as above.
+    function deletePreviewItem(id) {
+        var idx = items.findIndex(function (i) { return i.id === id; });
+        if (idx === -1) return;
+        items.splice(idx, 1);
+        savePreviewItems();
+        renderAllPreviewScreens();
+    }
+
     // =====================================================================================
     // ===== Stage G.2.5: row-menu open/close, scoped to the Transactions screen only (the    =====
     // ===== .tx-menu-toggle/.tx-menu-dropdown markup only exists inside renderTxListWithActions=====
@@ -1624,6 +1644,19 @@
         var idx = items.findIndex(function (i) { return i.id === id; });
         if (idx === -1) return;
         if (items[idx].isArchived) { unarchivePreviewItem(id); } else { archivePreviewItem(id); }
+    }
+
+    // Stage G.3: the destructive dropdown action — reads the id the same way
+    // handleRowMenuAction() does above (data-item-id only, parsed to a number, never trusted
+    // from anywhere else). Uses the browser's own confirm() — no custom dialog, per approved
+    // product decision — and only calls deletePreviewItem() if the user confirms. Cancelling is
+    // a strict no-op: deletePreviewItem() is never called, so nothing is saved or re-rendered,
+    // and the row menu (this click originated inside .tx-menu-dropdown, which the document-level
+    // listener above already ignores) is left open exactly as it was.
+    function handleDeleteMenuAction(actionBtn) {
+        var id = parseInt(actionBtn.getAttribute('data-item-id'), 10);
+        if (!confirm('למחוק את התנועה הזו לצמיתות? לא ניתן לשחזר לאחר מכן.')) return;
+        deletePreviewItem(id);
     }
 </script>
 
