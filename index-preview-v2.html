@@ -454,18 +454,10 @@
         document.getElementById('snapshot-expenses').textContent = MOCK_DATA.snapshot.expenses;
         document.getElementById('snapshot-balance').textContent = MOCK_DATA.snapshot.balance;
 
-        var attentionHtml = '';
-        for (var i = 0; i < MOCK_DATA.attention.length; i++) {
-            var a = MOCK_DATA.attention[i];
-            attentionHtml += '<div class="attention-item">' +
-                '<div>' +
-                    '<div class="attention-title">' + escapeHtml(a.title) + '</div>' +
-                    '<div class="attention-detail">' + escapeHtml(a.detail) + '</div>' +
-                '</div>' +
-                '<div class="attention-amount">' + escapeHtml(a.amount) + '</div>' +
-            '</div>';
-        }
-        document.getElementById('attention-list').innerHTML = attentionHtml;
+        // attention-list is no longer rendered from MOCK_DATA.attention here — see Stage E.3's
+        // renderAttentionListFromRealData() below, which renders it from real getBiggestUpcoming
+        // Charge()/getForecastWarning() results instead. This function no longer reads
+        // MOCK_DATA.attention at all.
 
         renderTxList('recent-activity-list', MOCK_DATA.recentActivity);
         // transactions-list is no longer rendered from MOCK_DATA.transactions here — see Stage
@@ -1126,6 +1118,66 @@
     // already loaded — this is the only ordering guarantee needed; see the Stage D.5 report for
     // why renderMockUI()'s own (earlier, unmoved) call site is not a problem in practice.
     renderHomeScreenFromRealData();
+
+    // =====================================================================================
+    // ===== Stage E.3: Home screen only — replaces attention-list's Mock-fed rows with the  =====
+    // ===== two already-built, already-tested real functions from Stage D.6                 =====
+    // ===== (getBiggestUpcomingCharge, getForecastWarning) — no new business logic invented. =====
+    // ===== Explicit scoping decision (approved before this stage was written): the Mock      =====
+    // ===== showed 3 items with day-level "בעוד X ימים" phrasing, but no such function exists =====
+    // ===== anywhere (in index.html or in this file) — building one would require inventing   =====
+    // ===== an undefined time window and item cap. Per the approved decision, this stage      =====
+    // ===== deliberately stays to the 0–2 cards these two existing functions already produce;  =====
+    // ===== broader "upcoming charges" logic is explicitly deferred to a future stage.         =====
+    // =====================================================================================
+
+    // charge.month/warning.month are the same short month labels (e.g. "אוג׳") computeForecast()
+    // already returns — no day-level date arithmetic is invented here. Amounts reuse
+    // formatHomeCurrency() (Stage D.5, unchanged) for the same '₪'+rounded+locale convention
+    // used everywhere else on this screen.
+    function renderAttentionListFromRealData() {
+        var cards = [];
+
+        var charge = getBiggestUpcomingCharge(items);
+        if (charge) {
+            cards.push({
+                title: charge.label,
+                detail: 'צפוי ב-' + charge.month,
+                amount: formatHomeCurrency(charge.amount)
+            });
+        }
+
+        var warning = getForecastWarning(items);
+        if (warning) {
+            cards.push({
+                title: 'אזהרת תחזית',
+                detail: warning.message,
+                amount: formatHomeCurrency(Math.abs(warning.balance))
+            });
+        }
+
+        // Empty state: when neither signal fires (0 cards), attention-list is simply left empty
+        // (innerHTML = '') rather than showing invented "everything's fine" copy — the same
+        // judgment call already made and documented for the Insights screen's forecast-warning
+        // card in Stage D.6 (no empty-state markup exists in the design for this card), kept
+        // consistent here rather than inventing new wording unilaterally.
+        var html = '';
+        for (var i = 0; i < cards.length; i++) {
+            var a = cards[i];
+            html += '<div class="attention-item">' +
+                '<div>' +
+                    '<div class="attention-title">' + escapeHtml(a.title) + '</div>' +
+                    '<div class="attention-detail">' + escapeHtml(a.detail) + '</div>' +
+                '</div>' +
+                '<div class="attention-amount">' + escapeHtml(a.amount) + '</div>' +
+            '</div>';
+        }
+        document.getElementById('attention-list').innerHTML = html;
+    }
+
+    // Called once, after items/categoryConfig and the Home render above — same ordering
+    // guarantee, no code moved.
+    renderAttentionListFromRealData();
 
     // =====================================================================================
     // ===== Stage D.6 Part D: Insights screen only — replaces insights-feed's Mock-fed      =====
