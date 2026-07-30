@@ -15,3 +15,7 @@ desktop.ini
 tmp/
 temp/
 scratch/
+
+# Design references / archived files — not part of the shipped app
+Design/
+_archive/
