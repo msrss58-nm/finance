@@ -1363,6 +1363,44 @@
     // 'active' matches the filter button that already has the `active` CSS class by default in
     // the HTML (filter-active), so the initial render matches the initially-selected filter.
     renderTransactionsScreenFromRealData('active');
+
+    // =====================================================================================
+    // ===== Stage G.1: write infrastructure only — NOT called anywhere in this file yet.   =====
+    // ===== savePreviewItems()/savePreviewCategoryConfig() mirror index.html's own          =====
+    // ===== saveToLocalStorage()/saveConfigToLocalStorage() exactly (same JSON.stringify +   =====
+    // ===== try/catch shape), but write ONLY to PREVIEW_DATA_KEY/PREVIEW_CONFIG_KEY — never  =====
+    // ===== REAL_DATA_KEY/REAL_CONFIG_KEY. renderAllPreviewScreens() re-runs the 5 existing   =====
+    // ===== real-data render functions in sequence; none of their internal logic is changed.  =====
+    // ===== None of the three functions below are invoked automatically on page load or from  =====
+    // ===== any existing code path — they exist only as infrastructure for future write-      =====
+    // ===== capability stages to call after mutating `items`/`categoryConfig` in memory.       =====
+    // =====================================================================================
+
+    function savePreviewItems() {
+        try { localStorage.setItem(PREVIEW_DATA_KEY, JSON.stringify(items)); } catch (e) { console.log('שגיאה בשמירת נתוני Preview v2'); }
+    }
+
+    function savePreviewCategoryConfig() {
+        try { localStorage.setItem(PREVIEW_CONFIG_KEY, JSON.stringify(categoryConfig)); } catch (e) { console.log('שגיאה בשמירת תצורת קטגוריות Preview v2'); }
+    }
+
+    // Mirrors setTxFilter()'s own DOM-based selection — there is no separate JS variable
+    // anywhere in this file tracking which filter is currently active. Reads which filter
+    // button currently has the 'active' CSS class, defaulting to 'active' if neither is found
+    // (the same default the initial page-load render above already uses). Read-only DOM query;
+    // does not add new persisted state and does not change any existing function.
+    function getCurrentTxFilterName() {
+        var archivedBtn = document.getElementById('filter-archived');
+        return (archivedBtn && archivedBtn.classList.contains('active')) ? 'archived' : 'active';
+    }
+
+    function renderAllPreviewScreens() {
+        renderHomeScreenFromRealData();
+        renderAttentionListFromRealData();
+        renderInsightsScreenFromRealData();
+        renderSettingsScreenFromRealData();
+        renderTransactionsScreenFromRealData(getCurrentTxFilterName());
+    }
 </script>
 
 </body>
