@@ -108,6 +108,10 @@
         display: flex; align-items: center; gap: 12px;
         background: var(--color-surface); border-radius: 12px; padding: 11px 14px;
         margin-bottom: 8px; box-shadow: var(--shadow);
+        /* Stage G.2.3: makes .tx-row the containing block for the future .tx-menu-dropdown
+           (position: absolute, below) — no visible effect on its own: .tx-row keeps its normal
+           place in document flow, and no z-index is set here. */
+        position: relative;
     }
     .tx-icon {
         width: 34px; height: 34px; border-radius: 50%; background: #eef2f0;
@@ -124,6 +128,77 @@
     .tx-amount { font-size: 14px; font-weight: 700; white-space: nowrap; direction: ltr; unicode-bidi: isolate; }
     .tx-amount.income { color: var(--color-primary); }
     .tx-amount.expense { color: var(--color-danger); }
+
+    /* Stage G.2.3: CSS-only infrastructure for a future per-row actions menu (Stage G.2.4+).
+       None of the 3 classes below are referenced by any markup yet — renderTxList()/
+       renderTransactionsScreenFromRealData() do not emit a ⋮ button or dropdown in this stage,
+       so these rules have zero visible effect anywhere until a later stage adds matching HTML. */
+
+    /* ⋮ toggle button: intended as a 5th flex child appended after .tx-amount inside .tx-row —
+       an in-flow item (not absolutely positioned), so it takes its own place in the row's flex
+       layout rather than overlapping/hiding .tx-amount, the same way .tx-icon already occupies
+       its own place on the row's other end. Sized at 32px — under .tx-icon's 34px, which is what
+       currently sets .tx-row's height ceiling — so adding this button cannot increase the row's
+       height; .tx-row's own padding is untouched. flex-shrink:0 keeps it from being compressed
+       on a narrow row, same as .tx-icon. */
+    .tx-menu-toggle {
+        width: 32px; height: 32px; flex-shrink: 0;
+        display: flex; align-items: center; justify-content: center;
+        background: none; border: none; border-radius: 8px; padding: 0; margin: 0;
+        font-size: 18px; line-height: 1; color: var(--color-text-muted);
+        cursor: pointer; font-family: inherit;
+    }
+    .tx-menu-toggle:hover, .tx-menu-toggle:focus-visible {
+        background: var(--color-bg); color: var(--color-text); outline: none;
+    }
+
+    /* Dropdown panel: position:absolute removes it from document flow entirely, so its own
+       content height can never affect .tx-row's height or push neighboring rows — it simply
+       floats over whatever content is already there. top:100% + left:0 anchors it just below
+       .tx-row, aligned to the row's LEFT edge — under RTL's flex-direction reversal the ⋮ toggle
+       (last flex child) already renders at the row's left edge, so left:0 opens the menu directly
+       under the button that triggers it (matches this file's existing convention of physical
+       left/right rather than logical inset-inline-* properties — .fab/.bottom-nav do the same).
+       display:none by default; a future .open class (Stage G.2.4, not added here — no JS exists
+       yet in this stage to toggle it) will control visibility. z-index:10 is enough to paint
+       above sibling .tx-row elements (which set no z-index of their own) without competing with,
+       or needing to be reasoned about alongside, the page-chrome scale already established
+       elsewhere in this file (.bottom-nav:50, .fab:60, .quick-actions-overlay:70) — a per-row
+       menu is page content, not global chrome, so it intentionally stays well under those. No
+       ancestor of .tx-row (.screen, .app-shell, body) sets overflow:hidden anywhere in this
+       file, so this dropdown cannot be clipped regardless of which row it opens from — including
+       the last row, where .app-shell's existing 176px bottom padding (Stage F.1) already leaves
+       ample clearance below the last row before .bottom-nav's fixed position. min-width:150px
+       comfortably fits both action labels ("העבר לארכיון" / "שחזר") plus the item's own
+       horizontal padding without wrapping. No new @media query: this app has no desktop-specific
+       layout distinct from mobile anywhere in this file (the one existing @media rule only adds
+       a box-shadow to .app-shell at >=700px), so none is needed here either. The dropdown's own
+       overflow:hidden simply clips its rounded corners against a hovered .tx-menu-item's square
+       background — it is not a clipping risk for anything positioned outside the dropdown. */
+    .tx-menu-dropdown {
+        display: none;
+        position: absolute; top: 100%; left: 0; margin-top: 6px;
+        min-width: 150px;
+        background: var(--color-surface); border: 1px solid var(--color-border);
+        border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,.12);
+        z-index: 10;
+        overflow: hidden;
+    }
+    .tx-menu-dropdown.open { display: block; }
+
+    /* Single action row inside the dropdown — full-width tappable text button, right-aligned to
+       match the surrounding RTL page. Deliberately unstyled for a "destructive"/edit look (no
+       var(--color-danger), no icon) since edit/delete are out of scope for this stage; both
+       "העבר לארכיון" and "שחזר" are simple neutral actions today. */
+    .tx-menu-item {
+        display: block; width: 100%; text-align: right;
+        padding: 10px 14px; background: none; border: none;
+        font-size: 13.5px; color: var(--color-text);
+        cursor: pointer; font-family: inherit;
+    }
+    .tx-menu-item:hover, .tx-menu-item:focus-visible {
+        background: var(--color-bg); outline: none;
+    }
 
     /* ===== Transactions screen: search + filter (visual only) ===== */
     .search-bar input {
@@ -461,6 +536,51 @@
                     '<div class="tx-date">' + escapeHtml(t.date) + '</div>' +
                 '</div>' +
                 '<div class="tx-amount ' + t.type + '">' + escapeHtml(t.amount) + '</div>' +
+            '</div>';
+        }
+        document.getElementById(containerId).innerHTML = html;
+    }
+
+    // =====================================================================================
+    // ===== Stage G.2.4/G.2.5/G.2.6: Transactions-only row-actions markup + wiring.          =====
+    // ===== renderTxListWithActions() is a self-contained sibling of renderTxList() above     =====
+    // ===== (that function is completely untouched) — Home's recent-activity-list keeps using =====
+    // ===== plain renderTxList() exclusively, per the approved "⋮ menu on Transactions screen =====
+    // ===== only" decision. toggleRowMenu()/handleRowMenuAction() (both defined further below,=====
+    // ===== after archivePreviewItem()/unarchivePreviewItem()) are called via `this`-based     =====
+    // ===== onclick — the item id travels only through the data-item-id attribute, never       =====
+    // ===== concatenated into an onclick string. Only Stage G.2.6 connects this function to     =====
+    // ===== renderTransactionsScreenFromRealData() (see that function below) and only Stage     =====
+    // ===== G.2.6 gives the single action item a real onclick — no edit/delete affordance is    =====
+    // ===== added anywhere.                                                                     =====
+    // =====================================================================================
+
+    function renderTxListWithActions(containerId, txItems) {
+        var html = '';
+        for (var i = 0; i < txItems.length; i++) {
+            var t = txItems[i];
+            // Reuses id/isArchived already added to mapItemToHomeTxRow()'s return shape in Stage
+            // G.2.1 — no new data source, no new computation. actionLabel is the only new value
+            // derived here, and it depends on nothing but that existing isArchived field.
+            var actionLabel = t.isArchived ? 'שחזר' : 'העבר לארכיון';
+            // Same escapeHtml() already used for every other user-derived string in this file
+            // (title/date/amount below, unchanged from renderTxList()) — applied here to the id
+            // (defensively, even though it is always numeric in practice) and to the aria-label,
+            // since both are injected into HTML attributes. No raw id is ever placed inside an
+            // onclick or any JS string — data-item-id is the only place it appears, as plain
+            // attribute text, exactly as required.
+            var safeId = escapeHtml(String(t.id));
+            html += '<div class="tx-row">' +
+                '<div class="tx-icon">' + t.icon + '</div>' +
+                '<div class="tx-info">' +
+                    '<div class="tx-title">' + escapeHtml(t.title) + '</div>' +
+                    '<div class="tx-date">' + escapeHtml(t.date) + '</div>' +
+                '</div>' +
+                '<div class="tx-amount ' + t.type + '">' + escapeHtml(t.amount) + '</div>' +
+                '<button type="button" class="tx-menu-toggle" data-item-id="' + safeId + '" aria-label="' + escapeHtml('פעולות עבור ' + t.title) + '" onclick="toggleRowMenu(this)">⋮</button>' +
+                '<div class="tx-menu-dropdown">' +
+                    '<button type="button" class="tx-menu-item" data-item-id="' + safeId + '" onclick="handleRowMenuAction(this)">' + escapeHtml(actionLabel) + '</button>' +
+                '</div>' +
             '</div>';
         }
         document.getElementById(containerId).innerHTML = html;
@@ -1126,7 +1246,13 @@
         // every other type shown with a leading "-" to read as an outflow.
         var amount = (item.type === 'income') ? formatHomeCurrency(amountNum) : ('-' + formatHomeCurrency(amountNum));
         var cssType = (item.type === 'income') ? 'income' : 'expense';
-        return { icon: icon, title: title, date: date, amount: amount, type: cssType };
+        // Stage G.2.1: two additive fields only — id/isArchived pass the source item's identity
+        // and archive state through, so a future Transactions-only row-menu (Stage G.2.4+) can
+        // know which item and which action label to wire up. The 5 fields above are unchanged
+        // (same values, same computation) — Home's renderTxList()/recent-activity-list simply
+        // ignores these 2 extra fields, exactly as it already ignores any object properties it
+        // doesn't read today.
+        return { icon: icon, title: title, date: date, amount: amount, type: cssType, id: item.id, isArchived: !!item.isArchived };
     }
 
     function renderHomeScreenFromRealData() {
@@ -1350,13 +1476,18 @@
     // the exact {icon,title,date,amount,type} shape renderTxList() already expects; items with no
     // `start` (income/fixed) fall back to '-' for the date column via that same existing function
     // — no new date-formatting logic invented here.
+    // Stage G.2.6: renders via renderTxListWithActions() (Stage G.2.4/G.2.5) instead of plain
+    // renderTxList() — this is the ONLY change in this function, and the only place in the whole
+    // file where renderTxListWithActions() is actually invoked. renderHomeScreenFromRealData()
+    // (recent-activity-list) still calls plain renderTxList() and is completely untouched, so the
+    // ⋮ menu appears on the Transactions screen only, per the approved decision.
     function renderTransactionsScreenFromRealData(filterName) {
         var wantArchived = (filterName === 'archived');
         var filtered = items.filter(function (it) {
             return !!(it && it.isArchived) === wantArchived;
         });
         filtered.sort(function (a, b) { return safeItemId(b) - safeItemId(a); });
-        renderTxList('transactions-list', filtered.map(mapItemToHomeTxRow));
+        renderTxListWithActions('transactions-list', filtered.map(mapItemToHomeTxRow));
     }
 
     // Called once, after items/categoryConfig and the renders above — same ordering guarantee.
@@ -1400,6 +1531,99 @@
         renderInsightsScreenFromRealData();
         renderSettingsScreenFromRealData();
         renderTransactionsScreenFromRealData(getCurrentTxFilterName());
+    }
+
+    // =====================================================================================
+    // ===== Stage G.2.2: archive/restore logic only — NOT wired to any UI yet (no ⋮ menu,   =====
+    // ===== no onclick, no toggleRowMenu). Mirrors index.html's own archiveItem()/           =====
+    // ===== unarchiveItem() exactly (find by id, flip isArchived, save, re-render) — same    =====
+    // ===== find-by-id/no-op-if-missing shape, just against the Preview-only items array and =====
+    // ===== the Stage G.1 save/render infrastructure instead of index.html's own              =====
+    // ===== saveToLocalStorage()/renderAll(). No direct localStorage access here — persistence =====
+    // ===== goes exclusively through savePreviewItems() (Stage G.1), which itself only ever    =====
+    // ===== writes PREVIEW_DATA_KEY. No other field on the found item is touched, categoryConfig=====
+    // ===== is never read or written, and a missing id is a strict no-op (no save, no render). =====
+    // =====================================================================================
+
+    function archivePreviewItem(id) {
+        var idx = items.findIndex(function (i) { return i.id === id; });
+        if (idx === -1) return;
+        items[idx].isArchived = true;
+        savePreviewItems();
+        renderAllPreviewScreens();
+    }
+
+    function unarchivePreviewItem(id) {
+        var idx = items.findIndex(function (i) { return i.id === id; });
+        if (idx === -1) return;
+        items[idx].isArchived = false;
+        savePreviewItems();
+        renderAllPreviewScreens();
+    }
+
+    // =====================================================================================
+    // ===== Stage G.2.5: row-menu open/close, scoped to the Transactions screen only (the    =====
+    // ===== .tx-menu-toggle/.tx-menu-dropdown markup only exists inside renderTxListWithActions=====
+    // ===== output — Home's renderTxList() output has none, so this logic has nothing to find =====
+    // ===== or affect there). closeAllRowMenus() always reads menu-open state directly from    =====
+    // ===== the DOM's own .open class (document.querySelectorAll) rather than a separate JS    =====
+    // ===== variable — a full renderTxListWithActions() re-render (e.g. after an archive/       =====
+    // ===== restore action, or a filter switch) always rebuilds every dropdown without the      =====
+    // ===== .open class, so there is nothing that can go stale to track. =====
+    // =====================================================================================
+
+    function closeAllRowMenus() {
+        var openDropdowns = document.querySelectorAll('.tx-menu-dropdown.open');
+        for (var i = 0; i < openDropdowns.length; i++) {
+            openDropdowns[i].classList.remove('open');
+        }
+    }
+
+    // Called via onclick="toggleRowMenu(this)" (the button element itself, never a concatenated
+    // id string). Closes any other open row menu first (Stage G.2's approved "only one open at a
+    // time" requirement), then opens this row's own dropdown — unless it was the one already
+    // open, in which case closeAllRowMenus() above already closed it and nothing more happens
+    // (a second click on the same ⋮ toggles it shut).
+    function toggleRowMenu(toggleBtn) {
+        var row = toggleBtn.closest('.tx-row');
+        var dropdown = row ? row.querySelector('.tx-menu-dropdown') : null;
+        if (!dropdown) return;
+        var wasOpen = dropdown.classList.contains('open');
+        closeAllRowMenus();
+        if (!wasOpen) { dropdown.classList.add('open'); }
+    }
+
+    // Single delegated listener, registered once at script-load time (this script only ever runs
+    // once per page load, so no re-registration/guard is needed). Ignores any click that
+    // originated on a .tx-menu-toggle or inside a .tx-menu-dropdown — those are handled by
+    // toggleRowMenu()/handleRowMenuAction() themselves via their own onclick — so this only ever
+    // fires for genuine "click elsewhere" cases, which is exactly what closes an open row menu.
+    document.addEventListener('click', function (e) {
+        if (e.target.closest && (e.target.closest('.tx-menu-toggle') || e.target.closest('.tx-menu-dropdown'))) { return; }
+        closeAllRowMenus();
+    });
+
+    // =====================================================================================
+    // ===== Stage G.2.6: the single dropdown action, wired to the two Stage G.2.2 functions  =====
+    // ===== (archivePreviewItem/unarchivePreviewItem) — no new mutation logic here. Called via =====
+    // ===== onclick="handleRowMenuAction(this)"; the id travels only through data-item-id      =====
+    // ===== (parsed back to a number here, matching the numeric `id` archivePreviewItem()/      =====
+    // ===== unarchivePreviewItem() already expect), never through a concatenated onclick        =====
+    // ===== string. The action to take (archive vs. restore) is looked up fresh from the live    =====
+    // ===== `items` array by id — not trusted from the button's own rendered label — so it is    =====
+    // ===== always correct even if `items` changed since this row was last rendered. Both target =====
+    // ===== functions already call savePreviewItems() (PREVIEW_DATA_KEY only) and                =====
+    // ===== renderAllPreviewScreens() internally, which fully rebuilds transactions-list (once    =====
+    // ===== Stage G.2.6 below wires renderTransactionsScreenFromRealData() to                     =====
+    // ===== renderTxListWithActions) — that rebuild is what closes this row's menu; no separate   =====
+    // ===== closeAllRowMenus() call is needed here. =====
+    // =====================================================================================
+
+    function handleRowMenuAction(actionBtn) {
+        var id = parseInt(actionBtn.getAttribute('data-item-id'), 10);
+        var idx = items.findIndex(function (i) { return i.id === id; });
+        if (idx === -1) return;
+        if (items[idx].isArchived) { unarchivePreviewItem(id); } else { archivePreviewItem(id); }
     }
 </script>
 
