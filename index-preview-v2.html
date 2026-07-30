@@ -228,6 +228,17 @@
     .tx-edit-save { background: var(--color-primary); color: #fff; }
     .tx-edit-cancel { background: var(--color-bg); color: var(--color-text); border: 1px solid var(--color-border); }
 
+    /* ===== Stage G.5: expense-type picker buttons — shown inside the add-transaction form area
+       (#preview-add-form-area) when "הוצאה חדשה" is chosen, before a specific expense type
+       (fixed/variable/dated) is picked. The picker itself reuses .tx-edit-form as its wrapping
+       card (no new wrapper class); only these 2 rules are new. */
+    .expense-type-btn {
+        display: block; width: 100%; text-align: right; margin-bottom: 8px;
+        padding: 12px 14px; border-radius: 10px; border: 1px solid var(--color-border);
+        background: var(--color-bg); font-size: 14px; cursor: pointer; font-family: inherit;
+    }
+    .expense-type-btn.disabled { opacity: .55; cursor: not-allowed; }
+
     /* ===== Transactions screen: search + filter (visual only) ===== */
     .search-bar input {
         width: 100%; padding: 10px 14px; border: 1px solid var(--color-border);
@@ -381,6 +392,9 @@
     <!-- ===== מסך 2: תנועות ===== -->
     <div class="screen" id="screen-transactions">
         <div class="section-title" style="margin-top:4px;">תנועות</div>
+        <!-- Stage G.5: dedicated add-transaction form area, empty by default. Populated only when
+             previewAddMode !== null (see renderAddFormArea() in the script). -->
+        <div id="preview-add-form-area"></div>
         <div class="search-bar">
             <input type="text" placeholder="חיפוש תנועה... (לא פעיל בשלב זה)" disabled>
         </div>
@@ -434,14 +448,14 @@
 <div class="quick-actions-overlay" id="quick-actions-overlay" onclick="toggleQuickActions(false)">
     <div class="quick-actions-sheet" onclick="event.stopPropagation()">
         <h3>הוספת תנועה</h3>
-        <button type="button" class="quick-action-btn disabled" title="עדיין לא פעיל" onclick="toggleQuickActions(false)">
-            <span class="qa-icon">💸</span><span class="qa-label">הוצאה חדשה</span><span class="qa-soon">(בקרוב)</span>
+        <button type="button" class="quick-action-btn" onclick="startPreviewAdd('expense-picker')">
+            <span class="qa-icon">💸</span><span class="qa-label">הוצאה חדשה</span>
         </button>
-        <button type="button" class="quick-action-btn disabled" title="עדיין לא פעיל" onclick="toggleQuickActions(false)">
-            <span class="qa-icon">💰</span><span class="qa-label">הכנסה חדשה</span><span class="qa-soon">(בקרוב)</span>
+        <button type="button" class="quick-action-btn" onclick="startPreviewAdd('income')">
+            <span class="qa-icon">💰</span><span class="qa-label">הכנסה חדשה</span>
         </button>
-        <button type="button" class="quick-action-btn disabled" title="עדיין לא פעיל" onclick="toggleQuickActions(false)">
-            <span class="qa-icon">🏦</span><span class="qa-label">הלוואה חדשה</span><span class="qa-soon">(בקרוב)</span>
+        <button type="button" class="quick-action-btn" onclick="startPreviewAdd('loan')">
+            <span class="qa-icon">🏦</span><span class="qa-label">הלוואה חדשה</span>
         </button>
         <button type="button" class="quick-action-close" onclick="toggleQuickActions(false)">ביטול</button>
     </div>
@@ -1245,6 +1259,16 @@
     // separate `items` array.
     var previewEditingId = null;
 
+    // Stage G.5: tracks the add-transaction form currently open (if any) at the top of the
+    // Transactions screen. null = closed. 'expense-picker' = the intermediate fixed/variable/dated
+    // chooser (no category chosen yet). 'income'/'loan'/'fixed'/'variable'/'dated' = that type's
+    // full form is open. previewAddCategoryKey holds the categoryConfig key the new item will be
+    // saved under (displayCategory) — only meaningful once a concrete type (not 'expense-picker')
+    // is selected. Both are visual-only state, mirroring previewEditingId: never persisted, always
+    // reset to null on page load.
+    var previewAddMode = null;
+    var previewAddCategoryKey = null;
+
     // =====================================================================================
     // ===== Stage D.4 (revised, option ג׳): orchestration only — connects buildNarrative()  =====
     // ===== to the REAL Preview items/categoryConfig loaded above (Stage D.2), with a       =====
@@ -1595,6 +1619,11 @@
         renderInsightsScreenFromRealData();
         renderSettingsScreenFromRealData();
         renderTransactionsScreenFromRealData(getCurrentTxFilterName());
+        // Stage G.5: keeps the add-transaction form area in sync with previewAddMode across any
+        // re-render triggered by another action (archive/restore/delete/inline-edit-save) — same
+        // "survives unrelated re-renders" reasoning already applied to previewEditingId elsewhere
+        // in this file.
+        renderAddFormArea();
     }
 
     // =====================================================================================
@@ -1801,6 +1830,13 @@
         var id = parseInt(actionBtn.getAttribute('data-item-id'), 10);
         var idx = items.findIndex(function (i) { return i.id === id; });
         if (idx === -1) return;
+        // Stage G.5: enforce "only one form open at a time" in both directions — opening an inline
+        // edit discards any in-progress (unsaved) add-transaction form, mirroring startPreviewAdd()'s
+        // own symmetric handling of an open inline edit. No data is touched by this discard (pure
+        // no-op on `items`, same as cancelPreviewAdd()).
+        previewAddMode = null;
+        previewAddCategoryKey = null;
+        renderAddFormArea();
         previewEditingId = id;
         // Only the Transactions list needs to change (a row is swapping to its edit form) — no
         // data changed, so Home/Insights/Settings are left untouched, same reasoning
@@ -1895,6 +1931,267 @@
 
         previewEditingId = null;
         savePreviewItems();
+        renderAllPreviewScreens();
+    }
+
+    // =====================================================================================
+    // ===== Stage G.5: adding a new income/expense/loan — Transactions screen only, via the =====
+    // ===== FAB's Quick Actions sheet. Three separate routes (income / expense-with-a-type-  =====
+    // ===== picker / loan), a dedicated form area at the top of the Transactions screen       =====
+    // ===== (#preview-add-form-area), and the same field-by-field validation/logic as         =====
+    // ===== index.html's own addNewItem() (copied literally per branch below). Only one form   =====
+    // ===== — add OR inline-edit — can be open at a time (enforced from both directions:       =====
+    // ===== startPreviewAdd() below discards an open edit, handleEditMenuAction() above        =====
+    // ===== discards an open add). All writes go through the existing savePreviewItems()/       =====
+    // ===== renderAllPreviewScreens() (PREVIEW_DATA_KEY only) — no new persistence path.        =====
+    // =====================================================================================
+
+    // Copied verbatim from index.html — used only to pre-fill the "dated" add-form's date field
+    // with today's date, matching index.html's own switchFormType() convention for that same field.
+    function todayStr() {
+        var d = new Date();
+        var mm = ('0' + (d.getMonth() + 1)).slice(-2);
+        var dd = ('0' + d.getDate()).slice(-2);
+        return d.getFullYear() + '-' + mm + '-' + dd;
+    }
+
+    // All categoryConfig keys whose baseType matches. Object key order (for..in) is the same
+    // insertion-order iteration index.html itself already relies on for this same object
+    // (buildFormDropdown/initCategoryInputs) — no sorting invented here.
+    function getCategoryKeysForBaseType(baseType) {
+        var keys = [];
+        for (var key in categoryConfig) {
+            if (categoryConfig[key] && categoryConfig[key].baseType === baseType) { keys.push(key); }
+        }
+        return keys;
+    }
+
+    // Default category for a freshly chosen expense type: prefers the built-in key with the same
+    // name as the baseType itself (e.g. 'fixed'/'variable' — always present, never deletable via
+    // the Settings UI in index.html), falling back to the first custom category with a matching
+    // baseType (relevant mainly for 'dated', which has no built-in key at all — see the picker's
+    // disabled-state handling below). Returns null only when no category matches at all.
+    function getDefaultCategoryKeyForBaseType(baseType) {
+        var keys = getCategoryKeysForBaseType(baseType);
+        if (keys.indexOf(baseType) !== -1) { return baseType; }
+        return keys.length > 0 ? keys[0] : null;
+    }
+
+    // Opens the add-transaction form area for 'income'/'loan' (a full form immediately) or
+    // 'expense-picker' (the fixed/variable/dated chooser). 'income'/'loan' always have exactly one
+    // built-in categoryConfig key (never deletable/duplicable via index.html's own Settings UI —
+    // its custom-category form offers only fixed/variable/income/dated as types, never loan), so
+    // previewAddCategoryKey is set directly here rather than going through
+    // getDefaultCategoryKeyForBaseType().
+    function startPreviewAdd(mode) {
+        // Enforce "only one form open at a time": discards any open inline edit (no save, no
+        // mutation of `items` — same no-op semantics as cancelPreviewEdit()).
+        previewEditingId = null;
+
+        previewAddMode = mode;
+        previewAddCategoryKey = (mode === 'income') ? 'income' : (mode === 'loan') ? 'loan' : null;
+
+        toggleQuickActions(false);
+        showScreen('transactions');
+        renderTransactionsScreenFromRealData(getCurrentTxFilterName());
+        renderAddFormArea();
+    }
+
+    // Called from the expense-type picker's 3 buttons. A baseType with no matching category
+    // (only possible for 'dated' — see buildPreviewAddFormHtml()'s picker markup, which disables
+    // that button entirely in this case) is a strict no-op: the picker's own disabled state should
+    // already prevent this call, but this guard is kept anyway, matching this file's existing
+    // convention of never trusting rendered UI state blindly (e.g. handleRowMenuAction() re-checks
+    // live data rather than trusting the button's own label).
+    function chooseExpenseAddType(baseType) {
+        var defaultKey = getDefaultCategoryKeyForBaseType(baseType);
+        if (!defaultKey) { return; }
+        previewAddMode = baseType;
+        previewAddCategoryKey = defaultKey;
+        renderAddFormArea();
+    }
+
+    // No-argument, mirroring cancelPreviewEdit()'s own convention — there is only ever one add
+    // form open at a time, so no id/identifier is needed to know what to discard. Strict no-op on
+    // data: no save, no mutation of `items`.
+    function cancelPreviewAdd() {
+        previewAddMode = null;
+        previewAddCategoryKey = null;
+        renderAddFormArea();
+    }
+
+    // Builds the markup for whatever previewAddMode currently is: '' when closed, the
+    // expense-type picker, or one of the 5 full add forms (income/loan/variable/fixed/dated) —
+    // each a literal field-for-field copy of index.html's own static #form-income/#form-loan/
+    // #form-variable/#form-fixed/#form-dated blocks, using new "add-*" element ids (distinct from
+    // both index.html's own ids and this file's "edit-*-<id>" inline-edit ids, so none can ever
+    // collide). Reuses the existing .tx-edit-form/.tx-edit-group/.tx-edit-actions/.tx-edit-save/
+    // .tx-edit-cancel classes (Stage G.4) as-is — no visual reason for a separate class set, since
+    // the layout is identical to the inline edit form. A category picker (<select>) is shown for
+    // fixed/variable/dated only when more than one categoryConfig key matches that baseType;
+    // otherwise the single match is used silently, exactly like the (never-shown-for-just-one-
+    // option) reasoning already used elsewhere in this file.
+    function buildPreviewAddFormHtml() {
+        if (previewAddMode === null) { return ''; }
+
+        if (previewAddMode === 'expense-picker') {
+            // 'dated' has no built-in categoryConfig key in either index.html or this file — a
+            // dated item can only ever be saved under a custom category the user created with
+            // baseType 'dated' via the Settings screen. Per approved product decision: if no such
+            // category exists yet, the button is disabled (native `disabled` attribute — no
+            // onclick at all, not just a visual treatment) with a hint, rather than inventing a
+            // generic fallback category that index.html itself has no concept of.
+            var datedKeys = getCategoryKeysForBaseType('dated');
+            var datedDisabled = datedKeys.length === 0;
+            var html = '<div class="tx-edit-form">';
+            html += '<div class="tx-edit-group"><label>איזה סוג הוצאה?</label></div>';
+            html += '<button type="button" class="expense-type-btn" onclick="chooseExpenseAddType(\'fixed\')">🏡 הוצאה קבועה</button>';
+            html += '<button type="button" class="expense-type-btn" onclick="chooseExpenseAddType(\'variable\')">🛒 הוצאה משתנה</button>';
+            if (datedDisabled) {
+                html += '<button type="button" class="expense-type-btn disabled" disabled title="קודם צור קטגוריה מסוג \'חיוב חד-פעמי\' במסך ההגדרות">📅 הוצאה מתוארכת</button>';
+            } else {
+                html += '<button type="button" class="expense-type-btn" onclick="chooseExpenseAddType(\'dated\')">📅 הוצאה מתוארכת</button>';
+            }
+            html += '<div class="tx-edit-actions"><button type="button" class="tx-edit-cancel" onclick="cancelPreviewAdd()">ביטול</button></div>';
+            html += '</div>';
+            return html;
+        }
+
+        var categoryPickerHtml = '';
+        if (previewAddMode === 'fixed' || previewAddMode === 'variable' || previewAddMode === 'dated') {
+            var matchingKeys = getCategoryKeysForBaseType(previewAddMode);
+            if (matchingKeys.length > 1) {
+                categoryPickerHtml = '<div class="tx-edit-group"><label>קטגוריה</label><select id="add-category-key" onchange="previewAddCategoryKey = this.value;">';
+                for (var k = 0; k < matchingKeys.length; k++) {
+                    var mk = matchingKeys[k];
+                    var mLabel = (categoryConfig[mk] && categoryConfig[mk].label) ? categoryConfig[mk].label : mk;
+                    categoryPickerHtml += '<option value="' + escapeHtml(mk) + '"' + (mk === previewAddCategoryKey ? ' selected' : '') + '>' + escapeHtml(mLabel) + '</option>';
+                }
+                categoryPickerHtml += '</select></div>';
+            }
+        }
+
+        var html = '<div class="tx-edit-form">';
+
+        if (previewAddMode === 'income') {
+            html += '<div class="tx-edit-group"><label>שם / תיאור</label><input type="text" id="add-inc-title" placeholder="משכורת, בונוס"></div>' +
+                '<div class="tx-edit-group"><label>סכום</label><input type="number" id="add-inc-amount" placeholder="₪"></div>';
+        } else if (previewAddMode === 'loan') {
+            html += '<div class="tx-edit-group"><label>שם ההלוואה</label><input type="text" id="add-loan-title"></div>' +
+                '<div class="tx-edit-group"><label>סכום מקור (סך ההלוואה המקורית)</label><input type="number" id="add-loan-original" placeholder="₪"></div>' +
+                '<div class="tx-edit-group"><label>החזר חודשי</label><input type="number" id="add-loan-amount" placeholder="₪"></div>' +
+                '<div class="tx-edit-group"><label>היכן יורד</label><input type="text" id="add-loan-where"></div>' +
+                '<div class="tx-edit-group"><label>ריבית (%)</label><input type="number" id="add-loan-interest" step="0.01"></div>' +
+                '<div class="tx-edit-group"><label>מתי יורד (יום בחודש)</label><input type="number" id="add-loan-day" min="1" max="31" value="1"></div>' +
+                '<div class="tx-edit-group"><label>כמה תשלומים (סך הכל)</label><input type="number" id="add-loan-total"></div>' +
+                '<div class="tx-edit-group"><label>תאריך לקיחה / פתיחה</label><input type="date" id="add-loan-start"></div>';
+        } else if (previewAddMode === 'variable') {
+            html += categoryPickerHtml +
+                '<div class="tx-edit-group"><label>שם התשלום</label><input type="text" id="add-var-title"></div>' +
+                '<div class="tx-edit-group"><label>סכום מקור (סך כל העסקה המקורית)</label><input type="number" id="add-var-original" placeholder="₪"></div>' +
+                '<div class="tx-edit-group"><label>עלות חודשית</label><input type="number" id="add-var-amount" placeholder="₪"></div>' +
+                '<div class="tx-edit-group"><label>כמה תשלומים (סך הכל)</label><input type="number" id="add-var-total"></div>' +
+                '<div class="tx-edit-group"><label>תאריך התחלה</label><input type="date" id="add-var-start"></div>';
+        } else if (previewAddMode === 'fixed') {
+            html += categoryPickerHtml +
+                '<div class="tx-edit-group"><label>שם ההוצאה</label><input type="text" id="add-fix-title"></div>' +
+                '<div class="tx-edit-group"><label>סכום</label><input type="number" id="add-fix-amount" placeholder="₪"></div>' +
+                '<div class="tx-edit-group"><label>איפה יורד</label><select id="add-fix-where" onchange="togglePreviewCardLast4Field(\'add-fix-card-last4-group\', this.value)"><option value="bank">חשבון בנק</option><option value="credit">כרטיס אשראי</option></select></div>' +
+                '<div class="tx-edit-group" id="add-fix-card-last4-group" style="display:none;"><label>4 ספרות אחרונות של הכרטיס</label><input type="text" id="add-fix-card-last4" maxlength="4" inputmode="numeric" placeholder="לדוגמה: 5646"></div>' +
+                '<div class="tx-edit-group"><label>חודשי או שנתי</label><select id="add-fix-period"><option value="חודשי">חודשי</option><option value="שנתי">שנתי</option></select></div>' +
+                '<div class="tx-edit-group"><label>הערות</label><textarea id="add-fix-notes"></textarea></div>';
+        } else if (previewAddMode === 'dated') {
+            html += categoryPickerHtml +
+                '<div class="tx-edit-group"><label>שם ההוצאה</label><input type="text" id="add-dated-title" placeholder="לדוגמה: קניות בסופר"></div>' +
+                '<div class="tx-edit-group"><label>סכום</label><input type="number" id="add-dated-amount" placeholder="₪"></div>' +
+                '<div class="tx-edit-group"><label>תאריך החיוב</label><input type="date" id="add-dated-date" value="' + todayStr() + '"></div>';
+        }
+
+        html += '<div class="tx-edit-actions">' +
+            '<button type="button" class="tx-edit-save" onclick="addPreviewItem()">הוסף תנועה +</button>' +
+            '<button type="button" class="tx-edit-cancel" onclick="cancelPreviewAdd()">ביטול</button>' +
+            '</div></div>';
+
+        return html;
+    }
+
+    function renderAddFormArea() {
+        document.getElementById('preview-add-form-area').innerHTML = buildPreviewAddFormHtml();
+    }
+
+    // Called once, after every other initial render above — mirrors this file's existing
+    // "define, then call once at load" convention. previewAddMode starts null, so this simply
+    // confirms #preview-add-form-area starts empty (it already is, in the static HTML).
+    renderAddFormArea();
+
+    // Literal, branch-for-branch copy of index.html's own addNewItem() — same object shape, same
+    // required-field checks, same exact alert() messages, same cardLast4 4-digit validation. The
+    // only structural difference: `baseType`/`catKey` come from previewAddMode/previewAddCategoryKey
+    // (already resolved when the form was opened) rather than from a shared `#main-type` <select>,
+    // since Stage G.5 uses 3 separate entry routes instead of index.html's single dropdown+form.
+    // On validation failure: alert() only, previewAddMode/previewAddCategoryKey are left untouched
+    // and nothing is saved or re-rendered — the form stays open exactly as the user left it, same
+    // as index.html's own addNewItem() and this file's own savePreviewInlineEdit() (Stage G.4).
+    function addPreviewItem() {
+        if (previewAddMode === null || previewAddMode === 'expense-picker') { return; }
+
+        var baseType = previewAddMode;
+        var catKey = previewAddCategoryKey;
+        if (!catKey) { return; }
+
+        var obj = { id: Date.now(), type: baseType, displayCategory: catKey, isArchived: false };
+
+        if (baseType === 'income') {
+            obj.title = document.getElementById('add-inc-title').value.trim();
+            obj.amount = parseFloat(document.getElementById('add-inc-amount').value);
+            if (!obj.title || isNaN(obj.amount)) { alert('מלא שם וסכום'); return; }
+        } else if (baseType === 'loan') {
+            obj.title = document.getElementById('add-loan-title').value.trim();
+            obj.originalAmount = parseFloat(document.getElementById('add-loan-original').value) || 0;
+            obj.amount = parseFloat(document.getElementById('add-loan-amount').value);
+            obj.where = document.getElementById('add-loan-where').value;
+            obj.interest = document.getElementById('add-loan-interest').value;
+            obj.day = document.getElementById('add-loan-day').value;
+            obj.total = document.getElementById('add-loan-total').value;
+            obj.start = document.getElementById('add-loan-start').value;
+            if (!obj.title || isNaN(obj.amount)) { alert('מלא שם וסכום החזר'); return; }
+        } else if (baseType === 'variable') {
+            obj.title = document.getElementById('add-var-title').value.trim();
+            obj.originalAmount = parseFloat(document.getElementById('add-var-original').value) || 0;
+            obj.amount = parseFloat(document.getElementById('add-var-amount').value);
+            obj.total = document.getElementById('add-var-total').value;
+            obj.start = document.getElementById('add-var-start').value;
+            if (!obj.title || isNaN(obj.amount)) { alert('מלא שם ועלות חודשית'); return; }
+        } else if (baseType === 'fixed') {
+            obj.title = document.getElementById('add-fix-title').value.trim();
+            obj.amount = parseFloat(document.getElementById('add-fix-amount').value);
+            obj.where = document.getElementById('add-fix-where').value;
+            obj.period = document.getElementById('add-fix-period').value;
+            obj.notes = document.getElementById('add-fix-notes').value;
+            if (!obj.title || isNaN(obj.amount)) { alert('מלא שם וסכום'); return; }
+            if (obj.where === 'credit') {
+                obj.cardLast4 = document.getElementById('add-fix-card-last4').value.trim();
+                if (!/^\d{4}$/.test(obj.cardLast4)) { alert('נא להזין בדיוק 4 ספרות עבור כרטיס האשראי'); return; }
+            } else {
+                obj.cardLast4 = '';
+            }
+        } else if (baseType === 'dated') {
+            obj.title = document.getElementById('add-dated-title').value.trim();
+            obj.start = document.getElementById('add-dated-date').value;
+            obj.amount = parseFloat(document.getElementById('add-dated-amount').value);
+            if (!obj.title || !obj.start || isNaN(obj.amount)) { alert('מלא שם, תאריך וסכום'); return; }
+        }
+
+        items.push(obj);
+        savePreviewItems();
+
+        previewAddMode = null;
+        previewAddCategoryKey = null;
+
+        // Approved clarification (product decision, ז׳.5): switch the Transactions screen to the
+        // "active" filter FIRST — a freshly added item is never archived, so this guarantees it is
+        // immediately visible — THEN re-render everything, in that exact order.
+        setTxFilter('active');
         renderAllPreviewScreens();
     }
 </script>
