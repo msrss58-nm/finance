@@ -204,6 +204,30 @@
        own confirm() handles that, per approved product decision). */
     .tx-menu-item-danger { color: var(--color-danger); }
 
+    /* ===== Stage G.4: inline edit form — replaces a .tx-row entirely while that row's item is
+       being edited (Stage G.4 product decision 2א). Deliberately its own class names (not reused
+       from index.html's .edit-inside-form/.form-group/.btn-save-edit/.btn-cancel-edit), since this
+       file has its own separate design system — only the underlying field ids/behavior mirror
+       index.html, not the CSS. */
+    .tx-edit-form {
+        background: var(--color-surface); border-radius: 12px; padding: 14px;
+        margin-bottom: 8px; box-shadow: var(--shadow);
+    }
+    .tx-edit-group { margin-bottom: 10px; }
+    .tx-edit-group label { display: block; font-size: 12px; color: var(--color-text-muted); margin-bottom: 4px; }
+    .tx-edit-group input, .tx-edit-group select, .tx-edit-group textarea {
+        width: 100%; padding: 9px 12px; border: 1px solid var(--color-border);
+        border-radius: 10px; font-size: 14px; background: var(--color-bg); font-family: inherit;
+    }
+    .tx-edit-group textarea { min-height: 56px; resize: vertical; }
+    .tx-edit-actions { display: flex; gap: 8px; margin-top: 4px; }
+    .tx-edit-save, .tx-edit-cancel {
+        flex: 1; padding: 10px; border-radius: 10px; border: none;
+        font-size: 13.5px; cursor: pointer; font-family: inherit;
+    }
+    .tx-edit-save { background: var(--color-primary); color: #fff; }
+    .tx-edit-cancel { background: var(--color-bg); color: var(--color-text); border: 1px solid var(--color-border); }
+
     /* ===== Transactions screen: search + filter (visual only) ===== */
     .search-bar input {
         width: 100%; padding: 10px 14px; border: 1px solid var(--color-border);
@@ -563,6 +587,24 @@
         var html = '';
         for (var i = 0; i < txItems.length; i++) {
             var t = txItems[i];
+
+            // Stage G.4: if this row's item is the one currently being edited, its normal
+            // .tx-row markup (icon/title/date/amount/⋮ menu) is replaced entirely by the inline
+            // edit form (product decision 2א). The full raw item (not the trimmed
+            // mapItemToHomeTxRow() shape `t`) is looked up fresh from the live `items` array —
+            // same "never trust the previously-rendered shape, re-derive from the live array"
+            // convention already used by handleRowMenuAction()/handleDeleteMenuAction() — so the
+            // form always reflects the item's current in-memory state. A missing item (deleted by
+            // another path between render and this lookup) simply falls through to the normal row
+            // below rather than rendering a form for nothing.
+            if (previewEditingId !== null && t.id === previewEditingId) {
+                var editIdx = items.findIndex(function (it) { return it.id === t.id; });
+                if (editIdx !== -1) {
+                    html += buildPreviewEditFormHtml(items[editIdx]);
+                    continue;
+                }
+            }
+
             // Reuses id/isArchived already added to mapItemToHomeTxRow()'s return shape in Stage
             // G.2.1 — no new data source, no new computation. actionLabel is the only new value
             // derived here, and it depends on nothing but that existing isArchived field.
@@ -574,6 +616,12 @@
             // onclick or any JS string — data-item-id is the only place it appears, as plain
             // attribute text, exactly as required.
             var safeId = escapeHtml(String(t.id));
+            // Stage G.4: "✏️ עריכה" is only offered for active items (product decision 1א) — an
+            // archived row's dropdown still shows exactly "שחזר" + "מחק לצמיתות", unchanged from
+            // Stage G.3. Placed first in the dropdown to match index.html's own button order
+            // (עריכה, then archive/restore, then delete).
+            var editMenuItemHtml = t.isArchived ? '' :
+                '<button type="button" class="tx-menu-item" data-item-id="' + safeId + '" onclick="handleEditMenuAction(this)">✏️ עריכה</button>';
             html += '<div class="tx-row">' +
                 '<div class="tx-icon">' + t.icon + '</div>' +
                 '<div class="tx-info">' +
@@ -583,6 +631,7 @@
                 '<div class="tx-amount ' + t.type + '">' + escapeHtml(t.amount) + '</div>' +
                 '<button type="button" class="tx-menu-toggle" data-item-id="' + safeId + '" aria-label="' + escapeHtml('פעולות עבור ' + t.title) + '" onclick="toggleRowMenu(this)">⋮</button>' +
                 '<div class="tx-menu-dropdown">' +
+                    editMenuItemHtml +
                     '<button type="button" class="tx-menu-item" data-item-id="' + safeId + '" onclick="handleRowMenuAction(this)">' + escapeHtml(actionLabel) + '</button>' +
                     // Stage G.3: second, destructive menu item — same data-item-id-only wiring
                     // convention as the button above (id never enters a concatenated onclick
@@ -1190,6 +1239,12 @@
     var items = loadPreviewItems();
     var categoryConfig = loadPreviewCategoryConfig();
 
+    // Stage G.4: tracks which item's row (Transactions screen only) is currently showing the
+    // inline edit form in place of its normal row markup. null means no row is being edited.
+    // Mirrors index.html's own `editingId` module-level variable, just scoped to Preview v2's
+    // separate `items` array.
+    var previewEditingId = null;
+
     // =====================================================================================
     // ===== Stage D.4 (revised, option ג׳): orchestration only — connects buildNarrative()  =====
     // ===== to the REAL Preview items/categoryConfig loaded above (Stage D.2), with a       =====
@@ -1657,6 +1712,190 @@
         var id = parseInt(actionBtn.getAttribute('data-item-id'), 10);
         if (!confirm('למחוק את התנועה הזו לצמיתות? לא ניתן לשחזר לאחר מכן.')) return;
         deletePreviewItem(id);
+    }
+
+    // =====================================================================================
+    // ===== Stage G.4: inline editing — Transactions screen only. The 3 dropdown actions     =====
+    // ===== above (edit/archive-restore/delete) are unchanged; this section adds the fourth   =====
+    // ===== capability: "✏️ עריכה" opens an inline form in place of the row (rendered by       =====
+    // ===== renderTxListWithActions() above), and the two functions below save or discard it.  =====
+    // =====================================================================================
+
+    // Mirrors index.html's own toggleCardLast4Field(groupId, whereValue) exactly — only the
+    // group id it is called with differs (edit-card-last4-group-<id> here vs. the add-form's
+    // fix-card-last4-group / an edit-card-last4-group-<id> in index.html itself). Purely a
+    // display toggle; touches no data.
+    function togglePreviewCardLast4Field(groupId, whereValue) {
+        var group = document.getElementById(groupId);
+        if (group) { group.style.display = (whereValue === 'credit') ? 'block' : 'none'; }
+    }
+
+    // Builds the inline edit form for one item, branching by item.type exactly like index.html's
+    // own renderAll() does inline (isEditing branch) — copied literally per type (dated / fixed /
+    // variable / loan / default-for-income), same field ids (edit-title-<id>, edit-amount-<id>,
+    // etc.) so savePreviewInlineEdit() below can read them back the same way saveInlineEdit()
+    // does in index.html. Read-only with respect to `items`/localStorage — building this markup
+    // never saves or mutates anything by itself.
+    function buildPreviewEditFormHtml(item) {
+        var id = item.id;
+        var html = '<div class="tx-edit-form">';
+
+        if (item.type === 'dated') {
+            html += '<div class="tx-edit-group"><label>שם ההוצאה</label><input type="text" id="edit-title-' + id + '" value="' + escapeHtml(item.title || '') + '"></div>' +
+                '<div class="tx-edit-group"><label>סכום</label><input type="number" id="edit-amount-' + id + '" value="' + item.amount + '"></div>' +
+                '<div class="tx-edit-group"><label>תאריך החיוב</label><input type="date" id="edit-date-' + id + '" value="' + (item.start || '') + '"></div>';
+            html += '<div class="tx-edit-actions">' +
+                '<button type="button" class="tx-edit-save" onclick="savePreviewInlineEdit(' + id + ')">💾 שמור שינויים</button>' +
+                '<button type="button" class="tx-edit-cancel" onclick="cancelPreviewEdit()">ביטול</button>' +
+                '</div></div>';
+            return html;
+        }
+
+        html += '<div class="tx-edit-group"><label>שם / כותרת</label><input type="text" id="edit-title-' + id + '" value="' + escapeHtml(item.title || '') + '"></div>';
+
+        if (item.type === 'fixed') {
+            var isCreditFixed = (item.where === 'credit');
+            html += '<div class="tx-edit-group"><label>סכום</label><input type="number" id="edit-amount-' + id + '" value="' + item.amount + '"></div>' +
+                '<div class="tx-edit-group"><label>איפה יורד</label><select id="edit-where-' + id + '" onchange="togglePreviewCardLast4Field(\'edit-card-last4-group-' + id + '\', this.value)">' +
+                    '<option value="bank"' + (!isCreditFixed ? ' selected' : '') + '>חשבון בנק</option>' +
+                    '<option value="credit"' + (isCreditFixed ? ' selected' : '') + '>כרטיס אשראי</option>' +
+                '</select></div>' +
+                '<div class="tx-edit-group" id="edit-card-last4-group-' + id + '" style="display:' + (isCreditFixed ? 'block' : 'none') + ';"><label>4 ספרות אחרונות של הכרטיס</label><input type="text" id="edit-card-last4-' + id + '" maxlength="4" inputmode="numeric" value="' + escapeHtml(item.cardLast4 || '') + '"></div>' +
+                '<div class="tx-edit-group"><label>תדירות</label><select id="edit-period-' + id + '">' +
+                    '<option value="חודשי"' + (item.period === 'חודשי' ? ' selected' : '') + '>חודשי</option>' +
+                    '<option value="שנתי"' + (item.period === 'שנתי' ? ' selected' : '') + '>שנתי</option>' +
+                '</select></div>' +
+                '<div class="tx-edit-group"><label>הערות</label><textarea id="edit-notes-' + id + '">' + escapeHtml(item.notes || '') + '</textarea></div>';
+        } else if (item.type === 'variable') {
+            html += '<div class="tx-edit-group"><label>סכום מקור</label><input type="number" id="edit-original-' + id + '" value="' + (item.originalAmount || '') + '"></div>' +
+                '<div class="tx-edit-group"><label>עלות חודשית</label><input type="number" id="edit-amount-' + id + '" value="' + item.amount + '"></div>' +
+                '<div class="tx-edit-group"><label>סך תשלומים</label><input type="number" id="edit-total-' + id + '" value="' + (item.total || '') + '"></div>' +
+                '<div class="tx-edit-group"><label>תאריך התחלה</label><input type="date" id="edit-start-' + id + '" value="' + (item.start || '') + '"></div>';
+        } else if (item.type === 'loan') {
+            html += '<div class="tx-edit-group"><label>סכום מקור</label><input type="number" id="edit-original-' + id + '" value="' + (item.originalAmount || '') + '"></div>' +
+                '<div class="tx-edit-group"><label>החזר חודשי</label><input type="number" id="edit-amount-' + id + '" value="' + item.amount + '"></div>' +
+                '<div class="tx-edit-group"><label>היכן יורד</label><input type="text" id="edit-where-' + id + '" value="' + escapeHtml(item.where || '') + '"></div>' +
+                '<div class="tx-edit-group"><label>ריבית (%)</label><input type="number" step="0.01" id="edit-interest-' + id + '" value="' + (item.interest || '') + '"></div>' +
+                '<div class="tx-edit-group"><label>יום בחודש</label><input type="number" id="edit-day-' + id + '" value="' + (item.day || '1') + '"></div>' +
+                '<div class="tx-edit-group"><label>סך תשלומים</label><input type="number" id="edit-total-' + id + '" value="' + (item.total || '') + '"></div>' +
+                '<div class="tx-edit-group"><label>תאריך מתחיל</label><input type="date" id="edit-start-' + id + '" value="' + (item.start || '') + '"></div>';
+        } else {
+            html += '<div class="tx-edit-group"><label>סכום</label><input type="number" id="edit-amount-' + id + '" value="' + item.amount + '"></div>';
+        }
+
+        html += '<div class="tx-edit-actions">' +
+            '<button type="button" class="tx-edit-save" onclick="savePreviewInlineEdit(' + id + ')">💾 שמור שינויים</button>' +
+            '<button type="button" class="tx-edit-cancel" onclick="cancelPreviewEdit()">ביטול</button>' +
+            '</div></div>';
+
+        return html;
+    }
+
+    // Called via onclick="handleEditMenuAction(this)" from the dropdown's "✏️ עריכה" item — same
+    // data-item-id-only wiring convention as every other row-menu handler in this file. A missing/
+    // nonexistent id is a strict no-op (previewEditingId is never set, nothing re-renders).
+    // Archived items never reach this handler in practice (renderTxListWithActions() omits the
+    // "✏️ עריכה" button entirely for them, per product decision 1א), but the id is still verified
+    // against the live `items` array here rather than trusted blindly.
+    function handleEditMenuAction(actionBtn) {
+        var id = parseInt(actionBtn.getAttribute('data-item-id'), 10);
+        var idx = items.findIndex(function (i) { return i.id === id; });
+        if (idx === -1) return;
+        previewEditingId = id;
+        // Only the Transactions list needs to change (a row is swapping to its edit form) — no
+        // data changed, so Home/Insights/Settings are left untouched, same reasoning
+        // cancelPreviewEdit() below uses. Preserves whichever filter (active/archived) is
+        // currently selected, exactly like every other Transactions re-render in this file.
+        renderTransactionsScreenFromRealData(getCurrentTxFilterName());
+    }
+
+    // Called via onclick="cancelPreviewEdit()" from the edit form's own "ביטול" button — takes no
+    // argument because, unlike every other row action, the form itself does not carry a
+    // data-item-id anywhere (it doesn't need one: previewEditingId already identifies the row).
+    // Strict no-op on data: no save, no mutation of `items`, just clears previewEditingId and
+    // re-renders the Transactions list so the row reverts to its normal (non-edit) markup —
+    // preserving whichever filter is currently selected.
+    function cancelPreviewEdit() {
+        previewEditingId = null;
+        renderTransactionsScreenFromRealData(getCurrentTxFilterName());
+    }
+
+    // Called via onclick="savePreviewInlineEdit(<id>)" — the id here is baked into the form's own
+    // buttons at render time (buildPreviewEditFormHtml()), not read from a data-item-id attribute,
+    // matching index.html's own saveInlineEdit(id) call convention exactly (index.html's
+    // btn-save-edit button is likewise `onclick="saveInlineEdit(item.id)"`, a literal numeric
+    // argument, not an attribute lookup). Field-reading and validation below are copied literally,
+    // branch-for-branch, from index.html's saveInlineEdit() (dated / fixed / variable / loan /
+    // default-for-income) — same required fields, same alert() messages, per approved product
+    // decision 3א (no new error UI). On any validation failure: alert() only, previewEditingId is
+    // left unchanged and nothing re-renders, so the form stays open with whatever the user typed
+    // still in its fields — exactly index.html's own behavior. A missing/nonexistent id is a
+    // strict no-op (no alert, no save, no render), mirroring saveInlineEdit()'s own `if (idx ===
+    // -1) return;` guard.
+    function savePreviewInlineEdit(id) {
+        var idx = items.findIndex(function (i) { return i.id === id; });
+        if (idx === -1) return;
+        var item = items[idx];
+
+        if (item.type === 'dated') {
+            var datedTitleVal = document.getElementById('edit-title-' + id).value.trim();
+            var dateVal = document.getElementById('edit-date-' + id).value;
+            var dAmountVal = parseFloat(document.getElementById('edit-amount-' + id).value);
+            if (!datedTitleVal || !dateVal || isNaN(dAmountVal)) {
+                alert('נא להזין שם, תאריך וסכום תקינים');
+                return;
+            }
+            item.title = datedTitleVal;
+            item.start = dateVal;
+            item.amount = dAmountVal;
+            previewEditingId = null;
+            savePreviewItems();
+            renderAllPreviewScreens();
+            return;
+        }
+
+        var titleVal = document.getElementById('edit-title-' + id).value.trim();
+        var amountVal = parseFloat(document.getElementById('edit-amount-' + id).value);
+
+        if (!titleVal || isNaN(amountVal)) {
+            alert('נא להזין שם וסכום תקינים');
+            return;
+        }
+
+        item.title = titleVal;
+        item.amount = amountVal;
+
+        if (item.type === 'fixed') {
+            var newWhere = document.getElementById('edit-where-' + id).value;
+            if (newWhere === 'credit') {
+                var newCardLast4 = document.getElementById('edit-card-last4-' + id).value.trim();
+                if (!/^\d{4}$/.test(newCardLast4)) {
+                    alert('נא להזין בדיוק 4 ספרות עבור כרטיס האשראי');
+                    return;
+                }
+                item.cardLast4 = newCardLast4;
+            } else {
+                item.cardLast4 = '';
+            }
+            item.where = newWhere;
+            item.period = document.getElementById('edit-period-' + id).value;
+            item.notes = document.getElementById('edit-notes-' + id).value;
+        } else if (item.type === 'variable') {
+            item.originalAmount = parseFloat(document.getElementById('edit-original-' + id).value) || 0;
+            item.total = document.getElementById('edit-total-' + id).value;
+            item.start = document.getElementById('edit-start-' + id).value;
+        } else if (item.type === 'loan') {
+            item.originalAmount = parseFloat(document.getElementById('edit-original-' + id).value) || 0;
+            item.where = document.getElementById('edit-where-' + id).value;
+            item.interest = document.getElementById('edit-interest-' + id).value;
+            item.day = document.getElementById('edit-day-' + id).value;
+            item.total = document.getElementById('edit-total-' + id).value;
+            item.start = document.getElementById('edit-start-' + id).value;
+        }
+
+        previewEditingId = null;
+        savePreviewItems();
+        renderAllPreviewScreens();
     }
 </script>
 
