@@ -271,6 +271,42 @@
     .insight-card.warning .insight-value { color: var(--color-warning); }
     .insight-note { font-size: 12.5px; color: var(--color-text); margin-top: 6px; line-height: 1.55; opacity: .82; }
 
+    /* ===== Forecast (Stage 3ב.4): chart/table box, adapted from index.html's .forecast-box for   =====
+       ===== this screen's card language (white surface, var(--shadow), var(--radius)) instead of  =====
+       ===== index.html's dark theme vars. Bar/zero-line/scale-label geometry and colors (positive  =====
+       ===== = primary green, negative = danger red) are unchanged from index.html's own choices.  ===== */
+    .preview-forecast-box {
+        background: var(--color-surface); border-radius: var(--radius); padding: 16px;
+        margin-bottom: 12px; box-shadow: var(--shadow);
+    }
+    .preview-forecast-toggle-row { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+    .preview-forecast-toggle-btn {
+        padding: 6px 12px; font-size: 12px; background: var(--color-bg);
+        border: 1px solid var(--color-border); border-radius: 8px; cursor: pointer; font-family: inherit;
+    }
+    .preview-forecast-chart-wrap { position: relative; }
+    .preview-forecast-chart-wrap svg { width: 100%; height: auto; display: block; overflow: visible; }
+    .preview-forecast-bar { cursor: pointer; }
+    .preview-forecast-bar:hover, .preview-forecast-bar:focus { filter: brightness(1.15); outline: none; }
+    .preview-forecast-bar-pos { fill: var(--color-primary); }
+    .preview-forecast-bar-neg { fill: var(--color-danger); }
+    .preview-forecast-zero-line { stroke: var(--color-border); stroke-width: 1; }
+    .preview-forecast-axis-label { font-size: 7px; fill: var(--color-text-muted); }
+    .preview-forecast-scale-label { font-size: 6px; fill: var(--color-text-muted); }
+    .preview-forecast-tooltip {
+        position: absolute; background: var(--color-text); color: #fff; border-radius: 8px;
+        padding: 5px 9px; font-size: 12px; pointer-events: none; white-space: nowrap;
+        transform: translate(-50%, -110%); z-index: 10; display: none;
+    }
+    .preview-forecast-tooltip strong { display: block; }
+    .preview-forecast-table-wrap table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .preview-forecast-table-wrap td, .preview-forecast-table-wrap th {
+        padding: 6px; text-align: center; border-bottom: 1px solid var(--color-border);
+    }
+    .preview-forecast-table-wrap th { color: var(--color-text-muted); font-weight: 500; font-size: 11.5px; }
+    .preview-forecast-positive { color: var(--color-primary); font-weight: 700; }
+    .preview-forecast-negative { color: var(--color-danger); font-weight: 700; }
+
     /* ===== Settings ===== */
     .category-row {
         display: flex; justify-content: space-between; align-items: center;
@@ -430,6 +466,22 @@
     <!-- ===== מסך 3: תובנות ===== -->
     <div class="screen" id="screen-insights">
         <div class="section-title" style="margin-top:4px;">תובנות</div>
+
+        <!-- Stage 3ב.4: forecast chart/table, adapted from index.html's .forecast-box. Always
+             visible on this dedicated Insights screen (no collapse header, unlike index.html's
+             dashboard placement) — data/logic from computeForecast(), unchanged. -->
+        <div class="preview-forecast-box">
+            <div class="section-title" style="margin:0 0 10px;">📈 תחזית יתרה פנויה — 6 חודשים קדימה</div>
+            <div class="preview-forecast-toggle-row">
+                <button type="button" class="preview-forecast-toggle-btn" id="preview-forecast-toggle-btn" onclick="toggleForecastView()">טבלה</button>
+            </div>
+            <div class="preview-forecast-chart-wrap" id="preview-forecast-chart-wrap">
+                <svg id="preview-forecast-svg" viewBox="0 0 300 170" preserveAspectRatio="xMidYMid meet"></svg>
+                <div class="preview-forecast-tooltip" id="preview-forecast-tooltip"></div>
+            </div>
+            <div class="preview-forecast-table-wrap" id="preview-forecast-table-wrap" style="display:none;"></div>
+        </div>
+
         <div id="insights-feed"></div>
     </div>
 
@@ -1232,6 +1284,130 @@
     }
 
     // =====================================================================================
+    // ===== Stage 3ב.4: forecast chart/table UI for the Insights screen. niceRoundUp/       =====
+    // ===== barPath/attachForecastHandlers/renderForecast/toggleForecastView are copied      =====
+    // ===== verbatim from index.html's own functions of the same name (geometry, scaling and =====
+    // ===== tooltip behavior unchanged) — only DOM ids/classes are renamed to this file's own =====
+    // ===== `preview-forecast-*` namespace, and the data source is `computeForecast(items)`   =====
+    // ===== (explicit, matching how the rest of this screen's real-data functions are called) =====
+    // ===== instead of computeForecast()'s no-arg global fallback. No new business logic.     =====
+    // =====================================================================================
+
+    var previewForecastView = 'chart';
+
+    // Copied verbatim from index.html.
+    function niceRoundUp(value) {
+        if (value <= 0) return 100;
+        var exp = Math.floor(Math.log(value) / Math.LN10);
+        var base = Math.pow(10, exp);
+        var n = value / base;
+        var niceN = (n <= 1) ? 1 : (n <= 2) ? 2 : (n <= 5) ? 5 : 10;
+        return niceN * base;
+    }
+
+    // Copied verbatim from index.html.
+    function barPath(x, y, w, h, r, roundedEnd) {
+        if (h < r * 2) r = Math.max(0, h / 2);
+        if (roundedEnd === 'top') {
+            return 'M' + x + ',' + (y + h) +
+                ' L' + x + ',' + (y + r) +
+                ' Q' + x + ',' + y + ' ' + (x + r) + ',' + y +
+                ' L' + (x + w - r) + ',' + y +
+                ' Q' + (x + w) + ',' + y + ' ' + (x + w) + ',' + (y + r) +
+                ' L' + (x + w) + ',' + (y + h) + ' Z';
+        }
+        return 'M' + x + ',' + y +
+            ' L' + (x + w) + ',' + y +
+            ' L' + (x + w) + ',' + (y + h - r) +
+            ' Q' + (x + w) + ',' + (y + h) + ' ' + (x + w - r) + ',' + (y + h) +
+            ' L' + (x + r) + ',' + (y + h) +
+            ' Q' + x + ',' + (y + h) + ' ' + x + ',' + (y + h - r) + ' Z';
+    }
+
+    // Same shape as index.html's attachForecastHandlers(), pointing at this screen's own
+    // preview-forecast-svg/preview-forecast-tooltip ids and .preview-forecast-bar class.
+    function attachForecastHandlers(months) {
+        var svg = document.getElementById('preview-forecast-svg');
+        var tooltip = document.getElementById('preview-forecast-tooltip');
+        var bars = svg.querySelectorAll('.preview-forecast-bar');
+        for (var i = 0; i < bars.length; i++) {
+            (function(bar) {
+                function show() {
+                    var idx = parseInt(bar.getAttribute('data-idx'), 10);
+                    var mo = months[idx];
+                    tooltip.innerHTML = '<strong>₪' + Math.round(mo.net).toLocaleString() + '</strong>' + escapeHtml(mo.label);
+                    tooltip.style.display = 'block';
+                    var rect = bar.getBoundingClientRect();
+                    var wrapRect = svg.parentNode.getBoundingClientRect();
+                    tooltip.style.left = (rect.left - wrapRect.left + rect.width / 2) + 'px';
+                    tooltip.style.top = (rect.top - wrapRect.top) + 'px';
+                }
+                function hide() { tooltip.style.display = 'none'; }
+                bar.addEventListener('pointerenter', show);
+                bar.addEventListener('pointermove', show);
+                bar.addEventListener('pointerleave', hide);
+                bar.addEventListener('focus', show);
+                bar.addEventListener('blur', hide);
+            })(bars[i]);
+        }
+    }
+
+    // Same geometry/scale as index.html's renderForecast(); reads computeForecast(items)
+    // explicitly instead of relying on the no-arg global fallback.
+    function renderForecast() {
+        var svg = document.getElementById('preview-forecast-svg');
+        var tableWrap = document.getElementById('preview-forecast-table-wrap');
+        if (!svg) return;
+
+        var months = computeForecast(items);
+        var maxAbs = 1;
+        for (var k = 0; k < months.length; k++) { maxAbs = Math.max(maxAbs, Math.abs(months[k].net)); }
+        var niceMax = niceRoundUp(maxAbs);
+
+        var W = 300, H = 170, baselineY = 88, barMaxH = 60, barW = 26, radius = 4;
+        var slot = W / months.length;
+        var scale = barMaxH / niceMax;
+
+        var parts = [];
+        parts.push('<line class="preview-forecast-zero-line" x1="0" y1="' + baselineY + '" x2="' + W + '" y2="' + baselineY + '"></line>');
+        parts.push('<text class="preview-forecast-scale-label" x="2" y="' + (baselineY - barMaxH - 3) + '">₪' + niceMax.toLocaleString() + '</text>');
+        parts.push('<text class="preview-forecast-scale-label" x="2" y="' + (baselineY + barMaxH + 8) + '">-₪' + niceMax.toLocaleString() + '</text>');
+
+        for (var i = 0; i < months.length; i++) {
+            var mo = months[i];
+            var x = i * slot + (slot - barW) / 2;
+            var h = Math.round(Math.abs(mo.net) * scale);
+            if (h < 3) h = 3;
+            var y, roundedEnd, colorClass;
+            if (mo.net >= 0) { y = baselineY - h; roundedEnd = 'top'; colorClass = 'preview-forecast-bar-pos'; }
+            else { y = baselineY; roundedEnd = 'bottom'; colorClass = 'preview-forecast-bar-neg'; }
+            var d = barPath(x, y, barW, h, radius, roundedEnd);
+            parts.push('<path class="preview-forecast-bar ' + colorClass + '" data-idx="' + i + '" tabindex="0" d="' + d + '"></path>');
+            parts.push('<text class="preview-forecast-axis-label" x="' + (x + barW / 2) + '" y="' + (H - 4) + '" text-anchor="middle">' + escapeHtml(mo.label) + '</text>');
+        }
+
+        svg.innerHTML = parts.join('');
+        attachForecastHandlers(months);
+
+        var tableHtml = '<table><thead><tr><th>חודש</th><th>יתרה פנויה צפויה</th></tr></thead><tbody>';
+        for (var j = 0; j < months.length; j++) {
+            var m2 = months[j];
+            tableHtml += '<tr><td>' + escapeHtml(m2.label) + '</td><td class="' + (m2.net >= 0 ? 'preview-forecast-positive' : 'preview-forecast-negative') + '">₪' + Math.round(m2.net).toLocaleString() + '</td></tr>';
+        }
+        tableHtml += '</tbody></table>';
+        tableWrap.innerHTML = tableHtml;
+    }
+
+    // Same toggle behavior as index.html's toggleForecastView(), pointing at this screen's own
+    // preview-forecast-chart-wrap/preview-forecast-table-wrap/preview-forecast-toggle-btn ids.
+    function toggleForecastView() {
+        previewForecastView = (previewForecastView === 'chart') ? 'table' : 'chart';
+        document.getElementById('preview-forecast-chart-wrap').style.display = (previewForecastView === 'chart') ? 'block' : 'none';
+        document.getElementById('preview-forecast-table-wrap').style.display = (previewForecastView === 'table') ? 'block' : 'none';
+        document.getElementById('preview-forecast-toggle-btn').textContent = (previewForecastView === 'chart') ? 'טבלה' : 'גרף';
+    }
+
+    // =====================================================================================
     // ===== Stage D.2: read-only connection to Preview localStorage data.                  =====
     // ===== Reads ONLY PREVIEW_DATA_KEY / PREVIEW_CONFIG_KEY (never REAL_DATA_KEY /         =====
     // ===== REAL_CONFIG_KEY). No setItem/removeItem anywhere in this section. Not wired to  =====
@@ -1575,6 +1751,12 @@
     // guarantee, no code moved.
     renderInsightsScreenFromRealData();
 
+    // Stage 3ב.4: draws the forecast chart/table on the Insights screen. Called once at load,
+    // same ordering guarantee as the render call directly above (items/categoryConfig already
+    // loaded); also called from renderAllPreviewScreens() below so it stays in sync with any
+    // later mutation.
+    renderForecast();
+
     // =====================================================================================
     // ===== Stage E.1 (display-only) → Stage 3ב.2 (full add/rename/delete UI): Settings      =====
     // ===== screen, replacing category-list's original Mock-fed rows with the real            =====
@@ -1692,6 +1874,7 @@
         renderHomeScreenFromRealData();
         renderAttentionListFromRealData();
         renderInsightsScreenFromRealData();
+        renderForecast();
         renderSettingsScreenFromRealData();
         renderTransactionsScreenFromRealData(getCurrentTxFilterName());
         // Stage G.5: keeps the add-transaction form area in sync with previewAddMode across any
