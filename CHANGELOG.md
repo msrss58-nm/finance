@@ -282,3 +282,35 @@
 - **חשוב לעתיד**: הממצא תקף רק לרגע הבדיקה — אם יתווספו נתונים אמיתיים במחשב זה (או בכל מכשיר אחר שממנו יתבצע cutover) לפני שלבי ה-cutover בפועל (4.6–4.8), **יש לחזור ולבצע גיבוי מחדש**.
 - **`git diff --stat`**: עדכון תיעוד בלבד (CHANGELOG.md/CURRENT_STATUS.md/TODO.md) — שום קובץ קוד לא שונה.
 - **המשך**: שלב 4.4 — יצירת קובץ מועמד עם מפתחות אמיתיים. טרם התחיל, ממתין לאישור.
+## 31/07/2026 — שלב 4.4 (Cockpit / Preview v2) — קובץ מועמד עם מפתחות אמיתיים (נשמר ב-commit `72a315a`)
+לפי אישור מפורש: נוצר `index-v3-candidate.html` — עותק מבוקר של `index-preview-v2.html`, מכוון למפתחות ה-localStorage האמיתיים (`family_finance_data`/`family_finance_cat_config`) במקום `PREVIEW_*`/`REAL_*`. מנגנון ה-seed/איפוס (`seedPreviewV2IfNeeded`/`resetPreviewV2Data`) הוסר לחלוטין — לא רק נוטרל — יחד עם קופסת "אזור מפתחים" ב-UI וה-CSS הנלווה. אפס שינוי בלוגיקה עסקית או בסכימת `items`/`categoryConfig`.
+- **בדיקות**: `node --check` תקין. **359/359 עברו** — 322 VM/Node (מותאמות מ-3ব.1–3ব.4 + נתונים ישנים) + 37 Edge/CDP חדשות, כולן אימתו: אפס `PREVIEW_*` נותר בקובץ, כתיבה רק ל-2 המפתחות האמיתיים, CRUD מלא/ניהול קטגוריות/Forecast תקינים.
+- **`index.html`/`index-preview-v2.html`/`app.js`/`styles.css`** — לא נגעו כלל.
+- **המשך**: שלב 4.5 — אימות מלא לפני Decision Gate.
+
+## 31/07/2026 — שלב 4.5 (Cockpit / Preview v2) — אימות מלא לפני Decision Gate (ללא שינוי קוד)
+לפי אישור מפורש: סבב אימות מקיף על `index-v3-candidate.html` לפני קבלת החלטות מוצר. **432 בדיקות עברו** — 367 VM/Node (כולל 45 בדיקות round-trip חדשות: טעינה→עריכה/הוספה/ארכוב/שחזור/מחיקה→"רענון" עם אותו store→אימות שלמות, כולל הוכחה ששדות legacy/לא-מוכרים שורדים ללא אובדן) + 65 Edge/CDP (כולל בדיקת עדכון-אוטומטי של Forecast לאחר שינוי נתון, ורענון דפדפן אמיתי mid-test).
+- **לא נמצא באג באפליקציה.** נמצא ותוקן באג בהרנס-הבדיקות עצמו בלבד (scratchpad, לא בריפו) — סקריפט ה-CDP איפס בטעות `localStorage` גם ברענון השני.
+- **`index.html`/`index-preview-v2.html`/`app.js`/`styles.css`** — לא נגעו כלל.
+- **המשך**: שלב 4.6 — Decision Gate מוצרי.
+
+## 31/07/2026 — שלב 4.6 (Cockpit / Preview v2) — Decision Gate מוצרי (ללא שינוי קוד)
+לפי אישור מפורש: שתי החלטות מוצר אושרו לפני Cutover: **(1)** מחיקת קטגוריה מותאמת אישית עם תנועות קיימות (כולל בארכיון) — **נחסמת** לחלוטין, בלי מחיקה אוטומטית של תנועות, עם הודעה ברורה למשתמש (מאשר את התנהגות Preview v2 הקיימת). **(2)** קבצים ישנים לאחר Cutover (`index-preview-v2.html`/`app.js`/`styles.css`) — **לא יימחקו** במסגרת ה-Cutover; ניקוי יהיה שלב נפרד עתידי, רק לאחר אימות חי ואישור מפורש.
+- אומת בקוד ש-`index-v3-candidate.html` **כבר תואם** להחלטה (1) ללא צורך בשום שינוי קוד (`deletePreviewCategory`/`categoryHasPreviewItems`).
+- הוצגה תוכנית Cutover מדויקת לשלב 4.7 (קבצים, rename/copy, שימור `index.html` הישן ב-Git, בדיקות חובה, Rollback, הודעת Commit מוצעת).
+- **המשך**: שלב 4.7 — Cutover בפועל, לפי התאמה אחת שביקש המשתמש: ללא יצירת קובץ "legacy" נוסף — שימור ה-`index.html` הישן אך ורק דרך Git (Tag).
+
+## 31/07/2026 — שלב 4.7 (Cockpit / Preview v2) — Cutover בפועל (נשמר ב-commit `c63a43e`)
+לפי אישור מפורש: **Tag מקומי `pre-preview-v2-cutover`** נוצר לפני כל שינוי, מצביע על `72a315a` (הקומיט האחרון לפני ה-Cutover) — זהו מנגנון ה-Rollback שאושר, במקום קובץ HTML ישן נוסף בריפו. בוצע `git rm index.html` + `git mv index-v3-candidate.html index.html` — `index.html` הפך לתוכן `index-v3-candidate.html` (מפתחות אמיתיים), ו-`index-v3-candidate.html` אינו קיים יותר כקובץ נפרד.
+- **בדיקות לאחר המעבר**: **367/367 VM/Node + 65/65 Edge/CDP עברו** מול ה-`index.html` החדש (סה"כ 432/432) — 4 מסכים, CRUD מלא (income/fixed/variable/loan/dated), ניהול קטגוריות, Forecast (גרף+טבלה+עדכון אוטומטי), רענון דפדפן אמיתי עם שימור נתונים, אפס `PREVIEW_*`, כתיבה רק ל-2 המפתחות האמיתיים, אפס Exceptions/console errors.
+- **תוקן תוך כדי**: בדיקה אחת (`12c` בסוויטת 3ব.3 המותאמת) השוותה בטעות את `index.html` מול עצמו לאחר ה-Cutover (במקום מול הגרסה הישנה) — תוקנה לקרוא את ההפניה הישנה דרך `git show pre-preview-v2-cutover:index.html`; לא באג באפליקציה, רק בהרנס-הבדיקות.
+- **`index-preview-v2.html`/`app.js`/`styles.css`** — לא נגעו כלל.
+- **המשך**: שלב 4.8 — אימות סופי, תיעוד, וסגירת Version 1.0.
+
+## 31/07/2026 — שלב 4.8 (Cockpit / Preview v2) — אימות סופי, תיעוד, וסגירת Version 1.0
+לפי אישור מפורש: סבב אימות סופי לאחר ה-Cutover. **מצב Git אומת**: branch `feature/cockpit-preview-v2`, HEAD `c63a43e`, Tag `pre-preview-v2-cutover`→`72a315a`, עץ עבודה נקי פרט ל-`edge_profile*.tmp/`. **432/432 בדיקות עברו שוב** (367 VM/Node + 65 Edge/CDP), בפרופיל Edge חדש ונקי לחלוטין (המנע רגרסיה זמנית שנבעה מפרופיל בדיקה קודם שלא נמחק במלואו — אותרה ותוקנה כליקוי בהרנס-הבדיקות, לא באפליקציה).
+- אומת ישירות בקוד (grep): אפס הופעה של `PREVIEW_DATA_KEY`/`PREVIEW_CONFIG_KEY`/`REAL_DATA_KEY`/`REAL_CONFIG_KEY`/`family_finance_preview_v2_*`/מנגנון seed/reset ב-`index.html`.
+- אומת מבנה סופי: `index-preview-v2.html`/`app.js`/`styles.css` ללא שינוי; אין `index-v2-legacy.html`; אין `index-v3-candidate.html`.
+- **תיעוד עודכן**: CURRENT_STATUS.md, CHANGELOG.md (רשומה זו), TODO.md.
+- **לא בוצע שום שינוי בלוגיקה עסקית או בעיצוב** — לא נמצא צורך.
+- **מסקנה: Version 1.0 נסגרה.** `index.html` הראשי הוא כעת ארכיטקטורת Preview v2 המלאה עם מפתחות ה-localStorage האמיתיים, ללא migration וללא שינוי סכימה.
