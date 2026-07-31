@@ -221,3 +221,11 @@
 - **לא נדרש תיקון קוד.** `index.html`/`app.js`/`styles.css` לא היו בהיקף ולא נבדקו.
 - לא בוצעו Commit/Push/Merge/Deploy כחלק מהסבב עצמו.
 - **המשך**: השלב הבא ל-Preview v2 טרם הוגדר.
+
+## 31/07/2026 — שלב 3ב.1 (Cockpit / Preview v2) — לוגיקת ניהול קטגוריות (ללא UI), נשמר ב-commit `d67b1db`
+לפי אישור מפורש לבצע רק שלב 3ב.1 מתוך רצף 3ב (קטגוריות + תחזית): נוספה בתוך [index-preview-v2.html](index-preview-v2.html) **בלבד** שכבת לוגיקה לניהול קטגוריות — **ללא UI, ללא HTML/CSS, ללא event listeners**.
+- **מה נוסף**: `addPreviewCategory`/`renamePreviewCategory`/`deletePreviewCategory` וכלי עזר תומכים (`isBuiltInPreviewCategoryKey`, `categoryHasPreviewItems`, `getAllowedPreviewCustomCategoryBaseTypes`, `PREVIEW_CUSTOM_CATEGORY_TYPE_OPTIONS`, `PREVIEW_CATEGORY_DELETE_BLOCKED_REASON`), עם `translateBaseType`/`pickEmojiForCategory` מועתקות כלשונן מ-`index.html`. `deletePreviewCategory()` חוסמת מחיקת קטגוריות מובנות ומחיקת קטגוריה עם תנועות (כולל בארכיון), ולעולם אינה מוחקת תנועות אוטומטית — סטייה מכוונת ומאושרת מהתנהגות `deleteCustomCategory()` הקיימת ב-`index.html`.
+- **תיקון בעקבות סקירת קוד לפני ה-commit (אושר במפורש)**: ולידציית `baseType` מול `PREVIEW_CUSTOM_CATEGORY_TYPE_OPTIONS` (דוחה ערך שרירותי ללא כל מוטציה/כתיבה); מניעת התנגשות מפתחות `custom_<timestamp>` באמצעות suffix מספרי, ללא דריסת קטגוריה קיימת.
+- **בטיחות**: אין שימוש ב-`REAL_DATA_KEY`/`REAL_CONFIG_KEY`, אין תלות ב-DOM/UI; `index.html`/`app.js`/`styles.css` לא נגעו בהם.
+- **בדיקות**: `node --check` ו-`git diff --check` תקינים. **108/108 בדיקות VM/Node עברו.**
+- **המשך**: שלב 3ב.2 — UI ניהול קטגוריות. טרם התחיל.
