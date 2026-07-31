@@ -1,0 +1,2733 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FamilyFinance — Cockpit (Preview v2)</title>
+<style>
+    :root {
+        --color-bg: #f4f5f7;
+        --color-surface: #ffffff;
+        --color-border: #e5e7eb;
+        --color-text: #16181d;
+        --color-text-muted: #6b7280;
+        --color-primary: #0a7d3d;
+        --color-primary-dark: #066b32;
+        --color-danger: #c0392b;
+        --color-warning: #b45309;
+        --color-warning-bg: #fef3e2;
+        --color-primary-bg: #eaf7ef;
+        --radius: 14px;
+        --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+        font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+        background: var(--color-bg);
+        color: var(--color-text);
+        margin: 0;
+    }
+
+    .app-shell {
+        max-width: 560px;
+        margin: 0 auto;
+        min-height: 100vh;
+        position: relative;
+        background: var(--color-bg);
+        /* Stage F.1 fix: was 130px, which let the FAB (bottom:88px + 56px tall = its top edge
+           sits 144px above the viewport bottom) visually overlap the last content row. 176px
+           leaves a clear ~32px gap above the FAB's top edge for any screen's last row. */
+        padding-bottom: 176px;
+    }
+
+    @media (min-width: 700px) {
+        .app-shell { box-shadow: 0 0 40px rgba(0,0,0,.06); }
+    }
+
+    /* ===== Header ===== */
+    .app-header {
+        padding: 22px 20px 14px;
+        text-align: center;
+    }
+    .app-header h1 { font-size: 19px; margin: 0; }
+    .app-header .subtitle { font-size: 12px; color: var(--color-text-muted); margin-top: 3px; }
+
+    /* ===== Screens ===== */
+    .screen { display: none; padding: 4px 16px 16px; }
+    .screen.active { display: block; }
+
+    .section-title { font-size: 15px; font-weight: 700; margin: 22px 0 11px; letter-spacing: -.1px; }
+    .section-title:first-child { margin-top: 4px; }
+
+    /* ===== Hero gauge ===== */
+    .hero-gauge {
+        background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+        color: #fff;
+        border-radius: var(--radius);
+        padding: 26px 20px;
+        text-align: center;
+        box-shadow: var(--shadow);
+    }
+    .hero-gauge .hero-label { font-size: 13px; opacity: .85; }
+    /* Stage F.1 follow-up: same bidi isolation as .tx-amount — negative balances rendered as
+       "13,050-₪" instead of "-₪13,050" inside the surrounding RTL page. Display-only, value unchanged. */
+    .hero-gauge .hero-amount { font-size: 40px; font-weight: 700; margin: 4px 0; direction: ltr; unicode-bidi: isolate; }
+    .hero-gauge .status-pill {
+        display: inline-block; background: rgba(255,255,255,.2);
+        padding: 4px 12px; border-radius: 20px; font-size: 12px; margin-top: 4px;
+    }
+    .hero-gauge .hero-narrative { font-size: 13px; margin-top: 12px; opacity: .92; line-height: 1.6; }
+
+    /* ===== Snapshot ===== */
+    .snapshot-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; }
+    .snapshot-card {
+        background: var(--color-surface); border-radius: 12px; padding: 12px 6px;
+        text-align: center; box-shadow: var(--shadow);
+    }
+    .snapshot-card .label { font-size: 10.5px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: .3px; }
+    /* Stage F.1 follow-up: same bidi isolation fix as .tx-amount/.hero-amount — snapshot-balance
+       is the only one of the 3 snapshot cards that can go negative. Display-only, value unchanged. */
+    .snapshot-card .value { font-size: 15px; font-weight: 700; margin-top: 5px; direction: ltr; unicode-bidi: isolate; }
+    .snapshot-card.income .value { color: var(--color-primary); }
+    .snapshot-card.expenses .value { color: var(--color-danger); }
+
+    /* ===== Attention list ===== */
+    .attention-item {
+        display: flex; justify-content: space-between; align-items: center;
+        background: var(--color-warning-bg); border-right: 4px solid var(--color-warning);
+        border-radius: 10px; padding: 12px 14px; margin-bottom: 8px;
+    }
+    .attention-title { font-size: 13.5px; font-weight: 600; }
+    .attention-detail { font-size: 12px; color: var(--color-text-muted); margin-top: 2px; }
+    .attention-amount { font-size: 14px; font-weight: 700; color: var(--color-warning); white-space: nowrap; }
+
+    /* ===== Transaction rows (shared: recent activity + transactions screen) ===== */
+    .tx-row {
+        display: flex; align-items: center; gap: 12px;
+        background: var(--color-surface); border-radius: 12px; padding: 11px 14px;
+        margin-bottom: 8px; box-shadow: var(--shadow);
+        /* Stage G.2.3: makes .tx-row the containing block for the future .tx-menu-dropdown
+           (position: absolute, below) — no visible effect on its own: .tx-row keeps its normal
+           place in document flow, and no z-index is set here. */
+        position: relative;
+    }
+    .tx-icon {
+        width: 34px; height: 34px; border-radius: 50%; background: #eef2f0;
+        display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0;
+    }
+    .tx-info { flex: 1; min-width: 0; }
+    .tx-title { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tx-date { font-size: 11.5px; color: var(--color-text-muted); margin-top: 2px; }
+    /* Stage F.1 fix: isolates the amount text as its own LTR run so the browser's bidi algorithm
+       renders "-₪3,200" in that literal left-to-right order — without this, the leading "-"
+       character (a bidi-neutral character) gets visually displaced to the far side inside the
+       surrounding RTL page, rendering as "₪3,200-" instead. Pure display fix — the underlying
+       string/value built by JS is unchanged. */
+    .tx-amount { font-size: 14px; font-weight: 700; white-space: nowrap; direction: ltr; unicode-bidi: isolate; }
+    .tx-amount.income { color: var(--color-primary); }
+    .tx-amount.expense { color: var(--color-danger); }
+
+    /* Stage G.2.3: CSS-only infrastructure for a future per-row actions menu (Stage G.2.4+).
+       None of the 3 classes below are referenced by any markup yet — renderTxList()/
+       renderTransactionsScreenFromRealData() do not emit a ⋮ button or dropdown in this stage,
+       so these rules have zero visible effect anywhere until a later stage adds matching HTML. */
+
+    /* ⋮ toggle button: intended as a 5th flex child appended after .tx-amount inside .tx-row —
+       an in-flow item (not absolutely positioned), so it takes its own place in the row's flex
+       layout rather than overlapping/hiding .tx-amount, the same way .tx-icon already occupies
+       its own place on the row's other end. Sized at 32px — under .tx-icon's 34px, which is what
+       currently sets .tx-row's height ceiling — so adding this button cannot increase the row's
+       height; .tx-row's own padding is untouched. flex-shrink:0 keeps it from being compressed
+       on a narrow row, same as .tx-icon. */
+    .tx-menu-toggle {
+        width: 32px; height: 32px; flex-shrink: 0;
+        display: flex; align-items: center; justify-content: center;
+        background: none; border: none; border-radius: 8px; padding: 0; margin: 0;
+        font-size: 18px; line-height: 1; color: var(--color-text-muted);
+        cursor: pointer; font-family: inherit;
+    }
+    .tx-menu-toggle:hover, .tx-menu-toggle:focus-visible {
+        background: var(--color-bg); color: var(--color-text); outline: none;
+    }
+
+    /* Dropdown panel: position:absolute removes it from document flow entirely, so its own
+       content height can never affect .tx-row's height or push neighboring rows — it simply
+       floats over whatever content is already there. top:100% + left:0 anchors it just below
+       .tx-row, aligned to the row's LEFT edge — under RTL's flex-direction reversal the ⋮ toggle
+       (last flex child) already renders at the row's left edge, so left:0 opens the menu directly
+       under the button that triggers it (matches this file's existing convention of physical
+       left/right rather than logical inset-inline-* properties — .fab/.bottom-nav do the same).
+       display:none by default; a future .open class (Stage G.2.4, not added here — no JS exists
+       yet in this stage to toggle it) will control visibility. z-index:10 is enough to paint
+       above sibling .tx-row elements (which set no z-index of their own) without competing with,
+       or needing to be reasoned about alongside, the page-chrome scale already established
+       elsewhere in this file (.bottom-nav:50, .fab:60, .quick-actions-overlay:70) — a per-row
+       menu is page content, not global chrome, so it intentionally stays well under those. No
+       ancestor of .tx-row (.screen, .app-shell, body) sets overflow:hidden anywhere in this
+       file, so this dropdown cannot be clipped regardless of which row it opens from — including
+       the last row, where .app-shell's existing 176px bottom padding (Stage F.1) already leaves
+       ample clearance below the last row before .bottom-nav's fixed position. min-width:150px
+       comfortably fits both action labels ("העבר לארכיון" / "שחזר") plus the item's own
+       horizontal padding without wrapping. No new @media query: this app has no desktop-specific
+       layout distinct from mobile anywhere in this file (the one existing @media rule only adds
+       a box-shadow to .app-shell at >=700px), so none is needed here either. The dropdown's own
+       overflow:hidden simply clips its rounded corners against a hovered .tx-menu-item's square
+       background — it is not a clipping risk for anything positioned outside the dropdown. */
+    .tx-menu-dropdown {
+        display: none;
+        position: absolute; top: 100%; left: 0; margin-top: 6px;
+        min-width: 150px;
+        background: var(--color-surface); border: 1px solid var(--color-border);
+        border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,.12);
+        z-index: 10;
+        overflow: hidden;
+    }
+    .tx-menu-dropdown.open { display: block; }
+
+    /* Single action row inside the dropdown — full-width tappable text button, right-aligned to
+       match the surrounding RTL page. Deliberately unstyled for a "destructive"/edit look (no
+       var(--color-danger), no icon) since edit/delete are out of scope for this stage; both
+       "העבר לארכיון" and "שחזר" are simple neutral actions today. */
+    .tx-menu-item {
+        display: block; width: 100%; text-align: right;
+        padding: 10px 14px; background: none; border: none;
+        font-size: 13.5px; color: var(--color-text);
+        cursor: pointer; font-family: inherit;
+    }
+    .tx-menu-item:hover, .tx-menu-item:focus-visible {
+        background: var(--color-bg); outline: none;
+    }
+    /* Stage G.3: permanent-delete menu item — same .tx-menu-item base, only the text color
+       changes to signal a destructive action (no separate confirm dialog is built; the browser's
+       own confirm() handles that, per approved product decision). */
+    .tx-menu-item-danger { color: var(--color-danger); }
+
+    /* ===== Stage G.4: inline edit form — replaces a .tx-row entirely while that row's item is
+       being edited (Stage G.4 product decision 2א). Deliberately its own class names (not reused
+       from index.html's .edit-inside-form/.form-group/.btn-save-edit/.btn-cancel-edit), since this
+       file has its own separate design system — only the underlying field ids/behavior mirror
+       index.html, not the CSS. */
+    .tx-edit-form {
+        background: var(--color-surface); border-radius: 12px; padding: 14px;
+        margin-bottom: 8px; box-shadow: var(--shadow);
+    }
+    .tx-edit-group { margin-bottom: 10px; }
+    .tx-edit-group label { display: block; font-size: 12px; color: var(--color-text-muted); margin-bottom: 4px; }
+    .tx-edit-group input, .tx-edit-group select, .tx-edit-group textarea {
+        width: 100%; padding: 9px 12px; border: 1px solid var(--color-border);
+        border-radius: 10px; font-size: 14px; background: var(--color-bg); font-family: inherit;
+    }
+    .tx-edit-group textarea { min-height: 56px; resize: vertical; }
+    .tx-edit-actions { display: flex; gap: 8px; margin-top: 4px; }
+    .tx-edit-save, .tx-edit-cancel {
+        flex: 1; padding: 10px; border-radius: 10px; border: none;
+        font-size: 13.5px; cursor: pointer; font-family: inherit;
+    }
+    .tx-edit-save { background: var(--color-primary); color: #fff; }
+    .tx-edit-cancel { background: var(--color-bg); color: var(--color-text); border: 1px solid var(--color-border); }
+
+    /* ===== Stage G.5: expense-type picker buttons — shown inside the add-transaction form area
+       (#preview-add-form-area) when "הוצאה חדשה" is chosen, before a specific expense type
+       (fixed/variable/dated) is picked. The picker itself reuses .tx-edit-form as its wrapping
+       card (no new wrapper class); only these 2 rules are new. */
+    .expense-type-btn {
+        display: block; width: 100%; text-align: right; margin-bottom: 8px;
+        padding: 12px 14px; border-radius: 10px; border: 1px solid var(--color-border);
+        background: var(--color-bg); font-size: 14px; cursor: pointer; font-family: inherit;
+    }
+    .expense-type-btn.disabled { opacity: .55; cursor: not-allowed; }
+
+    /* ===== Transactions screen: search + filter (visual only) ===== */
+    .search-bar input {
+        width: 100%; padding: 10px 14px; border: 1px solid var(--color-border);
+        border-radius: 10px; font-size: 14px; background: var(--color-surface); font-family: inherit;
+    }
+    .filter-toggle { display: flex; gap: 8px; margin: 10px 0 16px; }
+    .filter-btn {
+        flex: 1; padding: 8px; border-radius: 10px; border: 1px solid var(--color-border);
+        background: var(--color-surface); font-size: 13px; cursor: pointer; font-family: inherit;
+    }
+    .filter-btn.active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+
+    /* ===== Insights ===== */
+    .insight-card {
+        display: flex; align-items: flex-start; gap: 14px;
+        background: var(--color-primary-bg); border-radius: 14px; padding: 16px;
+        margin-bottom: 12px; box-shadow: var(--shadow); border-right: 4px solid var(--color-primary);
+    }
+    .insight-card.warning { background: var(--color-warning-bg); border-right-color: var(--color-warning); }
+    .insight-icon {
+        width: 38px; height: 38px; border-radius: 50%; background: var(--color-surface);
+        display: flex; align-items: center; justify-content: center; font-size: 18px;
+        flex-shrink: 0; box-shadow: 0 1px 2px rgba(0,0,0,.08);
+    }
+    .insight-body { flex: 1; min-width: 0; }
+    .insight-title { font-size: 11.5px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: .3px; font-weight: 600; }
+    /* Stage F.1 follow-up: same bidi isolation fix as .tx-amount/.hero-amount/.snapshot-card .value
+       — the forecast-warning insight card's value can be negative. Display-only, value unchanged. */
+    .insight-value { font-size: 21px; font-weight: 800; margin-top: 5px; letter-spacing: -.2px; direction: ltr; unicode-bidi: isolate; }
+    .insight-card.warning .insight-value { color: var(--color-warning); }
+    .insight-note { font-size: 12.5px; color: var(--color-text); margin-top: 6px; line-height: 1.55; opacity: .82; }
+
+    /* ===== Forecast (Stage 3ב.4): chart/table box, adapted from index.html's .forecast-box for   =====
+       ===== this screen's card language (white surface, var(--shadow), var(--radius)) instead of  =====
+       ===== index.html's dark theme vars. Bar/zero-line/scale-label geometry and colors (positive  =====
+       ===== = primary green, negative = danger red) are unchanged from index.html's own choices.  ===== */
+    .preview-forecast-box {
+        background: var(--color-surface); border-radius: var(--radius); padding: 16px;
+        margin-bottom: 12px; box-shadow: var(--shadow);
+    }
+    .preview-forecast-toggle-row { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+    .preview-forecast-toggle-btn {
+        padding: 6px 12px; font-size: 12px; background: var(--color-bg);
+        border: 1px solid var(--color-border); border-radius: 8px; cursor: pointer; font-family: inherit;
+    }
+    .preview-forecast-chart-wrap { position: relative; }
+    .preview-forecast-chart-wrap svg { width: 100%; height: auto; display: block; overflow: visible; }
+    .preview-forecast-bar { cursor: pointer; }
+    .preview-forecast-bar:hover, .preview-forecast-bar:focus { filter: brightness(1.15); outline: none; }
+    .preview-forecast-bar-pos { fill: var(--color-primary); }
+    .preview-forecast-bar-neg { fill: var(--color-danger); }
+    .preview-forecast-zero-line { stroke: var(--color-border); stroke-width: 1; }
+    .preview-forecast-axis-label { font-size: 7px; fill: var(--color-text-muted); }
+    .preview-forecast-scale-label { font-size: 6px; fill: var(--color-text-muted); }
+    .preview-forecast-tooltip {
+        position: absolute; background: var(--color-text); color: #fff; border-radius: 8px;
+        padding: 5px 9px; font-size: 12px; pointer-events: none; white-space: nowrap;
+        transform: translate(-50%, -110%); z-index: 10; display: none;
+    }
+    .preview-forecast-tooltip strong { display: block; }
+    .preview-forecast-table-wrap table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .preview-forecast-table-wrap td, .preview-forecast-table-wrap th {
+        padding: 6px; text-align: center; border-bottom: 1px solid var(--color-border);
+    }
+    .preview-forecast-table-wrap th { color: var(--color-text-muted); font-weight: 500; font-size: 11.5px; }
+    .preview-forecast-positive { color: var(--color-primary); font-weight: 700; }
+    .preview-forecast-negative { color: var(--color-danger); font-weight: 700; }
+
+    /* ===== Settings ===== */
+    .category-row {
+        display: flex; justify-content: space-between; align-items: center;
+        background: var(--color-surface); border-radius: 12px; padding: 12px 14px;
+        margin-bottom: 8px; box-shadow: var(--shadow);
+    }
+    .cat-label { font-size: 14px; }
+
+    /* ===== Stage 3ב.2: category-row action buttons + add-category toggle. Deliberately small,
+       dedicated classes (not reused from .tx-edit-save/.tx-edit-cancel, which are sized for a
+       full-width two-button action bar) — these sit inline inside a compact .category-row next to
+       the label. The rename/add forms themselves still reuse .tx-edit-form/.tx-edit-group/
+       .tx-edit-actions/.tx-edit-save/.tx-edit-cancel as-is (same reasoning already applied to the
+       add-transaction form in Stage G.5: no visual reason for a separate form class set). */
+    .cat-row-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .cat-edit-btn, .cat-delete-btn, .cat-cancel-btn {
+        font-size: 12px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--color-border);
+        background: var(--color-bg); cursor: pointer; font-family: inherit;
+    }
+    .cat-delete-btn { color: var(--color-danger); border-color: var(--color-danger); }
+    .cat-confirm-delete-btn {
+        font-size: 12px; padding: 6px 10px; border-radius: 8px; border: none;
+        background: var(--color-danger); color: #fff; cursor: pointer; font-family: inherit;
+    }
+    .cat-delete-confirm-text { font-size: 12.5px; color: var(--color-danger); }
+    .cat-add-toggle {
+        display: block; width: 100%; padding: 10px; border-radius: 10px;
+        border: 1px dashed var(--color-border); background: var(--color-bg);
+        font-size: 13.5px; cursor: pointer; font-family: inherit; margin-top: 4px;
+    }
+
+    /* ===== Bottom navigation ===== */
+    .bottom-nav {
+        position: fixed; bottom: 0; left: 0; right: 0; max-width: 560px; margin: 0 auto;
+        background: var(--color-surface); border-top: 1px solid var(--color-border);
+        display: flex; justify-content: space-around; padding: 8px 0; z-index: 50;
+    }
+    .nav-btn {
+        background: none; border: none; display: flex; flex-direction: column; align-items: center;
+        gap: 3px; font-size: 11px; color: var(--color-text-muted); cursor: pointer;
+        padding: 4px 10px; font-family: inherit;
+    }
+    .nav-btn .nav-icon {
+        font-size: 18px; padding: 3px 13px; border-radius: 12px;
+        transition: background-color .15s ease;
+    }
+    .nav-btn.active { color: var(--color-primary); font-weight: 700; }
+    .nav-btn.active .nav-icon { background: var(--color-primary-bg); }
+
+    /* ===== Floating quick-add button ===== */
+    .fab {
+        position: fixed; bottom: 88px; left: 50%; transform: translateX(-50%);
+        width: 56px; height: 56px; border-radius: 50%; background: var(--color-primary);
+        color: #fff; font-size: 28px; line-height: 1; border: none; box-shadow: 0 6px 16px rgba(0,0,0,.25);
+        cursor: pointer; z-index: 60; display: flex; align-items: center; justify-content: center;
+    }
+
+    /* ===== Quick actions sheet ===== */
+    .quick-actions-overlay {
+        position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 70; display: none;
+    }
+    .quick-actions-overlay.open { display: block; }
+    .quick-actions-sheet {
+        position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+        width: 100%; max-width: 560px; background: var(--color-surface);
+        border-radius: 20px 20px 0 0; padding: 20px; box-shadow: 0 -4px 20px rgba(0,0,0,.15);
+    }
+    .quick-actions-sheet h3 { margin: 0 0 14px; font-size: 15px; text-align: center; }
+    .quick-action-btn {
+        width: 100%; display: flex; align-items: center; gap: 12px; padding: 14px;
+        border-radius: 12px; border: 1px solid var(--color-border); background: var(--color-bg);
+        margin-bottom: 10px; font-size: 14px; cursor: pointer; font-family: inherit;
+    }
+    .quick-action-btn .qa-icon { font-size: 18px; }
+    /* Stage F.1 fix: these 3 actions aren't wired to any save logic yet (clicking them today
+       just closes the sheet) — this visual treatment makes that clear instead of looking like a
+       fully working button. Matches the existing "עריכה (בקרוב)" convention already used in the
+       Settings category list for the same "not active yet" concept. */
+    .quick-action-btn.disabled { opacity: .55; cursor: not-allowed; }
+    .quick-action-btn .qa-label { flex: 1; }
+    .quick-action-btn .qa-soon { font-size: 11.5px; color: var(--color-text-muted); }
+    .quick-action-close {
+        width: 100%; text-align: center; padding: 10px; background: none; border: none;
+        color: var(--color-text-muted); font-size: 13px; margin-top: 4px; cursor: pointer; font-family: inherit;
+    }
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+
+    <div class="app-header">
+        <h1>FamilyFinance</h1>
+        <div class="subtitle">Cockpit — Preview v2 · נתוני Preview</div>
+    </div>
+
+    <!-- ===== מסך 1: בית (Cockpit) ===== -->
+    <div class="screen active" id="screen-home">
+        <div class="hero-gauge">
+            <div class="hero-label">כמה פנוי לי להוציא החודש</div>
+            <div class="hero-amount" id="hero-amount"></div>
+            <div class="status-pill" id="hero-status"></div>
+            <div class="hero-narrative" id="hero-narrative"></div>
+        </div>
+
+        <div class="snapshot-grid">
+            <div class="snapshot-card income">
+                <div class="label">הכנסות</div>
+                <div class="value" id="snapshot-income"></div>
+            </div>
+            <div class="snapshot-card expenses">
+                <div class="label">הוצאות</div>
+                <div class="value" id="snapshot-expenses"></div>
+            </div>
+            <div class="snapshot-card">
+                <div class="label">יתרה</div>
+                <div class="value" id="snapshot-balance"></div>
+            </div>
+        </div>
+
+        <div class="section-title">מה דורש תשומת לב</div>
+        <div id="attention-list"></div>
+
+        <div class="section-title">פעילות אחרונה</div>
+        <div id="recent-activity-list"></div>
+    </div>
+
+    <!-- ===== מסך 2: תנועות ===== -->
+    <div class="screen" id="screen-transactions">
+        <div class="section-title" style="margin-top:4px;">תנועות</div>
+        <!-- Stage G.5: dedicated add-transaction form area, empty by default. Populated only when
+             previewAddMode !== null (see renderAddFormArea() in the script). -->
+        <div id="preview-add-form-area"></div>
+        <div class="search-bar">
+            <input type="text" placeholder="חיפוש תנועה... (לא פעיל בשלב זה)" disabled>
+        </div>
+        <div class="filter-toggle">
+            <button type="button" class="filter-btn active" id="filter-active" onclick="setTxFilter('active')">תנועות פעילות</button>
+            <button type="button" class="filter-btn" id="filter-archived" onclick="setTxFilter('archived')">ארכיון</button>
+        </div>
+        <div id="transactions-list"></div>
+    </div>
+
+    <!-- ===== מסך 3: תובנות ===== -->
+    <div class="screen" id="screen-insights">
+        <div class="section-title" style="margin-top:4px;">תובנות</div>
+
+        <!-- Stage 3ב.4: forecast chart/table, adapted from index.html's .forecast-box. Always
+             visible on this dedicated Insights screen (no collapse header, unlike index.html's
+             dashboard placement) — data/logic from computeForecast(), unchanged. -->
+        <div class="preview-forecast-box">
+            <div class="section-title" style="margin:0 0 10px;">📈 תחזית יתרה פנויה — 6 חודשים קדימה</div>
+            <div class="preview-forecast-toggle-row">
+                <button type="button" class="preview-forecast-toggle-btn" id="preview-forecast-toggle-btn" onclick="toggleForecastView()">טבלה</button>
+            </div>
+            <div class="preview-forecast-chart-wrap" id="preview-forecast-chart-wrap">
+                <svg id="preview-forecast-svg" viewBox="0 0 300 170" preserveAspectRatio="xMidYMid meet"></svg>
+                <div class="preview-forecast-tooltip" id="preview-forecast-tooltip"></div>
+            </div>
+            <div class="preview-forecast-table-wrap" id="preview-forecast-table-wrap" style="display:none;"></div>
+        </div>
+
+        <div id="insights-feed"></div>
+    </div>
+
+    <!-- ===== מסך 4: הגדרות ===== -->
+    <div class="screen" id="screen-settings">
+        <div class="section-title" style="margin-top:4px;">ניהול קטגוריות</div>
+        <div id="category-list"></div>
+    </div>
+
+</div>
+
+<!-- ===== ניווט תחתון ===== -->
+<div class="bottom-nav">
+    <button type="button" class="nav-btn active" id="nav-home" onclick="showScreen('home')">
+        <span class="nav-icon">🏠</span><span>בית</span>
+    </button>
+    <button type="button" class="nav-btn" id="nav-transactions" onclick="showScreen('transactions')">
+        <span class="nav-icon">📋</span><span>תנועות</span>
+    </button>
+    <button type="button" class="nav-btn" id="nav-insights" onclick="showScreen('insights')">
+        <span class="nav-icon">💡</span><span>תובנות</span>
+    </button>
+    <button type="button" class="nav-btn" id="nav-settings" onclick="showScreen('settings')">
+        <span class="nav-icon">⚙️</span><span>הגדרות</span>
+    </button>
+</div>
+
+<!-- ===== כפתור הוספה צף ===== -->
+<button type="button" class="fab" onclick="toggleQuickActions()">+</button>
+
+<!-- ===== חלונית פעולות מהירות (חזותי בלבד בשלב זה) ===== -->
+<div class="quick-actions-overlay" id="quick-actions-overlay" onclick="toggleQuickActions(false)">
+    <div class="quick-actions-sheet" onclick="event.stopPropagation()">
+        <h3>הוספת תנועה</h3>
+        <button type="button" class="quick-action-btn" onclick="startPreviewAdd('expense-picker')">
+            <span class="qa-icon">💸</span><span class="qa-label">הוצאה חדשה</span>
+        </button>
+        <button type="button" class="quick-action-btn" onclick="startPreviewAdd('income')">
+            <span class="qa-icon">💰</span><span class="qa-label">הכנסה חדשה</span>
+        </button>
+        <button type="button" class="quick-action-btn" onclick="startPreviewAdd('loan')">
+            <span class="qa-icon">🏦</span><span class="qa-label">הלוואה חדשה</span>
+        </button>
+        <button type="button" class="quick-action-close" onclick="toggleQuickActions(false)">ביטול</button>
+    </div>
+</div>
+
+<script>
+    // ===== Stage 4.4 candidate: reads/writes the REAL app's own localStorage keys directly — =====
+    // ===== no separate Preview/Real distinction anymore (this file IS the candidate for      =====
+    // ===== family_finance_data/family_finance_cat_config). The seed-from-real, reset, and     =====
+    // ===== status-line mechanisms that only made sense for an isolated Preview copy have been =====
+    // ===== removed entirely (not just neutralized) — there is nothing left to seed from or    =====
+    // ===== reset against once this file's own keys ARE the real ones.                         =====
+    var DATA_KEY = 'family_finance_data';
+    var CONFIG_KEY = 'family_finance_cat_config';
+
+    var DEFAULT_CATEGORY_CONFIG_JSON = JSON.stringify({
+        income: { label: "💰 הכנסות", baseType: "income" },
+        fixed: { label: "🏡 הוצאות קבועות", baseType: "fixed" },
+        variable: { label: "🛒 תשלומים שונים", baseType: "variable" },
+        loan: { label: "🏦 הלוואות", baseType: "loan" }
+    });
+
+    // ===== Stage B: screen structure + static UI, fed only by MOCK_DATA below. No business logic, no calculations. =====
+    var MOCK_DATA = {
+        hero: {
+            amount: "₪4,320",
+            statusLabel: "תמונת מצב חודשית",
+            narrative: "יש לך מרווח בטוח החודש. אפשר להמשיך כרגיל."
+        },
+        snapshot: {
+            income: "₪12,500",
+            expenses: "₪8,180",
+            balance: "₪4,320"
+        },
+        attention: [
+            { title: "חיוב כרטיס אשראי", detail: "בעוד 4 ימים", amount: "₪2,150" },
+            { title: "תשלום הלוואת רכב", detail: "ה-5 לחודש הבא", amount: "₪890" },
+            { title: "ביטוח דירה — חיוב שנתי", detail: "בעוד 12 יום", amount: "₪640" }
+        ],
+        recentActivity: [
+            { icon: "💰", title: "משכורת", date: "01/07/2026", amount: "₪10,000", type: "income" },
+            { icon: "🏡", title: "שכירות", date: "01/07/2026", amount: "-₪3,000", type: "expense" },
+            { icon: "🛒", title: "מקרר — תשלום 3 מתוך 10", date: "05/07/2026", amount: "-₪350", type: "expense" },
+            { icon: "🏦", title: "הלוואת רכב", date: "05/07/2026", amount: "-₪890", type: "expense" }
+        ],
+        transactions: [
+            { icon: "💰", title: "משכורת", date: "01/07/2026", amount: "₪10,000", type: "income" },
+            { icon: "🏡", title: "שכירות", date: "01/07/2026", amount: "-₪3,000", type: "expense" },
+            { icon: "🛒", title: "מקרר — תשלום 3 מתוך 10", date: "05/07/2026", amount: "-₪350", type: "expense" },
+            { icon: "🏦", title: "הלוואת רכב", date: "05/07/2026", amount: "-₪890", type: "expense" },
+            { icon: "📅", title: "ביטוח דירה", date: "10/07/2026", amount: "-₪640", type: "expense" },
+            { icon: "💳", title: "מנוי חדר כושר", date: "12/07/2026", amount: "-₪200", type: "expense" },
+            { icon: "💰", title: "הכנסה נוספת — פרילנס", date: "18/07/2026", amount: "₪1,500", type: "income" }
+        ],
+        insights: [
+            { title: "סך חיובי כרטיס אשראי החודש", value: "₪2,150", note: "מבוסס על הוצאות קבועות שסומנו ככרטיס אשראי.", tone: "normal" },
+            { title: "יתרת הלוואות שנותרו", value: "₪14,200", note: "16 תשלומים נותרו עד סיום ההלוואות הפעילות.", tone: "normal" },
+            { title: "אזהרת תחזית", value: "יתרה שלילית אפשרית", note: "התחזית ל-3 חודשים קדימה מצביעה על חודש עם יתרה שלילית.", tone: "warning" }
+        ],
+        categories: [
+            { icon: "💰", label: "הכנסות" },
+            { icon: "🏡", label: "הוצאות קבועות" },
+            { icon: "🛒", label: "תשלומים שונים" },
+            { icon: "🏦", label: "הלוואות" }
+        ]
+    };
+
+    function escapeHtml(str) {
+        return String(str).replace(/[&<>"']/g, function (ch) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+        });
+    }
+
+    function renderTxList(containerId, list) {
+        var html = '';
+        for (var i = 0; i < list.length; i++) {
+            var t = list[i];
+            html += '<div class="tx-row">' +
+                '<div class="tx-icon">' + t.icon + '</div>' +
+                '<div class="tx-info">' +
+                    '<div class="tx-title">' + escapeHtml(t.title) + '</div>' +
+                    '<div class="tx-date">' + escapeHtml(t.date) + '</div>' +
+                '</div>' +
+                '<div class="tx-amount ' + t.type + '">' + escapeHtml(t.amount) + '</div>' +
+            '</div>';
+        }
+        document.getElementById(containerId).innerHTML = html;
+    }
+
+    // =====================================================================================
+    // ===== Stage G.2.4/G.2.5/G.2.6: Transactions-only row-actions markup + wiring.          =====
+    // ===== renderTxListWithActions() is a self-contained sibling of renderTxList() above     =====
+    // ===== (that function is completely untouched) — Home's recent-activity-list keeps using =====
+    // ===== plain renderTxList() exclusively, per the approved "⋮ menu on Transactions screen =====
+    // ===== only" decision. toggleRowMenu()/handleRowMenuAction() (both defined further below,=====
+    // ===== after archivePreviewItem()/unarchivePreviewItem()) are called via `this`-based     =====
+    // ===== onclick — the item id travels only through the data-item-id attribute, never       =====
+    // ===== concatenated into an onclick string. Only Stage G.2.6 connects this function to     =====
+    // ===== renderTransactionsScreenFromRealData() (see that function below) and only Stage     =====
+    // ===== G.2.6 gives the single action item a real onclick — no edit/delete affordance is    =====
+    // ===== added anywhere.                                                                     =====
+    // =====================================================================================
+
+    function renderTxListWithActions(containerId, txItems) {
+        var html = '';
+        for (var i = 0; i < txItems.length; i++) {
+            var t = txItems[i];
+
+            // Stage G.4: if this row's item is the one currently being edited, its normal
+            // .tx-row markup (icon/title/date/amount/⋮ menu) is replaced entirely by the inline
+            // edit form (product decision 2א). The full raw item (not the trimmed
+            // mapItemToHomeTxRow() shape `t`) is looked up fresh from the live `items` array —
+            // same "never trust the previously-rendered shape, re-derive from the live array"
+            // convention already used by handleRowMenuAction()/handleDeleteMenuAction() — so the
+            // form always reflects the item's current in-memory state. A missing item (deleted by
+            // another path between render and this lookup) simply falls through to the normal row
+            // below rather than rendering a form for nothing.
+            if (previewEditingId !== null && t.id === previewEditingId) {
+                var editIdx = items.findIndex(function (it) { return it.id === t.id; });
+                if (editIdx !== -1) {
+                    html += buildPreviewEditFormHtml(items[editIdx]);
+                    continue;
+                }
+            }
+
+            // Reuses id/isArchived already added to mapItemToHomeTxRow()'s return shape in Stage
+            // G.2.1 — no new data source, no new computation. actionLabel is the only new value
+            // derived here, and it depends on nothing but that existing isArchived field.
+            var actionLabel = t.isArchived ? 'שחזר' : 'העבר לארכיון';
+            // Same escapeHtml() already used for every other user-derived string in this file
+            // (title/date/amount below, unchanged from renderTxList()) — applied here to the id
+            // (defensively, even though it is always numeric in practice) and to the aria-label,
+            // since both are injected into HTML attributes. No raw id is ever placed inside an
+            // onclick or any JS string — data-item-id is the only place it appears, as plain
+            // attribute text, exactly as required.
+            var safeId = escapeHtml(String(t.id));
+            // Stage G.4: "✏️ עריכה" is only offered for active items (product decision 1א) — an
+            // archived row's dropdown still shows exactly "שחזר" + "מחק לצמיתות", unchanged from
+            // Stage G.3. Placed first in the dropdown to match index.html's own button order
+            // (עריכה, then archive/restore, then delete).
+            var editMenuItemHtml = t.isArchived ? '' :
+                '<button type="button" class="tx-menu-item" data-item-id="' + safeId + '" onclick="handleEditMenuAction(this)">✏️ עריכה</button>';
+            html += '<div class="tx-row">' +
+                '<div class="tx-icon">' + t.icon + '</div>' +
+                '<div class="tx-info">' +
+                    '<div class="tx-title">' + escapeHtml(t.title) + '</div>' +
+                    '<div class="tx-date">' + escapeHtml(t.date) + '</div>' +
+                '</div>' +
+                '<div class="tx-amount ' + t.type + '">' + escapeHtml(t.amount) + '</div>' +
+                '<button type="button" class="tx-menu-toggle" data-item-id="' + safeId + '" aria-label="' + escapeHtml('פעולות עבור ' + t.title) + '" onclick="toggleRowMenu(this)">⋮</button>' +
+                '<div class="tx-menu-dropdown">' +
+                    editMenuItemHtml +
+                    '<button type="button" class="tx-menu-item" data-item-id="' + safeId + '" onclick="handleRowMenuAction(this)">' + escapeHtml(actionLabel) + '</button>' +
+                    // Stage G.3: second, destructive menu item — same data-item-id-only wiring
+                    // convention as the button above (id never enters a concatenated onclick
+                    // string), routed to its own handler (handleDeleteMenuAction) further below
+                    // rather than handleRowMenuAction(), which stays archive/restore-only.
+                    '<button type="button" class="tx-menu-item tx-menu-item-danger" data-item-id="' + safeId + '" onclick="handleDeleteMenuAction(this)">' + escapeHtml('מחק לצמיתות') + '</button>' +
+                '</div>' +
+            '</div>';
+        }
+        document.getElementById(containerId).innerHTML = html;
+    }
+
+    function renderMockUI() {
+        document.getElementById('hero-amount').textContent = MOCK_DATA.hero.amount;
+        document.getElementById('hero-status').textContent = MOCK_DATA.hero.statusLabel;
+        document.getElementById('hero-narrative').textContent = MOCK_DATA.hero.narrative;
+
+        document.getElementById('snapshot-income').textContent = MOCK_DATA.snapshot.income;
+        document.getElementById('snapshot-expenses').textContent = MOCK_DATA.snapshot.expenses;
+        document.getElementById('snapshot-balance').textContent = MOCK_DATA.snapshot.balance;
+
+        // attention-list is no longer rendered from MOCK_DATA.attention here — see Stage E.3's
+        // renderAttentionListFromRealData() below, which renders it from real getBiggestUpcoming
+        // Charge()/getForecastWarning() results instead. This function no longer reads
+        // MOCK_DATA.attention at all.
+
+        renderTxList('recent-activity-list', MOCK_DATA.recentActivity);
+        // transactions-list is no longer rendered from MOCK_DATA.transactions here — see Stage
+        // E.2's renderTransactionsScreenFromRealData() below, which renders it from real `items`
+        // instead. This function no longer reads MOCK_DATA.transactions at all.
+
+        var insightsHtml = '';
+        for (var k = 0; k < MOCK_DATA.insights.length; k++) {
+            var ins = MOCK_DATA.insights[k];
+            var isWarning = ins.tone === 'warning';
+            var toneClass = isWarning ? ' warning' : '';
+            var toneIcon = isWarning ? '⚠️' : '📊'; // purely visual, derived from the existing tone field
+            insightsHtml += '<div class="insight-card' + toneClass + '">' +
+                '<div class="insight-icon">' + toneIcon + '</div>' +
+                '<div class="insight-body">' +
+                    '<div class="insight-title">' + escapeHtml(ins.title) + '</div>' +
+                    '<div class="insight-value">' + escapeHtml(ins.value) + '</div>' +
+                    '<div class="insight-note">' + escapeHtml(ins.note) + '</div>' +
+                '</div>' +
+            '</div>';
+        }
+        document.getElementById('insights-feed').innerHTML = insightsHtml;
+
+        // category-list is no longer rendered from MOCK_DATA.categories here — see Stage E.1's
+        // renderSettingsScreenFromRealData() below, which renders it from the real categoryConfig
+        // instead. This function no longer reads MOCK_DATA.categories at all.
+    }
+
+    // ===== Screen navigation (UI state only) =====
+    function showScreen(name) {
+        var screens = document.querySelectorAll('.screen');
+        for (var i = 0; i < screens.length; i++) { screens[i].classList.remove('active'); }
+        document.getElementById('screen-' + name).classList.add('active');
+
+        var navBtns = document.querySelectorAll('.nav-btn');
+        for (var j = 0; j < navBtns.length; j++) { navBtns[j].classList.remove('active'); }
+        document.getElementById('nav-' + name).classList.add('active');
+    }
+
+    // ===== Transactions filter toggle — visual only, does not filter the mock list =====
+    function setTxFilter(name) {
+        var btns = document.querySelectorAll('.filter-btn');
+        for (var i = 0; i < btns.length; i++) { btns[i].classList.remove('active'); }
+        document.getElementById('filter-' + name).classList.add('active');
+
+        // Stage E.2: the filter is now functional — re-renders transactions-list for the real
+        // items matching the selected filter. Previously this function only toggled the button's
+        // CSS class and never touched the list itself. renderTransactionsScreenFromRealData() is
+        // defined later in this file (function declarations are hoisted, so the forward reference
+        // here is safe — same pattern already used throughout this file).
+        renderTransactionsScreenFromRealData(name);
+    }
+
+    // ===== Quick actions sheet open/close (visual only — no save logic yet) =====
+    function toggleQuickActions(forceState) {
+        var overlay = document.getElementById('quick-actions-overlay');
+        var isOpen = overlay.classList.contains('open');
+        var shouldOpen = (typeof forceState === 'boolean') ? forceState : !isOpen;
+        if (shouldOpen) { overlay.classList.add('open'); } else { overlay.classList.remove('open'); }
+    }
+
+    renderMockUI();
+
+    // =====================================================================================
+    // ===== Stage C/D.3: "story engine" — pure functions, generic over WHATEVER items[]/  =====
+    // ===== categoryConfig object is passed to them. As of Stage D.3 none of them read     =====
+    // ===== mockItems/mockCategoryConfig/mockSnapshot internally anymore — callers decide  =====
+    // ===== the data source. mockItems/mockCategoryConfig/mockSnapshot below are kept ONLY =====
+    // ===== as fixtures for tests (Stage A/B/C already rely on them); they are otherwise   =====
+    // ===== inert. NOT wired to any screen yet — no automatic call site exists in this     =====
+    // ===== file for any of these functions. Does not touch MOCK_DATA above (Stage B's     =====
+    // ===== display-only source) or localStorage.                                         =====
+    // =====================================================================================
+
+    // mockCategoryConfig mirrors the real categoryConfig shape (key -> {label, baseType}),
+    // same 4 built-in keys as the real app, constant Mock values only. Kept as a test fixture.
+    var mockCategoryConfig = {
+        income: { label: "💰 הכנסות", baseType: "income" },
+        fixed: { label: "🏡 הוצאות קבועות", baseType: "fixed" },
+        variable: { label: "🛒 תשלומים שונים", baseType: "variable" },
+        loan: { label: "🏦 הלוואות", baseType: "loan" }
+    };
+
+    // mockItems mirrors the real items[] shape (id, type, displayCategory, isArchived + per-type
+    // fields) as closely as possible, with constant Mock values only. One item (id 7) is archived
+    // on purpose, to verify the engine correctly excludes archived items like the real app does.
+    // Kept as a test fixture only. Note: "monthsLeft" on loan items was a Mock-only convenience
+    // field for Stage C's getLoansRemainingSummary(); as of Stage D.3 that function now computes
+    // `left` for real via parseDatesAndGetLeft(), so this field is no longer read by any function
+    // — left in place harmlessly rather than stripped, since nothing depends on its absence.
+    var mockItems = [
+        { id: 1, type: "income", displayCategory: "income", isArchived: false, title: "משכורת", amount: 10000 },
+        { id: 2, type: "income", displayCategory: "income", isArchived: false, title: "הכנסה נוספת — פרילנס", amount: 1500 },
+        { id: 3, type: "fixed", displayCategory: "fixed", isArchived: false, title: "שכירות", amount: 3000, where: "bank", period: "monthly", notes: "", cardLast4: "" },
+        { id: 4, type: "fixed", displayCategory: "fixed", isArchived: false, title: "מנוי חדר כושר", amount: 200, where: "credit", period: "monthly", notes: "", cardLast4: "1234" },
+        { id: 5, type: "fixed", displayCategory: "fixed", isArchived: false, title: "ביטוח דירה", amount: 640, where: "credit", period: "monthly", notes: "", cardLast4: "1234" },
+        { id: 6, type: "fixed", displayCategory: "fixed", isArchived: false, title: "אינטרנט וטלוויזיה", amount: 150, where: "credit", period: "monthly", notes: "", cardLast4: "5678" },
+        { id: 7, type: "fixed", displayCategory: "fixed", isArchived: true, title: "מנוי ישן שבוטל", amount: 99, where: "credit", period: "monthly", notes: "", cardLast4: "1234" },
+        { id: 8, type: "loan", displayCategory: "loan", isArchived: false, title: "הלוואת רכב", originalAmount: 24000, amount: 890, where: "bank", interest: 4.5, day: 5, total: 24, start: "2025-08-05", monthsLeft: 16 },
+        { id: 9, type: "loan", displayCategory: "loan", isArchived: false, title: "הלוואה אישית", originalAmount: 6000, amount: 500, where: "bank", interest: 6, day: 10, total: 12, start: "2026-02-10", monthsLeft: 8 },
+        { id: 10, type: "variable", displayCategory: "variable", isArchived: false, title: "מקרר — תשלום 3 מתוך 10", originalAmount: 3500, amount: 350, total: 10, start: "2026-05-05" },
+        { id: 11, type: "dated", displayCategory: "dated", isArchived: false, title: "ביטוח רכב שנתי", amount: 1200, start: "2026-08-15" }
+    ];
+
+    // Ready-made Mock snapshot values (income/expenses/balance). Used by Stage C's getMonthSnapshot()
+    // as a placeholder wrapper. As of Stage D.3, getMonthSnapshot() computes for real from its
+    // `items` parameter (see below) and no longer reads this constant — kept only as a test fixture.
+    var mockSnapshot = { income: 11500, expenses: 6930, balance: 4570 };
+
+    // ----- Safe pure functions: generic filtering/summation over whatever items[] is passed in --
+
+    // Period-conversion note (applies to all three functions below): renderAll() in index.html
+    // always converts yearly fixed items to a monthly figure (amount/12) before summing them into
+    // catStats[cKey].monthly — the one real "fixed" aggregation that exists today. All three
+    // fixed-total functions below apply the same conversion, so getFixedCreditCardTotals +
+    // getFixedBankVsCreditSplit.bank/.credit always agree with getTotalFixedCommitments — no
+    // second, inconsistent source of truth between these three closely-related aggregations.
+
+    function getFixedCreditCardTotals(items) {
+        var total = 0;
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            if (it.type === 'fixed' && !it.isArchived && it.where === 'credit') {
+                total += (it.period === 'שנתי') ? (it.amount / 12) : it.amount;
+            }
+        }
+        return total;
+    }
+
+    function getFixedBankVsCreditSplit(items) {
+        var bank = 0, credit = 0;
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            if (it.type === 'fixed' && !it.isArchived) {
+                var mAmount = (it.period === 'שנתי') ? (it.amount / 12) : it.amount;
+                if (it.where === 'credit') { credit += mAmount; } else { bank += mAmount; }
+            }
+        }
+        return { bank: bank, credit: credit };
+    }
+
+    // Mirrors renderAll()'s fixed-item handling in index.html exactly: catStats[cKey].monthly for
+    // baseType 'fixed' always includes both bank AND credit (no `where` filter — matches the
+    // approved "dashboard tile shows everything" decision), and always period-converts yearly
+    // items. Reads only `items` — no DOM, no catStats (which only exists during a real render).
+    function getTotalFixedCommitments(items) {
+        var total = 0;
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            if (it.type === 'fixed' && !it.isArchived) {
+                total += (it.period === 'שנתי') ? (it.amount / 12) : it.amount;
+            }
+        }
+        return total;
+    }
+
+    // Copied verbatim (income/expense inclusion logic only) from renderAll() in index.html — same
+    // structure, same conditions, same edge cases, sourced ONLY from index.html (never app.js,
+    // which lacks the variable-exclusion and fixed/credit-exclusion rules applied here):
+    //   - isArchived items are excluded entirely.
+    //   - variable is never added to expenses (tracking-only; comment preserved from the source).
+    //   - fixed: yearly period is converted to a monthly figure; where==='credit' is excluded from
+    //     expenses; any other value (including legacy/undefined) is treated as bank and included.
+    //   - loan: uses parseDatesAndGetLeft() (copied verbatim in Stage D.1); included only when
+    //     dt.left > 0 — this intentionally preserves the same known inconsistency documented in
+    //     the Stage-D scoping report (a not-yet-started future loan can already count today,
+    //     because parseDatesAndGetLeft returns the full total while "before first billing").
+    //   - dated: included only when its exact year+month matches the current year+month.
+    // catStats/per-category bookkeeping is intentionally omitted — this function only needs the
+    // two totals, not a per-category breakdown.
+    function getMonthSnapshot(items) {
+        var sumInc = 0, monthlyExpenses = 0;
+        for (var i = 0; i < items.length; i++) {
+            var item = items[i];
+            if (!item.isArchived) {
+                if (item.type === 'income') {
+                    sumInc += item.amount;
+                } else if (item.type === 'fixed') {
+                    var mAmount = (item.period === 'שנתי') ? (item.amount / 12) : item.amount;
+                    if (item.where !== 'credit') {
+                        monthlyExpenses += mAmount;
+                    }
+                } else if (item.type === 'variable') {
+                    // תשלומים שונים למעקב/תצוגה בלבד - לא נכללים ביתרה הפנויה (ההשפעה בפועל מגיעה מחיוב כרטיס האשראי שנרשם בנפרד)
+                } else if (item.type === 'loan') {
+                    var dt = parseDatesAndGetLeft(item.start, item.total, item.day);
+                    if (dt.left > 0) {
+                        monthlyExpenses += item.amount;
+                    }
+                } else if (item.type === 'dated') {
+                    if (item.start) {
+                        var itemDate = new Date(item.start);
+                        var now = new Date();
+                        if (itemDate.getFullYear() === now.getFullYear() && itemDate.getMonth() === now.getMonth()) {
+                            monthlyExpenses += item.amount;
+                        }
+                    }
+                }
+            }
+        }
+        return { income: sumInc, expenses: monthlyExpenses, balance: sumInc - monthlyExpenses };
+    }
+
+    function getRecentActivity(items, count) {
+        var n = count || 5;
+        var active = [];
+        for (var i = 0; i < items.length; i++) {
+            if (!items[i].isArchived) { active.push(items[i]); }
+        }
+        return active.slice(-n).reverse();
+    }
+
+    // Uses parseDatesAndGetLeft() (copied verbatim from index.html in Stage D.1) to get `left` —
+    // no independent date arithmetic here. totalRemaining mirrors renderAll()'s
+    // catStats[cKey].totalLeft accumulation (amount * dt.left, unconditional — a loan whose
+    // dt.left is 0 simply contributes 0). loanCount is a new metric with no real-app equivalent
+    // to copy; it counts loans that still have payments left (dt.left > 0), i.e. not yet fully paid.
+    function getLoansRemainingSummary(items) {
+        var totalRemaining = 0;
+        var loanCount = 0;
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            if (it.type === 'loan' && !it.isArchived) {
+                var dt = parseDatesAndGetLeft(it.start, it.total, it.day);
+                totalRemaining += it.amount * dt.left;
+                if (dt.left > 0) { loanCount++; }
+            }
+        }
+        return { totalRemaining: totalRemaining, loanCount: loanCount };
+    }
+
+    // ----- Stage D.6 Part B: real implementations, built only on top of computeForecast()/  -----
+    // ----- getBillingRange()/isBillingActiveInMonth() (all copied verbatim above) — no new  -----
+    // ----- date arithmetic invented here.                                                   -----
+
+    // "Biggest upcoming charge" is searched only within computeForecast()'s own 6-month range
+    // (current month + 5 ahead) — no new range is invented. Only `loan` and `dated` items are
+    // considered "charges" (income is never a charge, fixed is deliberately excluded — see the
+    // Stage D.6 audit report: the approved insight definition is "loan/dated בעלי תאריך ידוע"
+    // only); a loan counts in a given month using the exact same
+    // getBillingRange()+isBillingActiveInMonth() test computeForecast() itself uses for its loan
+    // branch; a dated item counts using the same exact-year+month test computeForecast() uses
+    // for its dated branch. Archived items are skipped, matching computeForecast()'s own
+    // `if (item.isArchived) continue;`. Returns null when no such charge exists anywhere in the
+    // 6-month window.
+    //
+    // Audit fix: renamed the parameter from `items` to `sourceItems` (it was shadowing the
+    // file-global `items` in a way that invited confusion) and now passes it explicitly into
+    // computeForecast(sourceItems), so the returned month/label always come from a forecast
+    // computed over the SAME array this function was called with — never a mix with the global.
+    function getBiggestUpcomingCharge(sourceItems) {
+        var forecastMonths = computeForecast(sourceItems);
+        var now = new Date();
+        var best = null;
+        for (var m = 0; m < forecastMonths.length; m++) {
+            var d = new Date(now.getFullYear(), now.getMonth() + m, 1);
+            for (var i = 0; i < sourceItems.length; i++) {
+                var item = sourceItems[i];
+                if (item.isArchived) continue;
+                var amount = null;
+                if (item.type === 'loan') {
+                    var range = getBillingRange(item.start, item.total, item.day);
+                    if (range && isBillingActiveInMonth(range, d.getFullYear(), d.getMonth())) { amount = item.amount; }
+                } else if (item.type === 'dated' && item.start) {
+                    var itemDate = new Date(item.start);
+                    if (itemDate.getFullYear() === d.getFullYear() && itemDate.getMonth() === d.getMonth()) { amount = item.amount; }
+                }
+                if (amount !== null && (best === null || amount > best.amount)) {
+                    best = { amount: amount, month: forecastMonths[m].label, monthIndex: m, label: item.title };
+                }
+            }
+        }
+        return best;
+    }
+
+    // Reuses getBiggestUpcomingCharge()'s result to find WHICH month is relevant, then reads that
+    // exact month's `net` straight out of computeForecast()'s own output — no separate/parallel
+    // forecast is computed. Returns null when there is no relevant upcoming charge to project after.
+    //
+    // Audit fix: parameter renamed to `sourceItems`; both computeForecast(sourceItems) and
+    // getBiggestUpcomingCharge(sourceItems) now receive the same explicit array — previously
+    // this read the file-global `items` here regardless of what was passed in.
+    function getProjectedBalanceAfterUpcoming(sourceItems) {
+        var charge = getBiggestUpcomingCharge(sourceItems);
+        if (charge === null) { return null; }
+        var forecastMonths = computeForecast(sourceItems);
+        var monthData = forecastMonths[charge.monthIndex];
+        if (!monthData) { return null; }
+        return { balance: monthData.net, month: monthData.label };
+    }
+
+    // Uses computeForecast()'s own numbers directly: the first (soonest) month whose `net` is
+    // negative, if any — the exact same "negative balance" concept CURRENT_STATUS.md already
+    // documented as sourced from computeForecast(). No new risk tiers/ratings are invented; the
+    // message reuses the "יתרה שלילית" phrasing already established in buildNarrative's own
+    // monthSnapshot sentence (not new vocabulary like "מסוכן"/"קריטי"). Returns null when no
+    // month in the 6-month range has a negative net.
+    //
+    // Audit fix: parameter renamed to `sourceItems` and now passed explicitly into
+    // computeForecast(sourceItems) — previously this function's `items` parameter was never read
+    // at all, and it always evaluated the file-global `items` regardless of what was passed in.
+    function getForecastWarning(sourceItems) {
+        var forecastMonths = computeForecast(sourceItems);
+        for (var m = 0; m < forecastMonths.length; m++) {
+            if (forecastMonths[m].net < 0) {
+                var monthData = forecastMonths[m];
+                return {
+                    type: 'negative_balance',
+                    month: monthData.label,
+                    balance: monthData.net,
+                    // Stage F.1 fix: uses formatHomeCurrency() (Stage D.5) instead of a raw number,
+                    // so this message matches the same '₪' + thousands-separator formatting used
+                    // everywhere else (previously e.g. "₪6000" instead of "₪6,000").
+                    message: 'ב-' + monthData.label + ' צפויה יתרה שלילית של ' + formatHomeCurrency(Math.abs(monthData.net)) + '.'
+                };
+            }
+        }
+        return null;
+    }
+
+    // Compares dated-item totals between the CURRENT calendar month and the PREVIOUS calendar
+    // month (the one immediately before it — not part of computeForecast()'s forward-looking
+    // range, so this reads `items` directly), using the exact same "exact year+month match" test
+    // already used identically for dated items in both computeForecast() and getMonthSnapshot().
+    // Returns both an absolute amount and a percentage; percentage is explicitly null (never
+    // NaN/Infinity) when the previous month's total is 0, since a percentage change from zero is
+    // not meaningful. Returns null (not an object) only when there are no dated items anywhere in
+    // items — that's the sole "no dated data" case; if dated items exist elsewhere but not in
+    // either of these two months, both totals are simply 0 and changePercent is null.
+    function getDatedMonthOverMonthChange(items) {
+        var hasDatedItems = items.some(function (it) { return it.type === 'dated' && !it.isArchived; });
+        if (!hasDatedItems) { return null; }
+
+        var now = new Date();
+        var currentMonthDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        var previousMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+        var currentMonthTotal = 0, previousMonthTotal = 0;
+        for (var i = 0; i < items.length; i++) {
+            var item = items[i];
+            if (item.type !== 'dated' || item.isArchived || !item.start) { continue; }
+            var itemDate = new Date(item.start);
+            if (itemDate.getFullYear() === currentMonthDate.getFullYear() && itemDate.getMonth() === currentMonthDate.getMonth()) {
+                currentMonthTotal += item.amount;
+            } else if (itemDate.getFullYear() === previousMonthDate.getFullYear() && itemDate.getMonth() === previousMonthDate.getMonth()) {
+                previousMonthTotal += item.amount;
+            }
+        }
+
+        var changeAmount = currentMonthTotal - previousMonthTotal;
+        var changePercent = (previousMonthTotal !== 0) ? ((changeAmount / previousMonthTotal) * 100) : null;
+
+        return {
+            currentMonthLabel: currentMonthDate.toLocaleDateString('he-IL', { month: 'short' }),
+            previousMonthLabel: previousMonthDate.toLocaleDateString('he-IL', { month: 'short' }),
+            currentMonthTotal: currentMonthTotal,
+            previousMonthTotal: previousMonthTotal,
+            changeAmount: changeAmount,
+            changePercent: changePercent
+        };
+    }
+
+    // ----- buildNarrative: assembles human sentences ("story of the money") from the safe -----
+    // ----- functions' output only. Stub-backed fields are left null/omitted, never invented. -----
+
+    function buildNarrative(items, categoryConfig) {
+        var creditTotal = getFixedCreditCardTotals(items);
+        var split = getFixedBankVsCreditSplit(items);
+        var totalCommitments = getTotalFixedCommitments(items);
+        var snapshot = getMonthSnapshot(items);
+        var recent = getRecentActivity(items, 5);
+        var loans = getLoansRemainingSummary(items);
+
+        var sentences = {};
+
+        // Stage F.1 fix: formatHomeCurrency() instead of a raw number, so this matches the
+        // insight-value formatting on the Insights screen (previously e.g. "₪220" was fine only
+        // because it's under 1000 — a 4-digit value would have shown without a thousands separator).
+        sentences.creditCardTotal = creditTotal > 0
+            ? 'סך חיובי כרטיס האשראי מהוצאות קבועות עומד על ' + formatHomeCurrency(creditTotal) + '.'
+            : 'אין כרגע הוצאות קבועות המחויבות בכרטיס אשראי.';
+
+        sentences.bankVsCredit = 'מתוך ההוצאות הקבועות: ₪' + split.bank + ' מחויבות בחשבון הבנק, ו-₪' + split.credit + ' בכרטיס אשראי.';
+
+        sentences.totalCommitments = 'סך ההתחייבויות הקבועות שלך עומד על ₪' + totalCommitments + ' לחודש.';
+
+        sentences.monthSnapshot = snapshot.balance >= 0
+            ? 'החודש: הכנסות ₪' + snapshot.income + ', הוצאות ₪' + snapshot.expenses + ', ונשארת עם יתרה חיובית של ₪' + snapshot.balance + '.'
+            : 'החודש: הכנסות ₪' + snapshot.income + ', הוצאות ₪' + snapshot.expenses + ' — היתרה שלילית בסך ₪' + Math.abs(snapshot.balance) + '.';
+
+        // Stage F.1 fix: formatHomeCurrency() instead of a raw number — same reasoning as
+        // creditCardTotal above (e.g. previously showed "26100" instead of "26,100").
+        sentences.loansRemaining = loans.loanCount > 0
+            ? 'נותרו לך ' + formatHomeCurrency(loans.totalRemaining) + ' בסך הכול ב-' + loans.loanCount + ' הלוואות פעילות.'
+            : 'אין לך כרגע הלוואות פעילות.';
+
+        sentences.recentActivity = recent.length > 0
+            ? 'הפעילות האחרונה כוללת ' + recent.length + ' תנועות.'
+            : 'אין עדיין פעילות להצגה.';
+
+        // Stage D.6: these 4 fields are no longer Stub-backed — connected to the real
+        // implementations. Only these 4 assignments changed; everything above is untouched.
+        var biggestCharge = getBiggestUpcomingCharge(items);
+        sentences.biggestUpcomingCharge = biggestCharge
+            ? 'החיוב הצפוי הגדול ביותר בחודשים הקרובים הוא ' + biggestCharge.label + ' על סך ₪' + biggestCharge.amount + ' (' + biggestCharge.month + ').'
+            : null;
+
+        var projectedBalance = getProjectedBalanceAfterUpcoming(items);
+        sentences.projectedBalanceAfterUpcoming = projectedBalance
+            ? 'לאחר החיוב הזה, היתרה הצפויה ב-' + projectedBalance.month + ' עומדת על ₪' + projectedBalance.balance + '.'
+            : null;
+
+        var warning = getForecastWarning(items);
+        sentences.forecastWarning = warning ? warning.message : null;
+
+        var datedChange = getDatedMonthOverMonthChange(items);
+        sentences.datedMonthOverMonthChange = datedChange
+            ? 'החיובים החד-פעמיים ' + (datedChange.changeAmount >= 0 ? 'עלו' : 'ירדו') + ' ב-₪' + Math.abs(datedChange.changeAmount) + ' לעומת ' + datedChange.previousMonthLabel + '.'
+            : null;
+
+        return sentences;
+    }
+
+    // =====================================================================================
+    // ===== Stage D.1/D.6 Part A: infrastructure only — verbatim copies of the real app's    =====
+    // ===== date-billing and forecast logic from index.html (getBillingRange,                =====
+    // ===== parseDatesAndGetLeft added in D.1; isBillingActiveInMonth + computeForecast       =====
+    // ===== added in D.6), unmodified. Not wired to mockItems or localStorage.                =====
+    // =====================================================================================
+
+    // --- ⚖️ לוגיקת חישוב מועדים ותשלומים שנותרו מעודכנת ומסונכרנת לחלוטין ---
+    function getBillingRange(startDateStr, totalPayments, billingDay) {
+        if (!startDateStr || !totalPayments) return null;
+
+        var parts = startDateStr.split('-');
+        var startYear = parseInt(parts[0], 10);
+        var startMonth = parseInt(parts[1], 10) - 1;
+        var startDay = parts[2] ? parseInt(parts[2], 10) : 1;
+
+        var total = parseInt(totalPayments, 10);
+        var bDay = billingDay ? parseInt(billingDay, 10) : 1;
+
+        // קביעת חודש החיוב הראשון בפועל
+        var firstBillingMonth = startMonth;
+        if (startDay >= bDay) {
+            firstBillingMonth += 1;
+        }
+        var firstBillingDate = new Date(startYear, firstBillingMonth, bDay);
+
+        // קביעת תאריך חיוב אחרון (הוספת סך תשלומים פחות 1)
+        var lastBillingDate = new Date(firstBillingDate.getFullYear(), firstBillingDate.getMonth() + (total - 1), bDay);
+
+        return { first: firstBillingDate, last: lastBillingDate, bDay: bDay, total: total };
+    }
+
+    function parseDatesAndGetLeft(startDateStr, totalPayments, billingDay) {
+        var range = getBillingRange(startDateStr, totalPayments, billingDay);
+        if (!range) return { left: 0, endStr: '-' };
+
+        var endStr = range.last.toLocaleDateString('he-IL');
+
+        // חישוב מדויק של תשלומים שנותרו ביחס להיום
+        var today = new Date();
+        var todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+        // אם היום הנוכחי מוקדם ממועד החיוב הראשון בפועל - נשארו כל התשלומים
+        if (todayZero < range.first) {
+            return { left: range.total, endStr: endStr };
+        }
+
+        // חישוב מספר חודשי החיוב המלאים שעברו
+        var passedMonths = (todayZero.getFullYear() - range.first.getFullYear()) * 12 + (todayZero.getMonth() - range.first.getMonth());
+
+        // אם עברנו או הגענו ליום החיוב בחודש הנוכחי, החודש הנוכחי נחשב ככזה שירד
+        if (todayZero.getDate() >= range.bDay) {
+            passedMonths += 1;
+        }
+
+        var left = range.total - passedMonths;
+        if (left < 0) left = 0;
+        if (left > range.total) left = range.total;
+
+        return { left: left, endStr: endStr };
+    }
+
+    // Copied verbatim from index.html — used only by computeForecast() below, for the loan branch.
+    function isBillingActiveInMonth(range, year, monthIndex) {
+        var firstYm = range.first.getFullYear() * 12 + range.first.getMonth();
+        var lastYm = range.last.getFullYear() * 12 + range.last.getMonth();
+        var targetYm = year * 12 + monthIndex;
+        return targetYm >= firstYm && targetYm <= lastYm;
+    }
+
+    // Copied verbatim from index.html, with exactly one minimal, backward-compatible addition
+    // made in the follow-up audit fix: an optional `itemsOverride` parameter. No business
+    // condition, no month range, no per-type calculation, no field name, no output shape was
+    // touched — only the local data-source variable name changed (items -> forecastItems) so
+    // that callers who explicitly pass a different item array (e.g. the 3 fixed stub functions
+    // below) are guaranteed to get a forecast computed over THAT array, not the file-global
+    // `items`. Called with no argument (as index.html itself always does), forecastItems falls
+    // back to the same global `items` as before — byte-identical behavior to the original copy.
+    // The known inconsistency with renderAll()/getMonthSnapshot() (documented in the Stage-D
+    // scoping report: fixed excludes credit, variable is fully excluded, loan uses
+    // getBillingRange+isBillingActiveInMonth per-month rather than the left>0 gate) is preserved
+    // exactly as-is — not reconciled, not "fixed".
+    function computeForecast(itemsOverride) {
+        var forecastItems = Array.isArray(itemsOverride) ? itemsOverride : items;
+        var now = new Date();
+        var months = [];
+        for (var m = 0; m < 6; m++) {
+            var d = new Date(now.getFullYear(), now.getMonth() + m, 1);
+            var sumInc = 0, sumExp = 0;
+            for (var i = 0; i < forecastItems.length; i++) {
+                var item = forecastItems[i];
+                if (item.isArchived) continue;
+                if (item.type === 'income') {
+                    sumInc += item.amount;
+                } else if (item.type === 'fixed') {
+                    if (item.where !== 'credit') {
+                        sumExp += (item.period === 'שנתי') ? (item.amount / 12) : item.amount;
+                    }
+                } else if (item.type === 'variable') {
+                    // תשלומים שונים למעקב/תצוגה בלבד - לא נכללים בתחזית
+                } else if (item.type === 'loan') {
+                    var range2 = getBillingRange(item.start, item.total, item.day);
+                    if (range2 && isBillingActiveInMonth(range2, d.getFullYear(), d.getMonth())) sumExp += item.amount;
+                } else if (item.type === 'dated') {
+                    if (item.start) {
+                        var itemDate = new Date(item.start);
+                        if (itemDate.getFullYear() === d.getFullYear() && itemDate.getMonth() === d.getMonth()) sumExp += item.amount;
+                    }
+                }
+            }
+            months.push({ label: d.toLocaleDateString('he-IL', { month: 'short' }), net: sumInc - sumExp });
+        }
+        return months;
+    }
+
+    // =====================================================================================
+    // ===== Stage 3ב.4: forecast chart/table UI for the Insights screen. niceRoundUp/       =====
+    // ===== barPath/attachForecastHandlers/renderForecast/toggleForecastView are copied      =====
+    // ===== verbatim from index.html's own functions of the same name (geometry, scaling and =====
+    // ===== tooltip behavior unchanged) — only DOM ids/classes are renamed to this file's own =====
+    // ===== `preview-forecast-*` namespace, and the data source is `computeForecast(items)`   =====
+    // ===== (explicit, matching how the rest of this screen's real-data functions are called) =====
+    // ===== instead of computeForecast()'s no-arg global fallback. No new business logic.     =====
+    // =====================================================================================
+
+    var previewForecastView = 'chart';
+
+    // Copied verbatim from index.html.
+    function niceRoundUp(value) {
+        if (value <= 0) return 100;
+        var exp = Math.floor(Math.log(value) / Math.LN10);
+        var base = Math.pow(10, exp);
+        var n = value / base;
+        var niceN = (n <= 1) ? 1 : (n <= 2) ? 2 : (n <= 5) ? 5 : 10;
+        return niceN * base;
+    }
+
+    // Copied verbatim from index.html.
+    function barPath(x, y, w, h, r, roundedEnd) {
+        if (h < r * 2) r = Math.max(0, h / 2);
+        if (roundedEnd === 'top') {
+            return 'M' + x + ',' + (y + h) +
+                ' L' + x + ',' + (y + r) +
+                ' Q' + x + ',' + y + ' ' + (x + r) + ',' + y +
+                ' L' + (x + w - r) + ',' + y +
+                ' Q' + (x + w) + ',' + y + ' ' + (x + w) + ',' + (y + r) +
+                ' L' + (x + w) + ',' + (y + h) + ' Z';
+        }
+        return 'M' + x + ',' + y +
+            ' L' + (x + w) + ',' + y +
+            ' L' + (x + w) + ',' + (y + h - r) +
+            ' Q' + (x + w) + ',' + (y + h) + ' ' + (x + w - r) + ',' + (y + h) +
+            ' L' + (x + r) + ',' + (y + h) +
+            ' Q' + x + ',' + (y + h) + ' ' + x + ',' + (y + h - r) + ' Z';
+    }
+
+    // Same shape as index.html's attachForecastHandlers(), pointing at this screen's own
+    // preview-forecast-svg/preview-forecast-tooltip ids and .preview-forecast-bar class.
+    function attachForecastHandlers(months) {
+        var svg = document.getElementById('preview-forecast-svg');
+        var tooltip = document.getElementById('preview-forecast-tooltip');
+        var bars = svg.querySelectorAll('.preview-forecast-bar');
+        for (var i = 0; i < bars.length; i++) {
+            (function(bar) {
+                function show() {
+                    var idx = parseInt(bar.getAttribute('data-idx'), 10);
+                    var mo = months[idx];
+                    tooltip.innerHTML = '<strong>' + formatHomeCurrency(mo.net) + '</strong>' + escapeHtml(mo.label);
+                    tooltip.style.display = 'block';
+                    var rect = bar.getBoundingClientRect();
+                    var wrapRect = svg.parentNode.getBoundingClientRect();
+                    tooltip.style.left = (rect.left - wrapRect.left + rect.width / 2) + 'px';
+                    tooltip.style.top = (rect.top - wrapRect.top) + 'px';
+                }
+                function hide() { tooltip.style.display = 'none'; }
+                bar.addEventListener('pointerenter', show);
+                bar.addEventListener('pointermove', show);
+                bar.addEventListener('pointerleave', hide);
+                bar.addEventListener('focus', show);
+                bar.addEventListener('blur', hide);
+            })(bars[i]);
+        }
+    }
+
+    // Same geometry/scale as index.html's renderForecast(); reads computeForecast(items)
+    // explicitly instead of relying on the no-arg global fallback.
+    function renderForecast() {
+        var svg = document.getElementById('preview-forecast-svg');
+        var tableWrap = document.getElementById('preview-forecast-table-wrap');
+        if (!svg) return;
+
+        var months = computeForecast(items);
+        var maxAbs = 1;
+        for (var k = 0; k < months.length; k++) { maxAbs = Math.max(maxAbs, Math.abs(months[k].net)); }
+        var niceMax = niceRoundUp(maxAbs);
+
+        var W = 300, H = 170, baselineY = 88, barMaxH = 60, barW = 26, radius = 4;
+        var slot = W / months.length;
+        var scale = barMaxH / niceMax;
+
+        var parts = [];
+        parts.push('<line class="preview-forecast-zero-line" x1="0" y1="' + baselineY + '" x2="' + W + '" y2="' + baselineY + '"></line>');
+        parts.push('<text class="preview-forecast-scale-label" x="2" y="' + (baselineY - barMaxH - 3) + '">₪' + niceMax.toLocaleString() + '</text>');
+        parts.push('<text class="preview-forecast-scale-label" x="2" y="' + (baselineY + barMaxH + 8) + '">-₪' + niceMax.toLocaleString() + '</text>');
+
+        for (var i = 0; i < months.length; i++) {
+            var mo = months[i];
+            var x = i * slot + (slot - barW) / 2;
+            var h = Math.round(Math.abs(mo.net) * scale);
+            if (h < 3) h = 3;
+            var y, roundedEnd, colorClass;
+            if (mo.net >= 0) { y = baselineY - h; roundedEnd = 'top'; colorClass = 'preview-forecast-bar-pos'; }
+            else { y = baselineY; roundedEnd = 'bottom'; colorClass = 'preview-forecast-bar-neg'; }
+            var d = barPath(x, y, barW, h, radius, roundedEnd);
+            parts.push('<path class="preview-forecast-bar ' + colorClass + '" data-idx="' + i + '" tabindex="0" d="' + d + '"></path>');
+            parts.push('<text class="preview-forecast-axis-label" x="' + (x + barW / 2) + '" y="' + (H - 4) + '" text-anchor="middle">' + escapeHtml(mo.label) + '</text>');
+        }
+
+        svg.innerHTML = parts.join('');
+        attachForecastHandlers(months);
+
+        var tableHtml = '<table><thead><tr><th>חודש</th><th>יתרה פנויה צפויה</th></tr></thead><tbody>';
+        for (var j = 0; j < months.length; j++) {
+            var m2 = months[j];
+            tableHtml += '<tr><td>' + escapeHtml(m2.label) + '</td><td class="' + (m2.net >= 0 ? 'preview-forecast-positive' : 'preview-forecast-negative') + '">' + formatHomeCurrency(m2.net) + '</td></tr>';
+        }
+        tableHtml += '</tbody></table>';
+        tableWrap.innerHTML = tableHtml;
+    }
+
+    // Same toggle behavior as index.html's toggleForecastView(), pointing at this screen's own
+    // preview-forecast-chart-wrap/preview-forecast-table-wrap/preview-forecast-toggle-btn ids.
+    function toggleForecastView() {
+        previewForecastView = (previewForecastView === 'chart') ? 'table' : 'chart';
+        document.getElementById('preview-forecast-chart-wrap').style.display = (previewForecastView === 'chart') ? 'block' : 'none';
+        document.getElementById('preview-forecast-table-wrap').style.display = (previewForecastView === 'table') ? 'block' : 'none';
+        document.getElementById('preview-forecast-toggle-btn').textContent = (previewForecastView === 'chart') ? 'טבלה' : 'גרף';
+    }
+
+    // =====================================================================================
+    // ===== Stage D.2 (originally Preview-only, now Stage 4.4 candidate): read-only          =====
+    // ===== connection to the app's own localStorage data. Reads ONLY DATA_KEY/CONFIG_KEY —  =====
+    // ===== the real family_finance_data/family_finance_cat_config keys directly, no other   =====
+    // ===== key. No setItem/removeItem anywhere in this section. Not wired to any Stage C     =====
+    // ===== function, mockItems, mockCategoryConfig, buildNarrative, or UI — `items`/         =====
+    // ===== `categoryConfig` below are declared and loaded, nothing more.                     =====
+    // =====================================================================================
+
+    function loadPreviewItems() {
+        var raw = localStorage.getItem(DATA_KEY);
+        var parsed;
+        try {
+            parsed = JSON.parse(raw);
+        } catch (e) {
+            parsed = null;
+        }
+        // Safe fallback: anything that isn't actually an array (missing key, corrupt JSON,
+        // wrong type) becomes an empty items list — never throws, never invents item data.
+        return Array.isArray(parsed) ? parsed : [];
+    }
+
+    function loadPreviewCategoryConfig() {
+        var raw = localStorage.getItem(CONFIG_KEY);
+        var parsed;
+        try {
+            parsed = JSON.parse(raw);
+        } catch (e) {
+            parsed = null;
+        }
+        var isPlainObject = parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed);
+        if (isPlainObject) { return parsed; }
+        // Safe fallback: missing key, corrupt JSON, or wrong type (array/null/primitive) falls
+        // back to DEFAULT_CATEGORY_CONFIG_JSON — the real app's own known-good default shape,
+        // not Stage C's mock data.
+        try {
+            return JSON.parse(DEFAULT_CATEGORY_CONFIG_JSON);
+        } catch (e2) {
+            return {};
+        }
+    }
+
+    var items = loadPreviewItems();
+    var categoryConfig = loadPreviewCategoryConfig();
+
+    // Stage G.4: tracks which item's row (Transactions screen only) is currently showing the
+    // inline edit form in place of its normal row markup. null means no row is being edited.
+    // Mirrors index.html's own `editingId` module-level variable, just scoped to Preview v2's
+    // separate `items` array.
+    var previewEditingId = null;
+
+    // Stage G.5: tracks the add-transaction form currently open (if any) at the top of the
+    // Transactions screen. null = closed. 'expense-picker' = the intermediate fixed/variable/dated
+    // chooser (no category chosen yet). 'income'/'loan'/'fixed'/'variable'/'dated' = that type's
+    // full form is open. previewAddCategoryKey holds the categoryConfig key the new item will be
+    // saved under (displayCategory) — only meaningful once a concrete type (not 'expense-picker')
+    // is selected. Both are visual-only state, mirroring previewEditingId: never persisted, always
+    // reset to null on page load.
+    var previewAddMode = null;
+    var previewAddCategoryKey = null;
+
+    // =====================================================================================
+    // ===== Stage 3ב.1/3ב.2: category management state. Declared here (with items/          =====
+    // ===== categoryConfig above and previewEditingId/previewAddMode) rather than down next  =====
+    // ===== to the Stage 3ב.1 logic functions themselves, because renderSettingsScreenFromReal=====
+    // ===== Data() is invoked once during the page's initial synchronous load (below) and, as =====
+    // ===== of Stage 3ב.2, reads these values — they must already be assigned by then. Plain  =====
+    // ===== `var` initializers are NOT hoisted the way `function` declarations are, so this   =====
+    // ===== block cannot stay below its point of first use the way the pure Stage 3ב.1 logic  =====
+    // ===== functions (translateBaseType, addPreviewCategory, deletePreviewCategory, etc.,    =====
+    // ===== still appended near the end of the file) safely can.                              =====
+    // =====================================================================================
+
+    // The 4 keys index.html itself treats as permanent (initCategoryInputs() there renders a
+    // rename input for each of them but never a delete button — the same set this file's own
+    // Stage E.1 loop already iterates over via Object.keys(categoryConfig), just named here so
+    // the deletion guard below has something explicit to check against instead of re-deriving
+    // the set ad hoc.
+    var PREVIEW_BUILTIN_CATEGORY_KEYS = ['income', 'fixed', 'variable', 'loan'];
+
+    // Copied verbatim (value/label text) from index.html's own #new-cat-type <option> list.
+    // 'loan' is deliberately absent, matching index.html: a new custom category can never be
+    // typed as 'loan' there.
+    var PREVIEW_CUSTOM_CATEGORY_TYPE_OPTIONS = [
+        { value: 'fixed', label: 'הוצאה קבועה (סכום קבוע חודשי/שנתי)' },
+        { value: 'variable', label: 'תשלומים שונים (עסקאות עם תשלומים ותאריך סיום)' },
+        { value: 'income', label: 'הכנסה (מוסיף לתזרים הפנוי)' },
+        { value: 'dated', label: 'חיוב חד-פעמי (תאריך וסכום בלבד, למשל כרטיס אשראי)' }
+    ];
+
+    // Reason codes returned by deletePreviewCategory() when it refuses to delete — a return value
+    // rather than an alert() baked into the logic itself, so the Settings screen can render the
+    // "הודעה ברורה" (clear message) the approved product decision calls for as in-UI text.
+    var PREVIEW_CATEGORY_DELETE_BLOCKED_REASON = {
+        BUILT_IN: 'built-in',
+        HAS_ITEMS: 'has-items'
+    };
+
+    // Which category key (if any) is currently showing a rename form in the Settings screen,
+    // mirroring previewEditingId's role for the Transactions screen (Stage G.4).
+    var previewEditingCategoryKey = null;
+
+    // Stage 3ב.2 UI-only state (visual only, never persisted, always resets to its default on
+    // page load) — mirrors previewAddMode/previewEditingId's role for the Transactions screen.
+    // previewCategoryAddOpen: whether the "add category" inline form is currently shown.
+    // previewDeletingCategoryKey: which category key (if any) is showing an inline delete
+    // confirmation ("מחיקה" → "אישור מחיקה"/"ביטול"), used instead of a native confirm() per the
+    // approved 3ב.2 UI rules.
+    var previewCategoryAddOpen = false;
+    var previewDeletingCategoryKey = null;
+
+    // Enforces "only one category form open at a time" (rename OR add OR delete-confirmation, not
+    // several at once) — same convention already applied between previewAddMode/previewEditingId
+    // on the Transactions screen. Called at the start of every "open a form" action below.
+    function resetPreviewCategoryFormsState() {
+        previewEditingCategoryKey = null;
+        previewCategoryAddOpen = false;
+        previewDeletingCategoryKey = null;
+    }
+
+    // =====================================================================================
+    // ===== Stage D.4 (revised, option ג׳): orchestration only — connects buildNarrative()  =====
+    // ===== to the REAL Preview items/categoryConfig loaded above (Stage D.2), with a       =====
+    // ===== single call. buildNarrative() itself already calls each of the 6 real Stage D.3 =====
+    // ===== functions internally exactly once — this function does NOT call them separately =====
+    // ===== beforehand, to avoid computing every value twice. Defined here (after            =====
+    // ===== items/categoryConfig are assigned) for readability; not called automatically     =====
+    // ===== anywhere in this file — no UI, no DOM, no renderMockUI wiring, no localStorage   =====
+    // ===== access of its own. buildNarrative() itself is untouched.                         =====
+    // =====================================================================================
+
+    function buildPreviewNarrativeData() {
+        return { narrative: buildNarrative(items, categoryConfig) };
+    }
+
+    // =====================================================================================
+    // ===== Stage D.5: Home screen only — replaces its Mock-fed elements with real data    =====
+    // ===== from items/categoryConfig via getMonthSnapshot()/getRecentActivity()/           =====
+    // ===== buildPreviewNarrativeData(). Reads only items/categoryConfig (already loaded     =====
+    // ===== above) — never localStorage directly, never MOCK_DATA/mockItems/mockCategoryConfig=====
+    // ===== /mockSnapshot. Touches ONLY: hero-amount, hero-narrative, snapshot-income,        =====
+    // ===== snapshot-expenses, snapshot-balance, recent-activity-list. Does NOT touch          =====
+    // ===== hero-status, attention-list, transactions-list, insights-feed, or category-list —  =====
+    // ===== see the Stage D.5 report for why each of those stays Mock for now.                =====
+    // =====================================================================================
+
+    // Originally mirrored index.html's own '#net-balance' convention exactly ('₪' + rounded,
+    // locale-formatted number). Stage F.1 follow-up fix: for a negative n, that produced the sign
+    // as part of the locale-formatted number AFTER the already-prepended '₪' (e.g. "₪-13,050")
+    // — visually wrong regardless of bidi ("-13,050₪" once rendered in the surrounding RTL page).
+    // Now explicitly puts a leading '-' before '₪' for negative values (magnitude via Math.abs,
+    // same numeric value — display-only change, no calculation touched). Positive values are
+    // byte-identical to before.
+    function formatHomeCurrency(n) {
+        var rounded = Math.round(n);
+        return (rounded < 0 ? '-₪' : '₪') + Math.abs(rounded).toLocaleString();
+    }
+
+    // Presentational icon-per-type lookup only (no business meaning). Reuses the exact emoji
+    // already established elsewhere in this file for the same base types (DEFAULT_CATEGORY_CONFIG_JSON,
+    // MOCK_DATA.categories) — 'dated' has no built-in category in the real app, so it gets the
+    // same 📅 already used for a dated-like entry in Stage B's MOCK_DATA.recentActivity.
+    var HOME_ITEM_ICON_BY_TYPE = { income: '💰', fixed: '🏡', variable: '🛒', loan: '🏦', dated: '📅' };
+
+    // Adapts one real item[] entry into the exact {icon,title,date,amount,type} shape that the
+    // existing renderTxList()/tx-row markup already expects (unchanged since Stage B) — no HTML,
+    // CSS, or structure changes; only the data going in is real instead of Mock.
+    function mapItemToHomeTxRow(item) {
+        var icon = HOME_ITEM_ICON_BY_TYPE[item.type] || '💳';
+        var title = item.title || '';
+        // Missing-date convention copied from index.html itself (e.g. renderAll()'s dated/loan/
+        // variable cards: `item.start ? new Date(item.start).toLocaleDateString('he-IL') : '-'`).
+        // Stage E.2 fix: index.html's own convention assumes `item.start`, when present, is
+        // always a valid date string (it's only ever written by the app's own <input type="date">
+        // fields) — a guarantee real Preview data upholds too. This function additionally guards
+        // against a non-date-parseable `start` (missing entirely, empty string, or a genuinely
+        // invalid value) so it never surfaces JS's raw "Invalid Date" text — falls back to the
+        // same '-' used for the missing-date case instead.
+        var startDate = item.start ? new Date(item.start) : null;
+        var date = (startDate && !isNaN(startDate.getTime())) ? startDate.toLocaleDateString('he-IL') : '-';
+        var amountNum = (typeof item.amount === 'number' && !isNaN(item.amount)) ? item.amount : 0;
+        // Same sign/prefix convention Stage B's MOCK_DATA already used: income shown plain,
+        // every other type shown with a leading "-" to read as an outflow.
+        var amount = (item.type === 'income') ? formatHomeCurrency(amountNum) : ('-' + formatHomeCurrency(amountNum));
+        var cssType = (item.type === 'income') ? 'income' : 'expense';
+        // Stage G.2.1: two additive fields only — id/isArchived pass the source item's identity
+        // and archive state through, so a future Transactions-only row-menu (Stage G.2.4+) can
+        // know which item and which action label to wire up. The 5 fields above are unchanged
+        // (same values, same computation) — Home's renderTxList()/recent-activity-list simply
+        // ignores these 2 extra fields, exactly as it already ignores any object properties it
+        // doesn't read today.
+        return { icon: icon, title: title, date: date, amount: amount, type: cssType, id: item.id, isArchived: !!item.isArchived };
+    }
+
+    function renderHomeScreenFromRealData() {
+        var snapshot = getMonthSnapshot(items);
+
+        document.getElementById('hero-amount').textContent = formatHomeCurrency(snapshot.balance);
+        document.getElementById('snapshot-income').textContent = formatHomeCurrency(snapshot.income);
+        document.getElementById('snapshot-expenses').textContent = formatHomeCurrency(snapshot.expenses);
+        document.getElementById('snapshot-balance').textContent = formatHomeCurrency(snapshot.balance);
+
+        // hero-status (the small status pill) is intentionally left untouched — there is no
+        // narrative field that maps to a short status label without inventing new wording or
+        // logic (it would require the still-unimplemented getForecastWarning). See report.
+        var narrativeResult = buildPreviewNarrativeData().narrative;
+        document.getElementById('hero-narrative').textContent = narrativeResult.monthSnapshot;
+
+        // Same row count the existing (Mock) Home design showed (4).
+        var recent = getRecentActivity(items, 4).map(mapItemToHomeTxRow);
+        renderTxList('recent-activity-list', recent);
+    }
+
+    // Called once, after items/categoryConfig (and everything Stage D.3/D.4 depend on) are
+    // already loaded — this is the only ordering guarantee needed; see the Stage D.5 report for
+    // why renderMockUI()'s own (earlier, unmoved) call site is not a problem in practice.
+    renderHomeScreenFromRealData();
+
+    // =====================================================================================
+    // ===== Stage E.3: Home screen only — replaces attention-list's Mock-fed rows with the  =====
+    // ===== two already-built, already-tested real functions from Stage D.6                 =====
+    // ===== (getBiggestUpcomingCharge, getForecastWarning) — no new business logic invented. =====
+    // ===== Explicit scoping decision (approved before this stage was written): the Mock      =====
+    // ===== showed 3 items with day-level "בעוד X ימים" phrasing, but no such function exists =====
+    // ===== anywhere (in index.html or in this file) — building one would require inventing   =====
+    // ===== an undefined time window and item cap. Per the approved decision, this stage      =====
+    // ===== deliberately stays to the 0–2 cards these two existing functions already produce;  =====
+    // ===== broader "upcoming charges" logic is explicitly deferred to a future stage.         =====
+    // =====================================================================================
+
+    // charge.month/warning.month are the same short month labels (e.g. "אוג׳") computeForecast()
+    // already returns — no day-level date arithmetic is invented here. Amounts reuse
+    // formatHomeCurrency() (Stage D.5, unchanged) for the same '₪'+rounded+locale convention
+    // used everywhere else on this screen.
+    function renderAttentionListFromRealData() {
+        var cards = [];
+
+        var charge = getBiggestUpcomingCharge(items);
+        if (charge) {
+            cards.push({
+                title: charge.label,
+                detail: 'צפוי ב-' + charge.month,
+                amount: formatHomeCurrency(charge.amount)
+            });
+        }
+
+        var warning = getForecastWarning(items);
+        if (warning) {
+            cards.push({
+                title: 'אזהרת תחזית',
+                detail: warning.message,
+                amount: formatHomeCurrency(Math.abs(warning.balance))
+            });
+        }
+
+        // Empty state: when neither signal fires (0 cards), attention-list is simply left empty
+        // (innerHTML = '') rather than showing invented "everything's fine" copy — the same
+        // judgment call already made and documented for the Insights screen's forecast-warning
+        // card in Stage D.6 (no empty-state markup exists in the design for this card), kept
+        // consistent here rather than inventing new wording unilaterally.
+        var html = '';
+        for (var i = 0; i < cards.length; i++) {
+            var a = cards[i];
+            html += '<div class="attention-item">' +
+                '<div>' +
+                    '<div class="attention-title">' + escapeHtml(a.title) + '</div>' +
+                    '<div class="attention-detail">' + escapeHtml(a.detail) + '</div>' +
+                '</div>' +
+                '<div class="attention-amount">' + escapeHtml(a.amount) + '</div>' +
+            '</div>';
+        }
+        document.getElementById('attention-list').innerHTML = html;
+    }
+
+    // Called once, after items/categoryConfig and the Home render above — same ordering
+    // guarantee, no code moved.
+    renderAttentionListFromRealData();
+
+    // =====================================================================================
+    // ===== Stage D.6 Part D: Insights screen only — replaces insights-feed's Mock-fed      =====
+    // ===== cards with real ones, reusing the exact same insight-card markup/classes         =====
+    // ===== (unchanged since Stage B). Does not touch the Home, Transactions, or Settings     =====
+    // ===== screens, MOCK_DATA, or localStorage.                                              =====
+    // =====================================================================================
+
+    function renderInsightsScreenFromRealData() {
+        var narrativeResult = buildPreviewNarrativeData().narrative;
+        var cards = [];
+
+        // Same 3 topics the original Mock cards showed, same order, same titles — only the
+        // dynamic content (value/note) is now real.
+        cards.push({
+            title: 'סך חיובי כרטיס אשראי החודש',
+            value: formatHomeCurrency(getFixedCreditCardTotals(items)),
+            note: narrativeResult.creditCardTotal,
+            tone: 'normal'
+        });
+
+        cards.push({
+            title: 'יתרת הלוואות שנותרו',
+            value: formatHomeCurrency(getLoansRemainingSummary(items).totalRemaining),
+            note: narrativeResult.loansRemaining,
+            tone: 'normal'
+        });
+
+        // narrative.forecastWarning is null when there is no negative-balance month ahead. There
+        // is no existing "empty state" markup for this specific card to fall back to, and
+        // inventing new "everything's fine" wording is explicitly out of scope — so this card is
+        // simply omitted (not rendered) rather than shown with invented text. See the Stage D.6
+        // report for this judgment call.
+        var warning = getForecastWarning(items);
+        if (warning) {
+            cards.push({
+                title: 'אזהרת תחזית',
+                value: formatHomeCurrency(warning.balance),
+                note: narrativeResult.forecastWarning,
+                tone: 'warning'
+            });
+        }
+
+        // Markup below is byte-for-byte identical to renderMockUI()'s insights-block (Stage B) —
+        // same classes, same nesting, same tone-icon logic — only `cards` is a real-data array
+        // instead of MOCK_DATA.insights.
+        var html = '';
+        for (var k = 0; k < cards.length; k++) {
+            var c = cards[k];
+            var isWarning = c.tone === 'warning';
+            var toneClass = isWarning ? ' warning' : '';
+            var toneIcon = isWarning ? '⚠️' : '📊';
+            html += '<div class="insight-card' + toneClass + '">' +
+                '<div class="insight-icon">' + toneIcon + '</div>' +
+                '<div class="insight-body">' +
+                    '<div class="insight-title">' + escapeHtml(c.title) + '</div>' +
+                    '<div class="insight-value">' + escapeHtml(c.value) + '</div>' +
+                    '<div class="insight-note">' + escapeHtml(c.note) + '</div>' +
+                '</div>' +
+            '</div>';
+        }
+        document.getElementById('insights-feed').innerHTML = html;
+    }
+
+    // Called once, after items/categoryConfig and the Home render above — same ordering
+    // guarantee, no code moved.
+    renderInsightsScreenFromRealData();
+
+    // Stage 3ב.4: draws the forecast chart/table on the Insights screen. Called once at load,
+    // same ordering guarantee as the render call directly above (items/categoryConfig already
+    // loaded); also called from renderAllPreviewScreens() below so it stays in sync with any
+    // later mutation.
+    renderForecast();
+
+    // =====================================================================================
+    // ===== Stage E.1 (display-only) → Stage 3ב.2 (full add/rename/delete UI): Settings      =====
+    // ===== screen, replacing category-list's original Mock-fed rows with the real            =====
+    // ===== categoryConfig loaded above (Stage D.2's loadPreviewCategoryConfig()). As of Stage =====
+    // ===== 3ב.2, each row's markup and the add-category area are built by                    =====
+    // ===== buildPreviewCategoryRowHtml()/buildPreviewCategoryAddAreaHtml() below, which read   =====
+    // ===== the Stage 3ב.2 UI state (previewEditingCategoryKey/previewCategoryAddOpen/          =====
+    // ===== previewDeletingCategoryKey) and call the unmodified Stage 3ב.1 logic functions.     =====
+    // ===== Still does not touch Home, Transactions, or Insights screens, or MOCK_DATA.        =====
+    // =====================================================================================
+
+    // categoryConfig keys are iterated in whatever order Object.keys() returns them (insertion
+    // order in practice) — no sorting logic invented.
+    function renderSettingsScreenFromRealData() {
+        var html = '';
+        var keys = Object.keys(categoryConfig || {});
+        for (var i = 0; i < keys.length; i++) {
+            html += buildPreviewCategoryRowHtml(keys[i]);
+        }
+        html += buildPreviewCategoryAddAreaHtml();
+        document.getElementById('category-list').innerHTML = html;
+    }
+
+    // Called once, after items/categoryConfig and the two renders above — same ordering
+    // guarantee, no code moved.
+    renderSettingsScreenFromRealData();
+
+    // =====================================================================================
+    // ===== Stage E.2: Transactions screen only — replaces transactions-list's Mock-fed    =====
+    // ===== rows with real items from Preview data (items, loaded above via Stage D.2's     =====
+    // ===== loadPreviewItems()), and makes the active/archived filter functional (previously =====
+    // ===== cosmetic-only: setTxFilter() only toggled the button's CSS class). Reuses         =====
+    // ===== mapItemToHomeTxRow()/renderTxList() unchanged from Stage D.5 — same row markup,   =====
+    // ===== same icon/date/amount conventions already established and tested for Home's       =====
+    // ===== recent-activity-list. Search stays disabled (out of scope for this stage; the      =====
+    // ===== input's `disabled` attribute in the HTML is untouched). Display only: no add/      =====
+    // ===== edit/archive/restore/delete logic, no localStorage writes of its own.              =====
+    // =====================================================================================
+
+    // `id` is assigned as Date.now() at creation in the real app (see addNewItem() in
+    // index.html) and items are always appended via items.push() — so `id` order already matches
+    // insertion/chronological order for every real item, regardless of type. This is the same
+    // convention getRecentActivity() (Stage C) already relies on implicitly (array order); sorting
+    // explicitly by `id` here (rather than trusting array order) is a defensive equivalent that's
+    // needed because this renders the FULL filtered list, not just a slice off the end. Crucially,
+    // `id` exists on every item type (unlike `start`, which income/fixed items don't have at
+    // all) — so this is a safe, universal chronological key that never depends on a type-specific
+    // date field being present. A missing/non-numeric `id` (corrupt data) is treated as 0 (sorts
+    // as the oldest possible item) rather than producing NaN-driven order or throwing.
+    function safeItemId(item) {
+        var n = item && item.id;
+        return (typeof n === 'number' && isFinite(n)) ? n : 0;
+    }
+
+    // Filters by isArchived to match the real app's own convention exactly (currentView
+    // active/archived test in renderAll(): `(currentView === 'active' && !item.isArchived) ||
+    // (currentView === 'archived' && item.isArchived)`) — a missing/undefined `isArchived` on a
+    // malformed item is treated as falsy (active), same as `!item.isArchived` would evaluate.
+    // Sorted newest-first (descending `id`) — the same "most recent first" direction
+    // getRecentActivity()'s `.slice(-n).reverse()` already shows for the Home screen, kept
+    // consistent here. mapItemToHomeTxRow() (Stage D.5, unchanged) converts each real item into
+    // the exact {icon,title,date,amount,type} shape renderTxList() already expects; items with no
+    // `start` (income/fixed) fall back to '-' for the date column via that same existing function
+    // — no new date-formatting logic invented here.
+    // Stage G.2.6: renders via renderTxListWithActions() (Stage G.2.4/G.2.5) instead of plain
+    // renderTxList() — this is the ONLY change in this function, and the only place in the whole
+    // file where renderTxListWithActions() is actually invoked. renderHomeScreenFromRealData()
+    // (recent-activity-list) still calls plain renderTxList() and is completely untouched, so the
+    // ⋮ menu appears on the Transactions screen only, per the approved decision.
+    function renderTransactionsScreenFromRealData(filterName) {
+        var wantArchived = (filterName === 'archived');
+        var filtered = items.filter(function (it) {
+            return !!(it && it.isArchived) === wantArchived;
+        });
+        filtered.sort(function (a, b) { return safeItemId(b) - safeItemId(a); });
+        renderTxListWithActions('transactions-list', filtered.map(mapItemToHomeTxRow));
+    }
+
+    // Called once, after items/categoryConfig and the renders above — same ordering guarantee.
+    // 'active' matches the filter button that already has the `active` CSS class by default in
+    // the HTML (filter-active), so the initial render matches the initially-selected filter.
+    renderTransactionsScreenFromRealData('active');
+
+    // =====================================================================================
+    // ===== Stage G.1 (originally Preview-only, now Stage 4.4 candidate): write               =====
+    // ===== infrastructure. savePreviewItems()/savePreviewCategoryConfig() mirror index.html's =====
+    // ===== own saveToLocalStorage()/saveConfigToLocalStorage() exactly (same JSON.stringify +  =====
+    // ===== try/catch shape), and write to DATA_KEY/CONFIG_KEY — the real                      =====
+    // ===== family_finance_data/family_finance_cat_config keys directly, no other key.          =====
+    // ===== renderAllPreviewScreens() re-runs the 5 existing real-data render functions in      =====
+    // ===== sequence; none of their internal logic is changed.                                  =====
+    // =====================================================================================
+
+    function savePreviewItems() {
+        try { localStorage.setItem(DATA_KEY, JSON.stringify(items)); } catch (e) { console.log('שגיאה בשמירת נתונים'); }
+    }
+
+    function savePreviewCategoryConfig() {
+        try { localStorage.setItem(CONFIG_KEY, JSON.stringify(categoryConfig)); } catch (e) { console.log('שגיאה בשמירת תצורת קטגוריות'); }
+    }
+
+    // Mirrors setTxFilter()'s own DOM-based selection — there is no separate JS variable
+    // anywhere in this file tracking which filter is currently active. Reads which filter
+    // button currently has the 'active' CSS class, defaulting to 'active' if neither is found
+    // (the same default the initial page-load render above already uses). Read-only DOM query;
+    // does not add new persisted state and does not change any existing function.
+    function getCurrentTxFilterName() {
+        var archivedBtn = document.getElementById('filter-archived');
+        return (archivedBtn && archivedBtn.classList.contains('active')) ? 'archived' : 'active';
+    }
+
+    function renderAllPreviewScreens() {
+        renderHomeScreenFromRealData();
+        renderAttentionListFromRealData();
+        renderInsightsScreenFromRealData();
+        renderForecast();
+        renderSettingsScreenFromRealData();
+        renderTransactionsScreenFromRealData(getCurrentTxFilterName());
+        // Stage G.5: keeps the add-transaction form area in sync with previewAddMode across any
+        // re-render triggered by another action (archive/restore/delete/inline-edit-save) — same
+        // "survives unrelated re-renders" reasoning already applied to previewEditingId elsewhere
+        // in this file.
+        renderAddFormArea();
+    }
+
+    // =====================================================================================
+    // ===== Stage G.2.2: archive/restore logic only — NOT wired to any UI yet (no ⋮ menu,   =====
+    // ===== no onclick, no toggleRowMenu). Mirrors index.html's own archiveItem()/           =====
+    // ===== unarchiveItem() exactly (find by id, flip isArchived, save, re-render) — same    =====
+    // ===== find-by-id/no-op-if-missing shape, just against the Preview-only items array and =====
+    // ===== the Stage G.1 save/render infrastructure instead of index.html's own              =====
+    // ===== saveToLocalStorage()/renderAll(). No direct localStorage access here — persistence =====
+    // ===== goes exclusively through savePreviewItems() (Stage G.1), which itself only ever    =====
+    // ===== writes DATA_KEY. No other field on the found item is touched, categoryConfig      =====
+    // ===== is never read or written, and a missing id is a strict no-op (no save, no render). =====
+    // =====================================================================================
+
+    function archivePreviewItem(id) {
+        var idx = items.findIndex(function (i) { return i.id === id; });
+        if (idx === -1) return;
+        items[idx].isArchived = true;
+        savePreviewItems();
+        renderAllPreviewScreens();
+    }
+
+    function unarchivePreviewItem(id) {
+        var idx = items.findIndex(function (i) { return i.id === id; });
+        if (idx === -1) return;
+        items[idx].isArchived = false;
+        savePreviewItems();
+        renderAllPreviewScreens();
+    }
+
+    // Stage G.3: permanent delete — removes the item from the in-memory `items` array entirely
+    // (not just an isArchived flip), then persists/re-renders through the same Stage G.1
+    // infrastructure as archive/restore. A missing id is a strict no-op, same as above.
+    function deletePreviewItem(id) {
+        var idx = items.findIndex(function (i) { return i.id === id; });
+        if (idx === -1) return;
+        items.splice(idx, 1);
+        savePreviewItems();
+        renderAllPreviewScreens();
+    }
+
+    // =====================================================================================
+    // ===== Stage G.2.5: row-menu open/close, scoped to the Transactions screen only (the    =====
+    // ===== .tx-menu-toggle/.tx-menu-dropdown markup only exists inside renderTxListWithActions=====
+    // ===== output — Home's renderTxList() output has none, so this logic has nothing to find =====
+    // ===== or affect there). closeAllRowMenus() always reads menu-open state directly from    =====
+    // ===== the DOM's own .open class (document.querySelectorAll) rather than a separate JS    =====
+    // ===== variable — a full renderTxListWithActions() re-render (e.g. after an archive/       =====
+    // ===== restore action, or a filter switch) always rebuilds every dropdown without the      =====
+    // ===== .open class, so there is nothing that can go stale to track. =====
+    // =====================================================================================
+
+    function closeAllRowMenus() {
+        var openDropdowns = document.querySelectorAll('.tx-menu-dropdown.open');
+        for (var i = 0; i < openDropdowns.length; i++) {
+            openDropdowns[i].classList.remove('open');
+        }
+    }
+
+    // Called via onclick="toggleRowMenu(this)" (the button element itself, never a concatenated
+    // id string). Closes any other open row menu first (Stage G.2's approved "only one open at a
+    // time" requirement), then opens this row's own dropdown — unless it was the one already
+    // open, in which case closeAllRowMenus() above already closed it and nothing more happens
+    // (a second click on the same ⋮ toggles it shut).
+    function toggleRowMenu(toggleBtn) {
+        var row = toggleBtn.closest('.tx-row');
+        var dropdown = row ? row.querySelector('.tx-menu-dropdown') : null;
+        if (!dropdown) return;
+        var wasOpen = dropdown.classList.contains('open');
+        closeAllRowMenus();
+        if (!wasOpen) { dropdown.classList.add('open'); }
+    }
+
+    // Single delegated listener, registered once at script-load time (this script only ever runs
+    // once per page load, so no re-registration/guard is needed). Ignores any click that
+    // originated on a .tx-menu-toggle or inside a .tx-menu-dropdown — those are handled by
+    // toggleRowMenu()/handleRowMenuAction() themselves via their own onclick — so this only ever
+    // fires for genuine "click elsewhere" cases, which is exactly what closes an open row menu.
+    document.addEventListener('click', function (e) {
+        if (e.target.closest && (e.target.closest('.tx-menu-toggle') || e.target.closest('.tx-menu-dropdown'))) { return; }
+        closeAllRowMenus();
+    });
+
+    // =====================================================================================
+    // ===== Stage G.2.6: the single dropdown action, wired to the two Stage G.2.2 functions  =====
+    // ===== (archivePreviewItem/unarchivePreviewItem) — no new mutation logic here. Called via =====
+    // ===== onclick="handleRowMenuAction(this)"; the id travels only through data-item-id      =====
+    // ===== (parsed back to a number here, matching the numeric `id` archivePreviewItem()/      =====
+    // ===== unarchivePreviewItem() already expect), never through a concatenated onclick        =====
+    // ===== string. The action to take (archive vs. restore) is looked up fresh from the live    =====
+    // ===== `items` array by id — not trusted from the button's own rendered label — so it is    =====
+    // ===== always correct even if `items` changed since this row was last rendered. Both target =====
+    // ===== functions already call savePreviewItems() (DATA_KEY only) and                        =====
+    // ===== renderAllPreviewScreens() internally, which fully rebuilds transactions-list (once    =====
+    // ===== Stage G.2.6 below wires renderTransactionsScreenFromRealData() to                     =====
+    // ===== renderTxListWithActions) — that rebuild is what closes this row's menu; no separate   =====
+    // ===== closeAllRowMenus() call is needed here. =====
+    // =====================================================================================
+
+    function handleRowMenuAction(actionBtn) {
+        var id = parseInt(actionBtn.getAttribute('data-item-id'), 10);
+        var idx = items.findIndex(function (i) { return i.id === id; });
+        if (idx === -1) return;
+        if (items[idx].isArchived) { unarchivePreviewItem(id); } else { archivePreviewItem(id); }
+    }
+
+    // Stage G.3: the destructive dropdown action — reads the id the same way
+    // handleRowMenuAction() does above (data-item-id only, parsed to a number, never trusted
+    // from anywhere else). Uses the browser's own confirm() — no custom dialog, per approved
+    // product decision — and only calls deletePreviewItem() if the user confirms. Cancelling is
+    // a strict no-op: deletePreviewItem() is never called, so nothing is saved or re-rendered,
+    // and the row menu (this click originated inside .tx-menu-dropdown, which the document-level
+    // listener above already ignores) is left open exactly as it was.
+    function handleDeleteMenuAction(actionBtn) {
+        var id = parseInt(actionBtn.getAttribute('data-item-id'), 10);
+        if (!confirm('למחוק את התנועה הזו לצמיתות? לא ניתן לשחזר לאחר מכן.')) return;
+        deletePreviewItem(id);
+    }
+
+    // =====================================================================================
+    // ===== Stage G.4: inline editing — Transactions screen only. The 3 dropdown actions     =====
+    // ===== above (edit/archive-restore/delete) are unchanged; this section adds the fourth   =====
+    // ===== capability: "✏️ עריכה" opens an inline form in place of the row (rendered by       =====
+    // ===== renderTxListWithActions() above), and the two functions below save or discard it.  =====
+    // =====================================================================================
+
+    // Mirrors index.html's own toggleCardLast4Field(groupId, whereValue) exactly — only the
+    // group id it is called with differs (edit-card-last4-group-<id> here vs. the add-form's
+    // fix-card-last4-group / an edit-card-last4-group-<id> in index.html itself). Purely a
+    // display toggle; touches no data.
+    function togglePreviewCardLast4Field(groupId, whereValue) {
+        var group = document.getElementById(groupId);
+        if (group) { group.style.display = (whereValue === 'credit') ? 'block' : 'none'; }
+    }
+
+    // Builds the inline edit form for one item, branching by item.type exactly like index.html's
+    // own renderAll() does inline (isEditing branch) — copied literally per type (dated / fixed /
+    // variable / loan / default-for-income), same field ids (edit-title-<id>, edit-amount-<id>,
+    // etc.) so savePreviewInlineEdit() below can read them back the same way saveInlineEdit()
+    // does in index.html. Read-only with respect to `items`/localStorage — building this markup
+    // never saves or mutates anything by itself.
+    function buildPreviewEditFormHtml(item) {
+        var id = item.id;
+        var html = '<div class="tx-edit-form">';
+
+        if (item.type === 'dated') {
+            html += '<div class="tx-edit-group"><label>שם ההוצאה</label><input type="text" id="edit-title-' + id + '" value="' + escapeHtml(item.title || '') + '"></div>' +
+                '<div class="tx-edit-group"><label>סכום</label><input type="number" id="edit-amount-' + id + '" value="' + item.amount + '"></div>' +
+                '<div class="tx-edit-group"><label>תאריך החיוב</label><input type="date" id="edit-date-' + id + '" value="' + (item.start || '') + '"></div>';
+            html += '<div class="tx-edit-actions">' +
+                '<button type="button" class="tx-edit-save" onclick="savePreviewInlineEdit(' + id + ')">💾 שמור שינויים</button>' +
+                '<button type="button" class="tx-edit-cancel" onclick="cancelPreviewEdit()">ביטול</button>' +
+                '</div></div>';
+            return html;
+        }
+
+        html += '<div class="tx-edit-group"><label>שם / כותרת</label><input type="text" id="edit-title-' + id + '" value="' + escapeHtml(item.title || '') + '"></div>';
+
+        if (item.type === 'fixed') {
+            var isCreditFixed = (item.where === 'credit');
+            html += '<div class="tx-edit-group"><label>סכום</label><input type="number" id="edit-amount-' + id + '" value="' + item.amount + '"></div>' +
+                '<div class="tx-edit-group"><label>איפה יורד</label><select id="edit-where-' + id + '" onchange="togglePreviewCardLast4Field(\'edit-card-last4-group-' + id + '\', this.value)">' +
+                    '<option value="bank"' + (!isCreditFixed ? ' selected' : '') + '>חשבון בנק</option>' +
+                    '<option value="credit"' + (isCreditFixed ? ' selected' : '') + '>כרטיס אשראי</option>' +
+                '</select></div>' +
+                '<div class="tx-edit-group" id="edit-card-last4-group-' + id + '" style="display:' + (isCreditFixed ? 'block' : 'none') + ';"><label>4 ספרות אחרונות של הכרטיס</label><input type="text" id="edit-card-last4-' + id + '" maxlength="4" inputmode="numeric" value="' + escapeHtml(item.cardLast4 || '') + '"></div>' +
+                '<div class="tx-edit-group"><label>תדירות</label><select id="edit-period-' + id + '">' +
+                    '<option value="חודשי"' + (item.period === 'חודשי' ? ' selected' : '') + '>חודשי</option>' +
+                    '<option value="שנתי"' + (item.period === 'שנתי' ? ' selected' : '') + '>שנתי</option>' +
+                '</select></div>' +
+                '<div class="tx-edit-group"><label>הערות</label><textarea id="edit-notes-' + id + '">' + escapeHtml(item.notes || '') + '</textarea></div>';
+        } else if (item.type === 'variable') {
+            html += '<div class="tx-edit-group"><label>סכום מקור</label><input type="number" id="edit-original-' + id + '" value="' + (item.originalAmount || '') + '"></div>' +
+                '<div class="tx-edit-group"><label>עלות חודשית</label><input type="number" id="edit-amount-' + id + '" value="' + item.amount + '"></div>' +
+                '<div class="tx-edit-group"><label>סך תשלומים</label><input type="number" id="edit-total-' + id + '" value="' + (item.total || '') + '"></div>' +
+                '<div class="tx-edit-group"><label>תאריך התחלה</label><input type="date" id="edit-start-' + id + '" value="' + (item.start || '') + '"></div>';
+        } else if (item.type === 'loan') {
+            html += '<div class="tx-edit-group"><label>סכום מקור</label><input type="number" id="edit-original-' + id + '" value="' + (item.originalAmount || '') + '"></div>' +
+                '<div class="tx-edit-group"><label>החזר חודשי</label><input type="number" id="edit-amount-' + id + '" value="' + item.amount + '"></div>' +
+                '<div class="tx-edit-group"><label>היכן יורד</label><input type="text" id="edit-where-' + id + '" value="' + escapeHtml(item.where || '') + '"></div>' +
+                '<div class="tx-edit-group"><label>ריבית (%)</label><input type="number" step="0.01" id="edit-interest-' + id + '" value="' + (item.interest || '') + '"></div>' +
+                '<div class="tx-edit-group"><label>יום בחודש</label><input type="number" id="edit-day-' + id + '" value="' + (item.day || '1') + '"></div>' +
+                '<div class="tx-edit-group"><label>סך תשלומים</label><input type="number" id="edit-total-' + id + '" value="' + (item.total || '') + '"></div>' +
+                '<div class="tx-edit-group"><label>תאריך מתחיל</label><input type="date" id="edit-start-' + id + '" value="' + (item.start || '') + '"></div>';
+        } else {
+            html += '<div class="tx-edit-group"><label>סכום</label><input type="number" id="edit-amount-' + id + '" value="' + item.amount + '"></div>';
+        }
+
+        html += '<div class="tx-edit-actions">' +
+            '<button type="button" class="tx-edit-save" onclick="savePreviewInlineEdit(' + id + ')">💾 שמור שינויים</button>' +
+            '<button type="button" class="tx-edit-cancel" onclick="cancelPreviewEdit()">ביטול</button>' +
+            '</div></div>';
+
+        return html;
+    }
+
+    // Called via onclick="handleEditMenuAction(this)" from the dropdown's "✏️ עריכה" item — same
+    // data-item-id-only wiring convention as every other row-menu handler in this file. A missing/
+    // nonexistent id is a strict no-op (previewEditingId is never set, nothing re-renders).
+    // Archived items never reach this handler in practice (renderTxListWithActions() omits the
+    // "✏️ עריכה" button entirely for them, per product decision 1א), but the id is still verified
+    // against the live `items` array here rather than trusted blindly.
+    function handleEditMenuAction(actionBtn) {
+        var id = parseInt(actionBtn.getAttribute('data-item-id'), 10);
+        var idx = items.findIndex(function (i) { return i.id === id; });
+        if (idx === -1) return;
+        // Stage G.5: enforce "only one form open at a time" in both directions — opening an inline
+        // edit discards any in-progress (unsaved) add-transaction form, mirroring startPreviewAdd()'s
+        // own symmetric handling of an open inline edit. No data is touched by this discard (pure
+        // no-op on `items`, same as cancelPreviewAdd()).
+        previewAddMode = null;
+        previewAddCategoryKey = null;
+        renderAddFormArea();
+        previewEditingId = id;
+        // Only the Transactions list needs to change (a row is swapping to its edit form) — no
+        // data changed, so Home/Insights/Settings are left untouched, same reasoning
+        // cancelPreviewEdit() below uses. Preserves whichever filter (active/archived) is
+        // currently selected, exactly like every other Transactions re-render in this file.
+        renderTransactionsScreenFromRealData(getCurrentTxFilterName());
+    }
+
+    // Called via onclick="cancelPreviewEdit()" from the edit form's own "ביטול" button — takes no
+    // argument because, unlike every other row action, the form itself does not carry a
+    // data-item-id anywhere (it doesn't need one: previewEditingId already identifies the row).
+    // Strict no-op on data: no save, no mutation of `items`, just clears previewEditingId and
+    // re-renders the Transactions list so the row reverts to its normal (non-edit) markup —
+    // preserving whichever filter is currently selected.
+    function cancelPreviewEdit() {
+        previewEditingId = null;
+        renderTransactionsScreenFromRealData(getCurrentTxFilterName());
+    }
+
+    // Called via onclick="savePreviewInlineEdit(<id>)" — the id here is baked into the form's own
+    // buttons at render time (buildPreviewEditFormHtml()), not read from a data-item-id attribute,
+    // matching index.html's own saveInlineEdit(id) call convention exactly (index.html's
+    // btn-save-edit button is likewise `onclick="saveInlineEdit(item.id)"`, a literal numeric
+    // argument, not an attribute lookup). Field-reading and validation below are copied literally,
+    // branch-for-branch, from index.html's saveInlineEdit() (dated / fixed / variable / loan /
+    // default-for-income) — same required fields, same alert() messages, per approved product
+    // decision 3א (no new error UI). On any validation failure: alert() only, previewEditingId is
+    // left unchanged and nothing re-renders, so the form stays open with whatever the user typed
+    // still in its fields — exactly index.html's own behavior. A missing/nonexistent id is a
+    // strict no-op (no alert, no save, no render), mirroring saveInlineEdit()'s own `if (idx ===
+    // -1) return;` guard.
+    function savePreviewInlineEdit(id) {
+        var idx = items.findIndex(function (i) { return i.id === id; });
+        if (idx === -1) return;
+        var item = items[idx];
+
+        if (item.type === 'dated') {
+            var datedTitleVal = document.getElementById('edit-title-' + id).value.trim();
+            var dateVal = document.getElementById('edit-date-' + id).value;
+            var dAmountVal = parseFloat(document.getElementById('edit-amount-' + id).value);
+            if (!datedTitleVal || !dateVal || isNaN(dAmountVal)) {
+                alert('נא להזין שם, תאריך וסכום תקינים');
+                return;
+            }
+            item.title = datedTitleVal;
+            item.start = dateVal;
+            item.amount = dAmountVal;
+            previewEditingId = null;
+            savePreviewItems();
+            renderAllPreviewScreens();
+            return;
+        }
+
+        var titleVal = document.getElementById('edit-title-' + id).value.trim();
+        var amountVal = parseFloat(document.getElementById('edit-amount-' + id).value);
+
+        if (!titleVal || isNaN(amountVal)) {
+            alert('נא להזין שם וסכום תקינים');
+            return;
+        }
+
+        item.title = titleVal;
+        item.amount = amountVal;
+
+        if (item.type === 'fixed') {
+            var newWhere = document.getElementById('edit-where-' + id).value;
+            if (newWhere === 'credit') {
+                var newCardLast4 = document.getElementById('edit-card-last4-' + id).value.trim();
+                if (!/^\d{4}$/.test(newCardLast4)) {
+                    alert('נא להזין בדיוק 4 ספרות עבור כרטיס האשראי');
+                    return;
+                }
+                item.cardLast4 = newCardLast4;
+            } else {
+                item.cardLast4 = '';
+            }
+            item.where = newWhere;
+            item.period = document.getElementById('edit-period-' + id).value;
+            item.notes = document.getElementById('edit-notes-' + id).value;
+        } else if (item.type === 'variable') {
+            item.originalAmount = parseFloat(document.getElementById('edit-original-' + id).value) || 0;
+            item.total = document.getElementById('edit-total-' + id).value;
+            item.start = document.getElementById('edit-start-' + id).value;
+        } else if (item.type === 'loan') {
+            item.originalAmount = parseFloat(document.getElementById('edit-original-' + id).value) || 0;
+            item.where = document.getElementById('edit-where-' + id).value;
+            item.interest = document.getElementById('edit-interest-' + id).value;
+            item.day = document.getElementById('edit-day-' + id).value;
+            item.total = document.getElementById('edit-total-' + id).value;
+            item.start = document.getElementById('edit-start-' + id).value;
+        }
+
+        previewEditingId = null;
+        savePreviewItems();
+        renderAllPreviewScreens();
+    }
+
+    // =====================================================================================
+    // ===== Stage G.5: adding a new income/expense/loan — Transactions screen only, via the =====
+    // ===== FAB's Quick Actions sheet. Three separate routes (income / expense-with-a-type-  =====
+    // ===== picker / loan), a dedicated form area at the top of the Transactions screen       =====
+    // ===== (#preview-add-form-area), and the same field-by-field validation/logic as         =====
+    // ===== index.html's own addNewItem() (copied literally per branch below). Only one form   =====
+    // ===== — add OR inline-edit — can be open at a time (enforced from both directions:       =====
+    // ===== startPreviewAdd() below discards an open edit, handleEditMenuAction() above        =====
+    // ===== discards an open add). All writes go through the existing savePreviewItems()/       =====
+    // ===== renderAllPreviewScreens() (DATA_KEY only) — no new persistence path.                =====
+    // =====================================================================================
+
+    // Copied verbatim from index.html — used only to pre-fill the "dated" add-form's date field
+    // with today's date, matching index.html's own switchFormType() convention for that same field.
+    function todayStr() {
+        var d = new Date();
+        var mm = ('0' + (d.getMonth() + 1)).slice(-2);
+        var dd = ('0' + d.getDate()).slice(-2);
+        return d.getFullYear() + '-' + mm + '-' + dd;
+    }
+
+    // All categoryConfig keys whose baseType matches. Object key order (for..in) is the same
+    // insertion-order iteration index.html itself already relies on for this same object
+    // (buildFormDropdown/initCategoryInputs) — no sorting invented here.
+    function getCategoryKeysForBaseType(baseType) {
+        var keys = [];
+        for (var key in categoryConfig) {
+            if (categoryConfig[key] && categoryConfig[key].baseType === baseType) { keys.push(key); }
+        }
+        return keys;
+    }
+
+    // Default category for a freshly chosen expense type: prefers the built-in key with the same
+    // name as the baseType itself (e.g. 'fixed'/'variable' — always present, never deletable via
+    // the Settings UI in index.html), falling back to the first custom category with a matching
+    // baseType (relevant mainly for 'dated', which has no built-in key at all — see the picker's
+    // disabled-state handling below). Returns null only when no category matches at all.
+    function getDefaultCategoryKeyForBaseType(baseType) {
+        var keys = getCategoryKeysForBaseType(baseType);
+        if (keys.indexOf(baseType) !== -1) { return baseType; }
+        return keys.length > 0 ? keys[0] : null;
+    }
+
+    // Opens the add-transaction form area for 'income'/'loan' (a full form immediately) or
+    // 'expense-picker' (the fixed/variable/dated chooser). 'income'/'loan' always have exactly one
+    // built-in categoryConfig key (never deletable/duplicable via index.html's own Settings UI —
+    // its custom-category form offers only fixed/variable/income/dated as types, never loan), so
+    // previewAddCategoryKey is set directly here rather than going through
+    // getDefaultCategoryKeyForBaseType().
+    function startPreviewAdd(mode) {
+        // Enforce "only one form open at a time": discards any open inline edit (no save, no
+        // mutation of `items` — same no-op semantics as cancelPreviewEdit()).
+        previewEditingId = null;
+
+        previewAddMode = mode;
+        previewAddCategoryKey = (mode === 'income') ? 'income' : (mode === 'loan') ? 'loan' : null;
+
+        toggleQuickActions(false);
+        showScreen('transactions');
+        renderTransactionsScreenFromRealData(getCurrentTxFilterName());
+        renderAddFormArea();
+    }
+
+    // Called from the expense-type picker's 3 buttons. A baseType with no matching category
+    // (only possible for 'dated' — see buildPreviewAddFormHtml()'s picker markup, which disables
+    // that button entirely in this case) is a strict no-op: the picker's own disabled state should
+    // already prevent this call, but this guard is kept anyway, matching this file's existing
+    // convention of never trusting rendered UI state blindly (e.g. handleRowMenuAction() re-checks
+    // live data rather than trusting the button's own label).
+    function chooseExpenseAddType(baseType) {
+        var defaultKey = getDefaultCategoryKeyForBaseType(baseType);
+        if (!defaultKey) { return; }
+        previewAddMode = baseType;
+        previewAddCategoryKey = defaultKey;
+        renderAddFormArea();
+    }
+
+    // No-argument, mirroring cancelPreviewEdit()'s own convention — there is only ever one add
+    // form open at a time, so no id/identifier is needed to know what to discard. Strict no-op on
+    // data: no save, no mutation of `items`.
+    function cancelPreviewAdd() {
+        previewAddMode = null;
+        previewAddCategoryKey = null;
+        renderAddFormArea();
+    }
+
+    // Builds the markup for whatever previewAddMode currently is: '' when closed, the
+    // expense-type picker, or one of the 5 full add forms (income/loan/variable/fixed/dated) —
+    // each a literal field-for-field copy of index.html's own static #form-income/#form-loan/
+    // #form-variable/#form-fixed/#form-dated blocks, using new "add-*" element ids (distinct from
+    // both index.html's own ids and this file's "edit-*-<id>" inline-edit ids, so none can ever
+    // collide). Reuses the existing .tx-edit-form/.tx-edit-group/.tx-edit-actions/.tx-edit-save/
+    // .tx-edit-cancel classes (Stage G.4) as-is — no visual reason for a separate class set, since
+    // the layout is identical to the inline edit form. A category picker (<select>) is shown for
+    // fixed/variable/dated only when more than one categoryConfig key matches that baseType;
+    // otherwise the single match is used silently, exactly like the (never-shown-for-just-one-
+    // option) reasoning already used elsewhere in this file.
+    function buildPreviewAddFormHtml() {
+        if (previewAddMode === null) { return ''; }
+
+        if (previewAddMode === 'expense-picker') {
+            // 'dated' has no built-in categoryConfig key in either index.html or this file — a
+            // dated item can only ever be saved under a custom category the user created with
+            // baseType 'dated' via the Settings screen. Per approved product decision: if no such
+            // category exists yet, the button is disabled (native `disabled` attribute — no
+            // onclick at all, not just a visual treatment) with a hint, rather than inventing a
+            // generic fallback category that index.html itself has no concept of.
+            var datedKeys = getCategoryKeysForBaseType('dated');
+            var datedDisabled = datedKeys.length === 0;
+            var html = '<div class="tx-edit-form">';
+            html += '<div class="tx-edit-group"><label>איזה סוג הוצאה?</label></div>';
+            html += '<button type="button" class="expense-type-btn" onclick="chooseExpenseAddType(\'fixed\')">🏡 הוצאה קבועה</button>';
+            html += '<button type="button" class="expense-type-btn" onclick="chooseExpenseAddType(\'variable\')">🛒 הוצאה משתנה</button>';
+            if (datedDisabled) {
+                html += '<button type="button" class="expense-type-btn disabled" disabled title="קודם צור קטגוריה מסוג \'חיוב חד-פעמי\' במסך ההגדרות">📅 הוצאה מתוארכת</button>';
+            } else {
+                html += '<button type="button" class="expense-type-btn" onclick="chooseExpenseAddType(\'dated\')">📅 הוצאה מתוארכת</button>';
+            }
+            html += '<div class="tx-edit-actions"><button type="button" class="tx-edit-cancel" onclick="cancelPreviewAdd()">ביטול</button></div>';
+            html += '</div>';
+            return html;
+        }
+
+        var categoryPickerHtml = '';
+        if (previewAddMode === 'fixed' || previewAddMode === 'variable' || previewAddMode === 'dated') {
+            var matchingKeys = getCategoryKeysForBaseType(previewAddMode);
+            if (matchingKeys.length > 1) {
+                categoryPickerHtml = '<div class="tx-edit-group"><label>קטגוריה</label><select id="add-category-key" onchange="previewAddCategoryKey = this.value;">';
+                for (var k = 0; k < matchingKeys.length; k++) {
+                    var mk = matchingKeys[k];
+                    var mLabel = (categoryConfig[mk] && categoryConfig[mk].label) ? categoryConfig[mk].label : mk;
+                    categoryPickerHtml += '<option value="' + escapeHtml(mk) + '"' + (mk === previewAddCategoryKey ? ' selected' : '') + '>' + escapeHtml(mLabel) + '</option>';
+                }
+                categoryPickerHtml += '</select></div>';
+            }
+        }
+
+        var html = '<div class="tx-edit-form">';
+
+        if (previewAddMode === 'income') {
+            html += '<div class="tx-edit-group"><label>שם / תיאור</label><input type="text" id="add-inc-title" placeholder="משכורת, בונוס"></div>' +
+                '<div class="tx-edit-group"><label>סכום</label><input type="number" id="add-inc-amount" placeholder="₪"></div>';
+        } else if (previewAddMode === 'loan') {
+            html += '<div class="tx-edit-group"><label>שם ההלוואה</label><input type="text" id="add-loan-title"></div>' +
+                '<div class="tx-edit-group"><label>סכום מקור (סך ההלוואה המקורית)</label><input type="number" id="add-loan-original" placeholder="₪"></div>' +
+                '<div class="tx-edit-group"><label>החזר חודשי</label><input type="number" id="add-loan-amount" placeholder="₪"></div>' +
+                '<div class="tx-edit-group"><label>היכן יורד</label><input type="text" id="add-loan-where"></div>' +
+                '<div class="tx-edit-group"><label>ריבית (%)</label><input type="number" id="add-loan-interest" step="0.01"></div>' +
+                '<div class="tx-edit-group"><label>מתי יורד (יום בחודש)</label><input type="number" id="add-loan-day" min="1" max="31" value="1"></div>' +
+                '<div class="tx-edit-group"><label>כמה תשלומים (סך הכל)</label><input type="number" id="add-loan-total"></div>' +
+                '<div class="tx-edit-group"><label>תאריך לקיחה / פתיחה</label><input type="date" id="add-loan-start"></div>';
+        } else if (previewAddMode === 'variable') {
+            html += categoryPickerHtml +
+                '<div class="tx-edit-group"><label>שם התשלום</label><input type="text" id="add-var-title"></div>' +
+                '<div class="tx-edit-group"><label>סכום מקור (סך כל העסקה המקורית)</label><input type="number" id="add-var-original" placeholder="₪"></div>' +
+                '<div class="tx-edit-group"><label>עלות חודשית</label><input type="number" id="add-var-amount" placeholder="₪"></div>' +
+                '<div class="tx-edit-group"><label>כמה תשלומים (סך הכל)</label><input type="number" id="add-var-total"></div>' +
+                '<div class="tx-edit-group"><label>תאריך התחלה</label><input type="date" id="add-var-start"></div>';
+        } else if (previewAddMode === 'fixed') {
+            html += categoryPickerHtml +
+                '<div class="tx-edit-group"><label>שם ההוצאה</label><input type="text" id="add-fix-title"></div>' +
+                '<div class="tx-edit-group"><label>סכום</label><input type="number" id="add-fix-amount" placeholder="₪"></div>' +
+                '<div class="tx-edit-group"><label>איפה יורד</label><select id="add-fix-where" onchange="togglePreviewCardLast4Field(\'add-fix-card-last4-group\', this.value)"><option value="bank">חשבון בנק</option><option value="credit">כרטיס אשראי</option></select></div>' +
+                '<div class="tx-edit-group" id="add-fix-card-last4-group" style="display:none;"><label>4 ספרות אחרונות של הכרטיס</label><input type="text" id="add-fix-card-last4" maxlength="4" inputmode="numeric" placeholder="לדוגמה: 5646"></div>' +
+                '<div class="tx-edit-group"><label>חודשי או שנתי</label><select id="add-fix-period"><option value="חודשי">חודשי</option><option value="שנתי">שנתי</option></select></div>' +
+                '<div class="tx-edit-group"><label>הערות</label><textarea id="add-fix-notes"></textarea></div>';
+        } else if (previewAddMode === 'dated') {
+            html += categoryPickerHtml +
+                '<div class="tx-edit-group"><label>שם ההוצאה</label><input type="text" id="add-dated-title" placeholder="לדוגמה: קניות בסופר"></div>' +
+                '<div class="tx-edit-group"><label>סכום</label><input type="number" id="add-dated-amount" placeholder="₪"></div>' +
+                '<div class="tx-edit-group"><label>תאריך החיוב</label><input type="date" id="add-dated-date" value="' + todayStr() + '"></div>';
+        }
+
+        html += '<div class="tx-edit-actions">' +
+            '<button type="button" class="tx-edit-save" onclick="addPreviewItem()">הוסף תנועה +</button>' +
+            '<button type="button" class="tx-edit-cancel" onclick="cancelPreviewAdd()">ביטול</button>' +
+            '</div></div>';
+
+        return html;
+    }
+
+    function renderAddFormArea() {
+        document.getElementById('preview-add-form-area').innerHTML = buildPreviewAddFormHtml();
+    }
+
+    // Called once, after every other initial render above — mirrors this file's existing
+    // "define, then call once at load" convention. previewAddMode starts null, so this simply
+    // confirms #preview-add-form-area starts empty (it already is, in the static HTML).
+    renderAddFormArea();
+
+    // Literal, branch-for-branch copy of index.html's own addNewItem() — same object shape, same
+    // required-field checks, same exact alert() messages, same cardLast4 4-digit validation. The
+    // only structural difference: `baseType`/`catKey` come from previewAddMode/previewAddCategoryKey
+    // (already resolved when the form was opened) rather than from a shared `#main-type` <select>,
+    // since Stage G.5 uses 3 separate entry routes instead of index.html's single dropdown+form.
+    // On validation failure: alert() only, previewAddMode/previewAddCategoryKey are left untouched
+    // and nothing is saved or re-rendered — the form stays open exactly as the user left it, same
+    // as index.html's own addNewItem() and this file's own savePreviewInlineEdit() (Stage G.4).
+    function addPreviewItem() {
+        if (previewAddMode === null || previewAddMode === 'expense-picker') { return; }
+
+        var baseType = previewAddMode;
+        var catKey = previewAddCategoryKey;
+        if (!catKey) { return; }
+
+        var obj = { id: Date.now(), type: baseType, displayCategory: catKey, isArchived: false };
+
+        if (baseType === 'income') {
+            obj.title = document.getElementById('add-inc-title').value.trim();
+            obj.amount = parseFloat(document.getElementById('add-inc-amount').value);
+            if (!obj.title || isNaN(obj.amount)) { alert('מלא שם וסכום'); return; }
+        } else if (baseType === 'loan') {
+            obj.title = document.getElementById('add-loan-title').value.trim();
+            obj.originalAmount = parseFloat(document.getElementById('add-loan-original').value) || 0;
+            obj.amount = parseFloat(document.getElementById('add-loan-amount').value);
+            obj.where = document.getElementById('add-loan-where').value;
+            obj.interest = document.getElementById('add-loan-interest').value;
+            obj.day = document.getElementById('add-loan-day').value;
+            obj.total = document.getElementById('add-loan-total').value;
+            obj.start = document.getElementById('add-loan-start').value;
+            if (!obj.title || isNaN(obj.amount)) { alert('מלא שם וסכום החזר'); return; }
+        } else if (baseType === 'variable') {
+            obj.title = document.getElementById('add-var-title').value.trim();
+            obj.originalAmount = parseFloat(document.getElementById('add-var-original').value) || 0;
+            obj.amount = parseFloat(document.getElementById('add-var-amount').value);
+            obj.total = document.getElementById('add-var-total').value;
+            obj.start = document.getElementById('add-var-start').value;
+            if (!obj.title || isNaN(obj.amount)) { alert('מלא שם ועלות חודשית'); return; }
+        } else if (baseType === 'fixed') {
+            obj.title = document.getElementById('add-fix-title').value.trim();
+            obj.amount = parseFloat(document.getElementById('add-fix-amount').value);
+            obj.where = document.getElementById('add-fix-where').value;
+            obj.period = document.getElementById('add-fix-period').value;
+            obj.notes = document.getElementById('add-fix-notes').value;
+            if (!obj.title || isNaN(obj.amount)) { alert('מלא שם וסכום'); return; }
+            if (obj.where === 'credit') {
+                obj.cardLast4 = document.getElementById('add-fix-card-last4').value.trim();
+                if (!/^\d{4}$/.test(obj.cardLast4)) { alert('נא להזין בדיוק 4 ספרות עבור כרטיס האשראי'); return; }
+            } else {
+                obj.cardLast4 = '';
+            }
+        } else if (baseType === 'dated') {
+            obj.title = document.getElementById('add-dated-title').value.trim();
+            obj.start = document.getElementById('add-dated-date').value;
+            obj.amount = parseFloat(document.getElementById('add-dated-amount').value);
+            if (!obj.title || !obj.start || isNaN(obj.amount)) { alert('מלא שם, תאריך וסכום'); return; }
+        }
+
+        items.push(obj);
+        savePreviewItems();
+
+        previewAddMode = null;
+        previewAddCategoryKey = null;
+
+        // Approved clarification (product decision, ז׳.5): switch the Transactions screen to the
+        // "active" filter FIRST — a freshly added item is never archived, so this guarantees it is
+        // immediately visible — THEN re-render everything, in that exact order.
+        setTxFilter('active');
+        renderAllPreviewScreens();
+    }
+
+    // =====================================================================================
+    // ===== Stage 3ב.1: category management — pure logic functions only (not this file's    =====
+    // ===== module-level state, moved up next to items/categoryConfig — see below — so it's  =====
+    // ===== assigned before Stage 3ב.2's Settings-screen render runs on page load). All      =====
+    // ===== persistence goes exclusively through the existing savePreviewCategoryConfig()     =====
+    // ===== (Stage G.1), which itself only ever writes CONFIG_KEY — no other localStorage      =====
+    // ===== key is ever read or written here.                                                  =====
+    // =====================================================================================
+
+    // Copied verbatim from index.html's own translateBaseType() — pure, no DOM access.
+    function translateBaseType(bt) {
+        if (bt === 'income') return 'הכנסה';
+        if (bt === 'fixed') return 'קבוע';
+        if (bt === 'variable') return 'תשלומים';
+        if (bt === 'dated') return 'חיוב חד-פעמי';
+        return '';
+    }
+
+    // Copied verbatim from index.html's own pickEmojiForCategory() — pure, no DOM access. Same
+    // keyword-matching rules and baseType fallbacks, unchanged.
+    function pickEmojiForCategory(title, baseType) {
+        var rules = [
+            { emoji: '💳', words: ['כרטיס אשראי', 'אשראי', 'כרטיס'] },
+            { emoji: '🚗', words: ['רכב', 'מכונית', 'דלק', 'חניה', 'טסט'] },
+            { emoji: '🏠', words: ['דירה', 'שכירות', 'משכנתא', 'בית', 'ועד בית'] },
+            { emoji: '🍔', words: ['אוכל', 'מזון', 'סופר', 'מכולת', 'מסעדה', 'משלוחים'] },
+            { emoji: '🏥', words: ['בריאות', 'רופא', 'תרופות', 'קופת חולים', 'שיניים'] },
+            { emoji: '🎓', words: ['חינוך', 'לימודים', 'בית ספר', 'אוניברסיטה', 'קורס', 'גן'] },
+            { emoji: '✈️', words: ['טיול', 'טיולים', 'חופשה', 'נסיעה', 'חול'] },
+            { emoji: '🎬', words: ['בידור', 'סרטים', 'קולנוע', 'נטפליקס', 'סטרימינג', 'תיאטרון'] },
+            { emoji: '🏋️', words: ['ספורט', 'חדר כושר', 'מכון כושר', 'אימון'] },
+            { emoji: '👕', words: ['ביגוד', 'בגדים', 'נעליים', 'אופנה'] },
+            { emoji: '💰', words: ['חיסכון', 'השקעות', 'פנסיה', 'קרן'] },
+            { emoji: '📱', words: ['טלפון', 'סלולר', 'אינטרנט', 'תקשורת'] },
+            { emoji: '💡', words: ['חשמל', 'מים', 'ארנונה', 'גז'] },
+            { emoji: '🛡️', words: ['ביטוח'] },
+            { emoji: '🎁', words: ['מתנות', 'מתנה'] },
+            { emoji: '🐾', words: ['חיות', 'כלב', 'חתול', 'וטרינר'] },
+            { emoji: '☕', words: ['קפה'] }
+        ];
+        for (var i = 0; i < rules.length; i++) {
+            for (var j = 0; j < rules[i].words.length; j++) {
+                if (title.indexOf(rules[i].words[j]) !== -1) return rules[i].emoji;
+            }
+        }
+        if (baseType === 'income') return '💰';
+        if (baseType === 'variable') return '🛍️';
+        if (baseType === 'loan') return '🏦';
+        if (baseType === 'dated') return '💳';
+        return '🏷️';
+    }
+
+    // Read-only helper: true for exactly the 4 permanent keys above.
+    function isBuiltInPreviewCategoryKey(key) {
+        return PREVIEW_BUILTIN_CATEGORY_KEYS.indexOf(key) !== -1;
+    }
+
+    // Mirrors index.html's own deleteCustomCategory() membership check
+    // (`items.some(function(i){return i.displayCategory === key;})`) exactly — including items
+    // currently in the archive, since `items` holds both active and archived items and this does
+    // not filter on isArchived. Read-only, no mutation.
+    function categoryHasPreviewItems(key) {
+        return items.some(function (i) { return i && i.displayCategory === key; });
+    }
+
+    // Mirrors index.html's own updateCategoryName(key, newVal) — same "empty/whitespace-only
+    // value is a silent no-op" behavior, works for both built-in and custom keys (index.html
+    // allows renaming both; only deletion is restricted to custom keys). Unlike
+    // updateCategoryName(), takes the new label as a parameter instead of reading a DOM input
+    // directly (no such input exists yet — that is Stage 3ב.2's job), and defensively no-ops on
+    // an unknown key rather than assuming it always exists. Returns true on success, false on
+    // no-op, so a future caller can decide how to react without this function touching the DOM.
+    function renamePreviewCategory(key, newLabel) {
+        if (!categoryConfig[key]) return false;
+        var trimmed = (newLabel == null ? '' : String(newLabel)).trim();
+        if (!trimmed) return false;
+        categoryConfig[key].label = trimmed;
+        savePreviewCategoryConfig();
+        renderAllPreviewScreens();
+        return true;
+    }
+
+    // Single source of truth for which baseType values a new custom category may have — derived
+    // from PREVIEW_CUSTOM_CATEGORY_TYPE_OPTIONS (no separate hardcoded list) so the two can never
+    // drift apart. Used by addPreviewCategory() below; Stage 3ב.2's <select> will independently
+    // only ever offer these same 4 options as markup, but addPreviewCategory() does not rely on
+    // that — it re-validates baseType itself regardless of caller.
+    function getAllowedPreviewCustomCategoryBaseTypes() {
+        return PREVIEW_CUSTOM_CATEGORY_TYPE_OPTIONS.map(function (opt) { return opt.value; });
+    }
+
+    // Mirrors index.html's own addCustomCategory() — same key format ('custom_' + Date.now()),
+    // same emoji-prefixed label construction, same alert() on an empty title (matching this
+    // file's existing alert()-based validation convention for item add/edit, e.g. addPreviewItem
+    // above). Unlike addCustomCategory(), takes title/baseType as parameters instead of reading
+    // #new-cat-title/#new-cat-type directly (those elements do not exist yet — Stage 3ב.2).
+    //
+    // Two hardening fixes over the original mirror (approved after code review, before this
+    // stage's first commit):
+    // 1. baseType is validated against getAllowedPreviewCustomCategoryBaseTypes() — an
+    //    unrecognized value is rejected (no category created, no categoryConfig mutation, no
+    //    localStorage write, returns null) rather than trusted blindly. index.html itself never
+    //    validates this (it trusts its <select> unconditionally), but this function does not rely
+    //    on Stage 3ב.2's future <select> being the only caller.
+    // 2. The candidate key starts as 'custom_' + Date.now() (same as index.html), but if that key
+    //    already exists in categoryConfig (two calls landing in the same millisecond — verified
+    //    possible in Stage 3ב.1's code review, deterministically reproduced with a fixed
+    //    Date.now()), a numeric suffix is appended and incremented ('custom_<ts>_1',
+    //    'custom_<ts>_2', ...) until a free key is found. An existing category is never
+    //    overwritten. The timestamp is captured once (`ts`) and reused for every suffixed
+    //    candidate, so the loop's own iteration speed cannot introduce a second collision.
+    //
+    // Returns the new key on success, null on any validation failure, so a future caller can react
+    // (e.g. select the new category) without this function touching the DOM itself.
+    function addPreviewCategory(title, baseType) {
+        var trimmedTitle = (title == null ? '' : String(title)).trim();
+        if (!trimmedTitle) { alert('נא להזין שם לקטגוריה'); return null; }
+        if (getAllowedPreviewCustomCategoryBaseTypes().indexOf(baseType) === -1) { return null; }
+
+        var ts = Date.now();
+        var newKey = 'custom_' + ts;
+        var suffix = 1;
+        while (categoryConfig[newKey]) {
+            newKey = 'custom_' + ts + '_' + suffix;
+            suffix++;
+        }
+
+        var emoji = pickEmojiForCategory(trimmedTitle, baseType);
+        categoryConfig[newKey] = { label: emoji + ' ' + trimmedTitle, baseType: baseType };
+        savePreviewCategoryConfig();
+        renderAllPreviewScreens();
+        return newKey;
+    }
+
+    // Deliberately DOES NOT mirror index.html's own deleteCustomCategory(), which (after a native
+    // confirm()) deletes a category's items along with the category itself. That behavior was
+    // reviewed against the approved product decisions for Stage 3ב and is intentionally NOT
+    // carried over here: built-in categories are never deletable, and a custom category that still
+    // has items (active or archived) is also refused rather than silently deleting those items —
+    // transactions are never auto-deleted by this function under any circumstance. The blocked
+    // reason is returned (see PREVIEW_CATEGORY_DELETE_BLOCKED_REASON above) rather than shown via
+    // alert()/confirm(), so Stage 3ב.2 can render the "clear message" the product decision calls
+    // for as in-UI text. An unknown key is a strict no-op (no save, no render), same convention as
+    // every other id/key-based mutation function in this file.
+    function deletePreviewCategory(key) {
+        if (!categoryConfig[key]) { return { success: false, reason: null }; }
+        if (isBuiltInPreviewCategoryKey(key)) {
+            return { success: false, reason: PREVIEW_CATEGORY_DELETE_BLOCKED_REASON.BUILT_IN };
+        }
+        if (categoryHasPreviewItems(key)) {
+            return { success: false, reason: PREVIEW_CATEGORY_DELETE_BLOCKED_REASON.HAS_ITEMS };
+        }
+        delete categoryConfig[key];
+        savePreviewCategoryConfig();
+        renderAllPreviewScreens();
+        return { success: true, reason: null };
+    }
+
+    // =====================================================================================
+    // ===== Stage 3ב.2: category management UI — wires the Stage 3ב.1 logic above to real  =====
+    // ===== Settings-screen forms. index-preview-v2.html only; no change to index.html/app.js/ =====
+    // ===== styles.css. No forecast logic. No change to the Stage 3ב.1 functions themselves    =====
+    // ===== (addPreviewCategory/renamePreviewCategory/deletePreviewCategory/etc. are called    =====
+    // ===== exactly as they were left, unmodified). All persistence still goes exclusively     =====
+    // ===== through savePreviewCategoryConfig() (CONFIG_KEY only), invoked from inside          =====
+    // ===== those unmodified functions — nothing here touches localStorage directly.           =====
+    // =====================================================================================
+
+    // Renders the <option> list for the "type" <select> in the add-category form, from the same
+    // PREVIEW_CUSTOM_CATEGORY_TYPE_OPTIONS array addPreviewCategory() itself validates against —
+    // so the picker can never offer a value the logic layer would reject.
+    function buildPreviewCategoryTypeOptionsHtml() {
+        var html = '';
+        for (var i = 0; i < PREVIEW_CUSTOM_CATEGORY_TYPE_OPTIONS.length; i++) {
+            var opt = PREVIEW_CUSTOM_CATEGORY_TYPE_OPTIONS[i];
+            html += '<option value="' + opt.value + '">' + escapeHtml(opt.label) + '</option>';
+        }
+        return html;
+    }
+
+    // Opens the add-category form. Closes any other open category form first (rename/delete-
+    // confirmation), same "one form at a time" rule already used for previewAddMode/
+    // previewEditingId on the Transactions screen.
+    function startPreviewAddCategory() {
+        resetPreviewCategoryFormsState();
+        previewCategoryAddOpen = true;
+        renderSettingsScreenFromRealData();
+    }
+
+    // Strict no-op on data: clears the open flag and re-renders, same convention as
+    // cancelPreviewAdd()/cancelPreviewEdit() elsewhere in this file.
+    function cancelPreviewAddCategory() {
+        previewCategoryAddOpen = false;
+        renderSettingsScreenFromRealData();
+    }
+
+    // Reads the add-category form's two inputs and calls the unmodified addPreviewCategory()
+    // logic. On failure (empty title → addPreviewCategory() already alerts; invalid baseType →
+    // silent, unreachable via this <select> since it only ever offers the allowed values) this
+    // deliberately does NOT re-render — the form stays open exactly as the user left it, same
+    // convention as addPreviewItem()/savePreviewInlineEdit() elsewhere in this file. On success,
+    // addPreviewCategory() has already saved+re-rendered internally (with the form still marked
+    // open at that point); this only needs to close the form and render once more.
+    function submitPreviewAddCategory() {
+        var titleInput = document.getElementById('cat-add-title');
+        var typeSelect = document.getElementById('cat-add-basetype');
+        var title = titleInput ? titleInput.value : '';
+        var baseType = typeSelect ? typeSelect.value : '';
+        var newKey = addPreviewCategory(title, baseType);
+        if (newKey === null) { return; }
+        previewCategoryAddOpen = false;
+        renderSettingsScreenFromRealData();
+    }
+
+    // Opens the rename form for one category. Available for both built-in and custom categories
+    // (approved 3ב.2 product decision — only baseType change and deletion are restricted to/from
+    // built-ins, not renaming). Unknown key is a strict no-op.
+    function startPreviewEditCategory(key) {
+        if (!categoryConfig[key]) { return; }
+        resetPreviewCategoryFormsState();
+        previewEditingCategoryKey = key;
+        renderSettingsScreenFromRealData();
+    }
+
+    function cancelPreviewEditCategory() {
+        previewEditingCategoryKey = null;
+        renderSettingsScreenFromRealData();
+    }
+
+    // Reads the rename form's input and calls the unmodified renamePreviewCategory() logic.
+    // renamePreviewCategory() itself has no alert() of its own (Stage 3ב.1 left it a silent no-op
+    // on an empty/whitespace value) — this UI-layer wrapper adds the alert() so the user gets the
+    // same "empty required field" feedback as every other form in this file, without touching the
+    // Stage 3ב.1 function itself. On failure: alert only, form stays open, nothing re-rendered.
+    function submitPreviewEditCategory(key) {
+        var input = document.getElementById('cat-edit-label-' + key);
+        var newLabel = input ? input.value : '';
+        var ok = renamePreviewCategory(key, newLabel);
+        if (!ok) { alert('נא להזין שם לקטגוריה'); return; }
+        previewEditingCategoryKey = null;
+        renderSettingsScreenFromRealData();
+    }
+
+    // Opens the inline delete-confirmation for one category ("מחיקה" → "אישור מחיקה"/"ביטול")
+    // instead of a native confirm(), per the approved 3ב.2 UI rules. Available on every category
+    // row's markup is irrelevant here — the actual delete button is only rendered for non-built-in
+    // categories (see buildPreviewCategoryRowHtml below), but this function itself still checks
+    // isBuiltInPreviewCategoryKey defensively rather than trusting the caller. Unknown key is a
+    // strict no-op.
+    function startPreviewDeleteCategory(key) {
+        if (!categoryConfig[key]) { return; }
+        resetPreviewCategoryFormsState();
+        previewDeletingCategoryKey = key;
+        renderSettingsScreenFromRealData();
+    }
+
+    function cancelPreviewDeleteCategory() {
+        previewDeletingCategoryKey = null;
+        renderSettingsScreenFromRealData();
+    }
+
+    // Calls the unmodified deletePreviewCategory() logic and turns its returned {success, reason}
+    // into the "clear message" the original product decision calls for. On success,
+    // deletePreviewCategory() has already saved+re-rendered internally — the deleted row is simply
+    // gone from the next render. On failure, an alert() explains why (built-in category, or a
+    // custom category that still has items — active or archived) and the row returns to its normal
+    // (non-confirming) state. BUILT_IN can only be reached here defensively — the delete button is
+    // never rendered for a built-in category in the first place.
+    function confirmPreviewDeleteCategory(key) {
+        var result = deletePreviewCategory(key);
+        previewDeletingCategoryKey = null;
+        if (result.success) { return; }
+        if (result.reason === PREVIEW_CATEGORY_DELETE_BLOCKED_REASON.BUILT_IN) {
+            alert('לא ניתן למחוק קטגוריה מובנית.');
+        } else if (result.reason === PREVIEW_CATEGORY_DELETE_BLOCKED_REASON.HAS_ITEMS) {
+            alert('לא ניתן למחוק קטגוריה זו — קיימות לה תנועות (כולל בארכיון). יש להעביר או למחוק את התנועות תחילה.');
+        }
+        renderSettingsScreenFromRealData();
+    }
+
+    // Builds the markup for a single category row, in one of 3 mutually-exclusive states driven
+    // by the module-level state above: delete-confirmation, rename form, or the normal row with
+    // action buttons. A missing/non-string label falls back to the key itself, same safety net
+    // Stage E.1's original version already had.
+    function buildPreviewCategoryRowHtml(key) {
+        var cfg = categoryConfig[key];
+        var label = (cfg && typeof cfg.label === 'string' && cfg.label) ? cfg.label : key;
+
+        if (previewDeletingCategoryKey === key) {
+            return '<div class="category-row">' +
+                '<div class="cat-label">' + escapeHtml(label) + '</div>' +
+                '<div class="cat-row-actions">' +
+                '<span class="cat-delete-confirm-text">למחוק קטגוריה זו?</span>' +
+                '<button type="button" class="cat-confirm-delete-btn" onclick="confirmPreviewDeleteCategory(\'' + key + '\')">אישור מחיקה</button>' +
+                '<button type="button" class="cat-cancel-btn" onclick="cancelPreviewDeleteCategory()">ביטול</button>' +
+                '</div></div>';
+        }
+
+        if (previewEditingCategoryKey === key) {
+            return '<div class="tx-edit-form">' +
+                '<div class="tx-edit-group"><label>שם קטגוריה</label><input type="text" id="cat-edit-label-' + key + '" value="' + escapeHtml(label) + '"></div>' +
+                '<div class="tx-edit-actions">' +
+                '<button type="button" class="tx-edit-save" onclick="submitPreviewEditCategory(\'' + key + '\')">💾 שמור שינויים</button>' +
+                '<button type="button" class="tx-edit-cancel" onclick="cancelPreviewEditCategory()">ביטול</button>' +
+                '</div></div>';
+        }
+
+        var actionsHtml = '<button type="button" class="cat-edit-btn" onclick="startPreviewEditCategory(\'' + key + '\')">✏️ עריכה</button>';
+        if (!isBuiltInPreviewCategoryKey(key)) {
+            actionsHtml += '<button type="button" class="cat-delete-btn" onclick="startPreviewDeleteCategory(\'' + key + '\')">🗑️ מחיקה</button>';
+        }
+        return '<div class="category-row">' +
+            '<div class="cat-label">' + escapeHtml(label) + '</div>' +
+            '<div class="cat-row-actions">' + actionsHtml + '</div>' +
+            '</div>';
+    }
+
+    // Builds the markup for the add-category area: a single toggle button when closed, or the
+    // inline form when open. Reuses .tx-edit-form/.tx-edit-group/.tx-edit-actions/.tx-edit-save/
+    // .tx-edit-cancel as-is (same reasoning as the add-transaction form, Stage G.5).
+    function buildPreviewCategoryAddAreaHtml() {
+        if (!previewCategoryAddOpen) {
+            return '<button type="button" class="cat-add-toggle" onclick="startPreviewAddCategory()">+ הוסף קטגוריה</button>';
+        }
+        return '<div class="tx-edit-form">' +
+            '<div class="tx-edit-group"><label>שם הקטגוריה</label><input type="text" id="cat-add-title"></div>' +
+            '<div class="tx-edit-group"><label>סוג</label><select id="cat-add-basetype">' + buildPreviewCategoryTypeOptionsHtml() + '</select></div>' +
+            '<div class="tx-edit-actions">' +
+            '<button type="button" class="tx-edit-save" onclick="submitPreviewAddCategory()">הוסף קטגוריה +</button>' +
+            '<button type="button" class="tx-edit-cancel" onclick="cancelPreviewAddCategory()">ביטול</button>' +
+            '</div></div>';
+    }
+</script>
+
+</body>
+</html>
