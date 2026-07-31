@@ -48,3 +48,269 @@
 - **החלטה מאושרת**: אריח הדשבורד "הוצאות קבועות" ממשיך לכלול את **סך כל** ההוצאות הקבועות (בנק+כרטיס) לצורך מעקב, ללא קשר לכך שרק הוצאות בנק נכללות ביתרה הפנויה ובתחזית.
 - **לא שונה**: `loan`, `variable`, `dated`, `income`, ארכיון/שחזור/מחיקה, `app.js`, `styles.css`.
 - **בדיקת end-to-end** (שרת מקומי + Edge headless, פרופיל זמני ומבודד): תרחיש הכנסה ₪10,000 + שכירות-בנק ₪3,000 + מנוי חדר כושר-כרטיס ₪200 → יתרה פנויה ₪7,000, תחזית ₪7,000, תצוגה "כרטיס אשראי ****1234" תקינה, ולידציה חסמה קלטים לא-תקינים (אותיות / פחות מ-4 ספרות), עריכה בין בנק↔כרטיס עבדה בשני הכיוונים, ארכוב/שחזור/מחיקה תקינים, אריח "הוצאות קבועות" הציג ₪3,150 (סכום מלא) בעוד היתרה הפנויה נשארה ₪7,000. כל 14 הבדיקות המהותיות עברו; נמצאה שוב אותה שגיאת Console הידועה והלא-קשורה (`favicon.ico` 404).
+
+## 29/07/2026 — Git סונכרן עם GitHub (backup + force-with-lease)
+לפי בקשת המשתמש: חובר remote בשם `origin` (`https://github.com/msrss58-nm/finance.git`) לריפו המקומי. אומת ש-`origin/main` (`dd74136`, "Add files via upload") ו-`main` המקומי הם היסטוריות **לא קשורות** לחלוטין (`git merge-base` ריק) — תוכן `origin/main` זהה כמעט לגמרי (רק הבדל CRLF/LF) לנקודת ההתחלה המקומית שלנו, ולא כולל אף אחד מהשינויים שביצענו. לפני כל דריסה: נוצר ואומת ענף גיבוי `backup-before-local-sync-2026-07-29` המצביע על `dd74136` (הגרסה הישנה נשמרת במלואה). לאחר האימות בוצע `git push --force-with-lease origin main:main` (לא `--force` רגיל) — הצליח, ועכשיו `main` המקומי ו-`origin/main` מסונכרנים לחלוטין על `0c2efa6`. לא בוצע merge, לא בוצעו קונפליקטים מלאכותיים.
+
+## 29/07/2026 — הוספת תמיכת PWA בסיסית, ולאחר מכן ביטול מלא
+לפי בקשת המשתמש, הפרויקט הפך זמנית ל-PWA בסיסית: נוספו `manifest.webmanifest`, `service-worker.js`, `icon-192.png`, `icon-512.png`, ועדכוני `<head>`+רישום Service Worker ב-`index.html`. נבדק בהצלחה end-to-end (manifest תקין, SW הגיע ל-`activated`, פעולה תקינה במצב offline מלא, נתונים שרדו רענון). **בסבב הבא באותה שיחה, המשתמש ביקש לעצור את משימת ה-PWA ולחזור למצב הקודם**: 4 הקבצים החדשים נמחקו, ו-`index.html` + קובצי התיעוד שוחזרו במדויק לגרסת `HEAD` (`git restore`, ללא `reset --hard`, ללא נגיעה ב-`Design/`). **לא בוצע commit לשלב ה-PWA כלל** — לא בהוספה ולא בהחזרה. נכון להיום, אין שום שריד ל-PWA בפרויקט.
+
+## 30/07/2026 — שלב ז׳.5: הוספת הכנסה/הוצאה/הלוואה מ-Quick Actions (נשמר ב-commit `4c46b58`)
+לפי אישור מפורש (כולל הבהרה על סדר הפעולות לאחר שמירה מוצלחת), נוספה בתוך **`index-preview-v2.html` בלבד** יכולת הכתיבה האחרונה מהמיפוי המקורי: 3 מסלולי הוספה נפרדים (הכנסה/הוצאה/הלוואה) דרך חלונית ה-Quick Actions הקיימת, עם טופס באזור ייעודי חדש בראש מסך התנועות (`preview-add-form-area`) ובורר סוג הוצאה (קבוע/משתנה/מתוארך).
+- **מה נוסף**: `previewAddMode`/`previewAddCategoryKey` (state חזותי חדש), `startPreviewAdd()`/`chooseExpenseAddType()`/`cancelPreviewAdd()`/`buildPreviewAddFormHtml()`/`renderAddFormArea()`/`getCategoryKeysForBaseType()`/`getDefaultCategoryKeyForBaseType()`/`addPreviewItem()` — האחרונה העתקה מילולית של `addNewItem()` מ-`index.html` (אותה בנייה/ולידציה/`alert()` לכל אחד מ-5 הענפים). "הוצאה מתוארכת" מבוטלת (`disabled` אמיתי) כשאין קטגוריה מותאמת אישית מסוג `dated` — התאמה למגבלה הקיימת ב-`index.html` עצמו. "טופס אחד פעיל בכל רגע" נאכף בשני הכיוונים מול עריכה Inline (ז׳.4).
+- **סדר לאחר שמירה מוצלחת (הבהרה מאושרת)**: איפוס state → מעבר למסנן "פעיל" (`setTxFilter('active')`) → `renderAllPreviewScreens()`, בדיוק בסדר הזה. בכשל ולידציה: המסנן לא משתנה, הטופס לא נסגר.
+- **בדיקות**: `node --check`/`git diff --check` תקינים. 58 בדיקות VM/Node + 30 בדיקות Edge/CDP אמיתיות (קליקים אמיתיים על FAB/Quick Actions/בורר-הוצאה/שמירה/ביטול, כולל `alert()` אמיתי ואירוע `change` אמיתי) — כולן עברו. `family_finance_data`/`family_finance_cat_config` נשארו זהים ב-100% לאורך כל הבדיקה.
+- **`index.html`** — לא נגע בו כלל. **כל 7 יכולות הכתיבה מהמיפוי המקורי (רצף ז׳) הושלמו.**
+- **תיקון תיעוד נלווה (אותו עדכון)**: תוקן ניסוח ישן ב-CURRENT_STATUS.md/TODO.md שתיאר את ז׳.4 כ"טרם נשמר ב-commit" — בפועל ז׳.4 כבר נכלל ב-commit `c609459` (יחד עם עדכון התיעוד שנעשה באותו שלב); הניסוח לא עודכן אז בטעות. אין שינוי קוד נלווה לתיקון הזה, רק דיוק תיעודי.
+
+## 29/07/2026 — גילוי וניתוח תיקיית Design/
+התגלתה תיקיית `Design/` (untracked, לא נוצרה על ידי Claude) עם 5 מסכי Google Stitch: `dashboard_pulse`, `financial_coach`, `onboarding_bank_connection`, `transactions_feed` (כל אחד `code.html`+`screen.png`), ו-`riseup_financial/DESIGN.md` (מסמך design-tokens). נותחו לעומק: כולם טוענים Tailwind CDN + Google Fonts + Material Symbols חיצוניים ומכילים נכסים ממותגים (לוגואי בנקים אמיתיים, Apple, Netflix) — לא לשימוש ישיר. `financial_coach` (צ'אט AI) ו-`onboarding_bank_connection` (חיבור בנק) זוהו כתכונות חדשות הדורשות backend, מחוץ לסקופ הנוכחי.
+
+## 29/07/2026 — Preview v1 (`index-preview.html`) נבנה, נבדק, ונמצא לא-מספק
+נבנה קובץ נפרד עם עיצוב חדש (טיל, RTL, בהשראת `riseup_financial/DESIGN.md`) על גבי **אותו מבנה HTML ואותה לוגיקה** מ-`index.html` (script מועתק 1:1), עם מפתחות localStorage נפרדים (`family_finance_preview_data`/`_cat_config`, seed חד-פעמי, כפתור איפוס). 11 בדיקות בטיחות/פונקציונליות עברו במלואן, כולל וידוא מוחלט שהמפתחות האמיתיים (`family_finance_data`/`family_finance_cat_config`) לעולם לא נכתבים או נמחקים. **המשתמש קבע שזו אינה התשובה** — בפועל זו הייתה מתיחת-פנים (reskin) על אותו מבנה/layout/היררכיית מידע, לא ממשק חדש. הקובץ נשאר בפרויקט (untracked), לא נמחק, אך אינו הכיוון להמשך.
+
+## 29/07/2026 — שלב אפיון מלא לעיצוב מחדש (Cockpit) — הושלם ואושר, ללא קוד
+בעקבות המסקנה על Preview v1, בוצע סבב תכנון מוצר מלא (ללא כתיבת קוד), בהובלת עקרון "לתכנן כאילו אפליקציה חדשה לחלוטין, בלי להניח קיום של `index.html`":
+- **עקרונות UX**: עיקרון 10 השניות (סטטוס/בטיחות/תשומת-לב מיידיים בלי אינטראקציה), מטאפורת Cockpit (לוח מחוונים: מד ראשי + מדי-משנה + נורות אזהרה + פעילות אחרונה), עיקרון "סיפור הכסף" (כל מספר מלווה משפט אנושי, ברמת דיוק תואמת בדיוק למה שהנתונים מאפשרים — לא מומצא).
+- **Wireframe מילולי מלא שאושר**: 4 מסכים (בית/Cockpit, תנועות, תובנות, הגדרות) + ניווט תחתון + Quick Actions למינימום לחיצות (הוצאה/הכנסה/הלוואה).
+- **תיקון מהותי למסך התובנות**: הוסרו כל התובנות שהניחו פירוט הרגלי-צריכה (מזון/ביגוד/בילויים) — אין לאפליקציה נתונים כאלה. הוחלף במיפוי מדויק של 9 תובנות לנתונים קיימים בפועל (חיובי כרטיס אשראי, חלוקת בנק/כרטיס בהוצאות קבועות בלבד, יתרת הלוואות, אזהרת יתרה שלילית מהתחזית הקיימת, שינוי בחיובים חד-פעמיים בין חודשים — היחיד עם היסטוריה אמיתית זמינה).
+- **תוכנית מימוש מאושרת — 5 שלבים** (קובץ מוצע `index-preview-v2.html`): (א) קובץ ואסטרטגיית בטיחות נתונים (שם קובץ, מפתחות Preview נפרדים, seed/איפוס) ← (ב) בניית מבנה+CSS חדש עם נתוני Mock ← (ג) שכבת "מנוע סיפור" תוספתית ← (ד) חיבור ללוגיקה הקיימת דרך מפתחות ה-Preview ← (ה) בדיקות מקיפות. לפי שיטת העבודה המוסכמת: שלב אחד בכל פעם, עם עצירה לאישור לפני כל מעבר לשלב הבא.
+- **אושר מחדש**: הלוגיקה העסקית, מבנה הנתונים, וכללי בנק/כרטיס לא ישתנו כלל; אין להוסיף שדה "יום בחודש" ל-`fixed` בשלב זה.
+- **סטטוס**: תכנון מאושר במלואו. **לא נכתב עדיין שום קוד** למימוש. קובצי התיעוד עודכנו בהתאם, **טרם נשמרו ב-commit**.
+
+## 29/07/2026 — שלב א׳ של תוכנית המימוש (Cockpit / Preview v2) — קובץ ואסטרטגיית בטיחות נתונים
+לפי אישור מפורש לבצע רק שלב א׳ מתוך 5 השלבים המאושרים: נוצר קובץ חדש [index-preview-v2.html](index-preview-v2.html) (untracked, טרם ב-commit) — שלד בלבד, **בלי** ה-UI של ה-Cockpit (מיועד לשלב ב׳).
+- **מפתחות localStorage חדשים ונפרדים**: `family_finance_preview_v2_data`, `family_finance_preview_v2_cat_config` — שונים גם מהמפתחות האמיתיים וגם ממפתחות Preview v1, כדי שכל הגרסאות יוכלו להתקיים זו לצד זו.
+- **מנגנון seed חד-פעמי**: מעתיק מהנתונים האמיתיים בפעם הראשונה בלבד; לא דורס נתוני Preview v2 קיימים בטעינות הבאות.
+- **כפתור איפוס** עם `confirm`: מוחק רק את מפתחות Preview v2, מרענן את הדף (מה שמפעיל seed מחדש).
+- **אימות**: הורץ סקריפט Node.js שמחלץ את בלוק ה-`<script>` המדויק מתוך הקובץ בפועל (לא עותק משוכתב) ומריץ אותו מול `localStorage`/`confirm`/`document`/`location.reload` מדומים. 20 בדיקות עברו: seed נכון, אי-דריסה בטעינה חוזרת, איפוס פוגע רק במפתחות v2, ביטול איפוס לא משנה כלום, וסביבה ריקה מקבלת ברירות מחדל תקינות. **לא בוצעה בדיקת דפדפן מלאה** — אין עדיין UI להראות; זו מתוכננת לשלב ה׳ לאחר שלבים ב׳-ד׳.
+- **בוצע commit** (`32416eb feat: complete cockpit preview stage A`) בענף `feature/cockpit-preview-v2`.
+
+## 30/07/2026 — שלב ד׳ של תוכנית המימוש (Cockpit / Preview v2) — חיבור ללוגיקה הקיימת ולנתוני Preview (נשמר ב-commit `136200d`)
+לפי אישור מפורש להמשיך לשלב ד׳ מתוך 5 השלבים המאושרים: הושלמו כל 7 תתי-השלבים (ד׳.1–ד׳.7) בתוך [index-preview-v2.html](index-preview-v2.html) בלבד.
+- **ד׳.1**: `getBillingRange`/`parseDatesAndGetLeft` הועתקו כלשונן מ-`index.html`.
+- **ד׳.2**: נוספו `loadPreviewItems()`/`loadPreviewCategoryConfig()` — קריאה-בלבד ממפתחות `PREVIEW_DATA_KEY`/`PREVIEW_CONFIG_KEY`, לעולם לא מהמפתחות האמיתיים.
+- **ד׳.3**: 6 הפונקציות מלאות משלב ג׳ (`getFixedCreditCardTotals`, `getFixedBankVsCreditSplit`, `getTotalFixedCommitments`, `getMonthSnapshot`, `getRecentActivity`, `getLoansRemainingSummary`) חוברו לנתונים אמיתיים, כולל תיקון המרת הוצאה קבועה שנתית לחודשית.
+- **ד׳.4**: `buildPreviewNarrativeData()` — קריאה יחידה ל-`buildNarrative()`, ללא חישוב כפול.
+- **ד׳.5**: מסך הבית חובר לנתונים אמיתיים (`hero-amount`, `snapshot-income/expenses/balance`, `hero-narrative`, `recent-activity-list`) — `hero-status` נשאר קבוע במכוון (אין שדה נרטיב מתאים בלי המצאת לוגיקה).
+- **ד׳.6**: 4 ה-Stubs (`getBiggestUpcomingCharge`, `getProjectedBalanceAfterUpcoming`, `getForecastWarning`, `getDatedMonthOverMonthChange`) מומשו במלואם על בסיס `computeForecast`/`getBillingRange`/`isBillingActiveInMonth` המועתקים כלשונן; מסך התובנות חובר לנתונים אמיתיים (כרטיס "אזהרת תחזית" מושמט כשאין אזהרה). **תוקן באג audit**: ערבוב `items` גלובלי מול פרמטרי בשלוש הפונקציות הראשונות — נפתר ע"י שינוי שם הפרמטר ל-`sourceItems` והעברתו במפורש ל-`computeForecast()`.
+- **ד׳.7**: בדיקות אינטגרציה מקיפות מול `index.html` — 349 בדיקות, 342 עברו, **PASS** עם הערות ידועות בלבד (hero-status לא מחובר; כרטיס "אזהרת תחזית" מושמט כשאין אזהרה; אי-עקביות מכוונת ומתועדת בין `renderAll`/`getMonthSnapshot` לבין `computeForecast` לגבי הלוואה עתידית — לא לתקן).
+- **מנגנון בטיחות**: מפתחות `PREVIEW_*` נבדקו ונשארו מבודדים לחלוטין מהמפתחות האמיתיים לאורך כל שלב ד׳ — אין כתיבה חדשה אליהם, כל ה-`setItem`/`removeItem` בקובץ שייכים למנגנון ה-seed/איפוס המקורי משלב א׳ בלבד.
+- **`index.html`** — לא נגע בו כלל.
+- **סטטוס**: הושלם, אומת ונשמר ב-commit `136200d`.
+
+## 30/07/2026 — מיפוי שלב ה׳ (ללא קוד)
+בוצע סבב מיפוי של המצב הנותר ב-`index-preview-v2.html` לאחר שלב ד׳: הגדרות/תנועות/attention-list עדיין Mock, פילטר פעיל/ארכיון קוסמטי, חיפוש מנוטרל, Quick Actions לא שומר כלום, אין פעולות כתיבה מחוברות. שלב ה׳ פוצל לרצף תתי-שלבים קטנים (ה׳.1–ה׳.4), עם חיבור פעולות כתיבה כפריט נפרד מחוץ לרצף (טרם אושר). לא בוצע שום שינוי קוד/תיעוד כחלק מהמיפוי עצמו.
+
+## 30/07/2026 — שלב ה׳.1 (Cockpit / Preview v2) — חיבור מסך ההגדרות לנתוני קטגוריות אמיתיים
+לפי אישור מפורש לבצע רק שלב ה׳.1 מתוך רצף תתי-השלבים שמופה עבור שלב ה׳: חובר מסך ההגדרות (רשימת קטגוריות) בתוך [index-preview-v2.html](index-preview-v2.html) לנתוני `categoryConfig` אמיתיים — תצוגה בלבד.
+- **מה שונה**: ב-`renderMockUI()` הוסרה הלולאה שמילאה את `category-list` מ-`MOCK_DATA.categories`; נוספה `renderSettingsScreenFromRealData()` שמציגה את `categoryConfig` (נטען כבר ב-ד׳.2, קריאה-בלבד מ-`PREVIEW_CONFIG_KEY`), עם נפילה בטוחה לשם המפתח כשה-`label` חסר/פגום.
+- **לא נוסף**: שום לוגיקת כתיבה (הוספה/עריכה/מחיקה/שמירה של קטגוריות) — נשאר לשלבים עתידיים, מחוץ לרצף ה׳ הנוכחי.
+- **בדיקות**: `node --check` תקין; 20 בדיקות VM/Node עברו (כולל קטגוריה מותאמת אישית שהוכיחה חיבור לנתונים אמיתיים ולא ל-Mock, וכן מצבי קצה: קונפיגורציה ריקה, מפתח חסר, ערכים פגומים, `null`) — כולן אימתו היעדר כתיבה/מחיקה למפתחות האמיתיים. בדיקת Edge headless ממוקדת (`--dump-dom`) אישרה טעינה נקייה ללא שגיאות Console, עם קטגוריות אמיתיות ב-DOM.
+- **`index.html`** — לא נגע בו כלל.
+- **המשך**: שלב ה׳.2 — חיבור מסך התנועות.
+
+## 30/07/2026 — שלב ה׳.2 (Cockpit / Preview v2) — חיבור מסך התנועות לנתונים אמיתיים
+לפי אישור מפורש לבצע רק שלב ה׳.2 מתוך רצף תתי-השלבים שמופה עבור שלב ה׳: חובר מסך התנועות (רשימה + מסנן פעיל/ארכיון) בתוך [index-preview-v2.html](index-preview-v2.html) לנתוני `items` אמיתיים — תצוגה בלבד.
+- **מה שונה**: ב-`renderMockUI()` הוסרה השורה שמילאה את `transactions-list` מ-`MOCK_DATA.transactions`; נוספה `renderTransactionsScreenFromRealData(filterName)` שמציגה את `items` (נטען כבר ב-ד׳.2, קריאה-בלבד מ-`PREVIEW_DATA_KEY`), תוך שימוש חוזר ב-`mapItemToHomeTxRow()`/`renderTxList()` הקיימות (ד׳.5).
+- **מסנן פעיל/ארכיון**: הפך מקוסמטי (רק CSS) לפונקציונלי — `setTxFilter()` קורא כעת גם לרינדור מחדש. סינון לפי `item.isArchived`, זהה ללוגיקת `renderAll()` ב-`index.html`.
+- **סדר**: מיון לפי `item.id` (Date.now() בעת יצירה) בסדר יורד — נבחר על פני `start` כי קיים בכל סוג פריט (בניגוד ל-`start`, חסר ב-`income`/`fixed`).
+- **חיפוש**: נשאר `disabled`, לא הופעל.
+- **תיקון Invalid Date** (אותו שלב, בעקבות בדיקה שגילתה זאת): `mapItemToHomeTxRow()` תוקנה — `start` חסר/ריק/לא-תקין מוצג כ-`-` במקום `"Invalid Date"` הגולמי; תיקון חל גם על "פעילות אחרונה" במסך הבית (פונקציה משותפת).
+- **לא נוסף**: שום לוגיקת כתיבה (הוספה/עריכה/ארכוב/שחזור/מחיקה/שמירה) — נשאר מחוץ לרצף שלב ה׳ הנוכחי.
+- **בדיקות**: `node --check` תקין; 43 בדיקות VM/Node לחיבור המסך המקורי + 17 בדיקות VM/Node ממוקדות לתיקון התאריך — **60/60 עברו**, כולן אימתו היעדר כתיבה/מחיקה למפתחות האמיתיים. בדיקת Edge headless אמיתית (shim ממלא נתוני בדיקה ישירות ל-`PREVIEW_*` בלבד לפני טעינה) אישרה בפועל ב-DOM: תאריך תקין מוצג נכון, שלושת מקרי הקצה מוצגים כ-`-`, ללא "Invalid Date" וללא שגיאות Console.
+- **`index.html`** — לא נגע בו כלל. לא נוספה גישה למפתחות אמיתיים כלשהם.
+- **המשך**: שלב ה׳.3 — חיבור "מה דורש תשומת לב" (attention-list).
+
+## 30/07/2026 — שלב ה׳.3 (Cockpit / Preview v2) — חיבור "מה דורש תשומת לב" לנתונים אמיתיים
+לפי אישור מפורש לבצע רק שלב ה׳.3 מתוך רצף תתי-השלבים שמופה עבור שלב ה׳: חובר `attention-list` במסך הבית בתוך [index-preview-v2.html](index-preview-v2.html) לנתונים אמיתיים — תצוגה בלבד.
+- **הכרעת היקף מוקדמת**: נמצא ש-`index.html` אינו מכיל מושג "חיובים קרובים" ברשימה מרובה כפי שה-Mock הציג; הוצגו למשתמש 3 אפשרויות, ו**נבחרה האפשרות המינימלית** — שימוש רק ב-`getBiggestUpcomingCharge(items)`/`getForecastWarning(items)` הקיימות משלב ד׳.6, ללא לוגיקה עסקית חדשה, גם במחיר רשימה מוגבלת ל-0–2 כרטיסים.
+- **מה שונה**: ב-`renderMockUI()` הוסרה הלולאה שמילאה את `attention-list` מ-`MOCK_DATA.attention`; נוספה `renderAttentionListFromRealData()` שקוראת אך ורק לשתי הפונקציות הנ"ל.
+- **סדר**: קבוע — חיוב גדול צפוי (אם קיים) ואז אזהרת תחזית (אם קיימת). מצב ריק (שני האותות `null`) → רשימה ריקה, ללא המצאת הודעת "הכל בסדר" — עקבי עם החלטת ד׳.6 לגבי כרטיס האזהרה במסך התובנות.
+- **בדיקות**: `node --check` תקין; 27 בדיקות VM/Node עברו (שני אותות פעילים, ללא אותות, מערך ריק, פריטים פגומים) — כולן אימתו היעדר כתיבה/מחיקה למפתחות האמיתיים. בדיקת Edge headless אמיתית (shim עם נתוני בדיקה ב-`PREVIEW_*` בלבד) אישרה 2 כרטיסים אמיתיים ב-DOM, ללא שגיאות Console.
+- **`index.html`** — לא נגע בו כלל.
+- **המשך**: שלב ה׳.4 — בדיקת דפדפן מלאה על כל ה-Cockpit המחובר.
+
+## 30/07/2026 — שלב ה׳.4 (Cockpit / Preview v2) — בדיקת דפדפן מלאה של Preview v2 (בדיקות בלבד, ללא שינוי קוד)
+לפי אישור מפורש לבצע רק שלב ה׳.4: בדיקת אינטגרציה מלאה של [index-preview-v2.html](index-preview-v2.html) לאחר השלמת שלבי א׳–ה׳.3.
+- **מתודולוגיה**: חיבור CDP אמיתי ל-Edge headless (WebSocket, לא `--dump-dom`) — קליקים אמיתיים (`.click()`) על כפתורי ניווט/פילטר, האזנה רציפה ל-`Runtime.exceptionThrown`/`Runtime.consoleAPICalled`, ו-hook על `Storage.prototype.setItem/removeItem` שהוזרק לפני כל טעינת דף.
+- **3 תרחישים**: (A) נתונים עשירים (7 פריטים, ארכיון, קטגוריה מותאמת אישית), (B) יתרה בריאה (ללא אזהרה), (C) מצב ריק מלא (`items=[]`/`categoryConfig={}`).
+- **תוצאה**: **49/49 בדיקות עברו** — כל 4 המסכים (בית/תובנות/תנועות/הגדרות) מציגים נתונים אמיתיים; קליק אמיתי על מסנן פעיל⇄ארכיון עובד בשני הכיוונים; שדה חיפוש נשאר `disabled`; אין "Invalid Date"; מצב ריק בכל המסכים ללא קריסה; אפס כתיבה/מחיקה למפתחות האמיתיים לאורך כל 3 התרחישים; אפס שגיאות/חריגות Console.
+- **לא נמצא אף באג. לא נמצא שימוש שיורי ב-MOCK_DATA.** לא נמצאו בעיות UX חדשות מעבר להחלטות מתועדות מראש.
+- **מסקנה**: Preview v2 (read-only — ללא פעולות כתיבה, שלב נפרד טרם אושר) מוכן טכנית להמשך פיתוח.
+- **`index.html`** — לא נגע בו כלל.
+- **שארית לא-פרויקטית**: `edge_profile.tmp/` (פרופיל Edge זמני, untracked) נותרה נעולה חלקית ע"י תהליך אנטי-וירוס פעיל בזמן ניסיון המחיקה; לא מכילה תוכן מהפרויקט, לא tracked; הוחלט שלא לבצע פעולות מערכת רק כדי להסירה.
+- **המשך**: כל 4 תתי-שלבי ה׳ הושלמו — נקודת ההמשך הבאה טרם הוחלטה.
+
+## 30/07/2026 — שלב ו׳ (Cockpit / Preview v2) — סקירת עיצוב סופית (Design Review, ללא שינוי קוד)
+לפי אישור מפורש: ביקורת UX/UI מלאה על 4 מסכי [index-preview-v2.html](index-preview-v2.html) — צילומי מסך אמיתיים (Edge/CDP) עם נתוני בדיקה עשירים, בהשוואה גם ל-`Design/dashboard_pulse/screen.png`.
+- **10 ממצאים** דורגו לפי חומרה/עלות: Critical (Quick Actions נראים פעילים אך אינם), Medium-High (bidi בסכומים שליליים), Medium (חוסר עקביות פורמט מספרים בתובנות; כותרת "נתוני Mock בלבד" מטעה; FAB חופף תוכן), High target-fit/עלות גדולה (אין גאוג׳ ויזואלי אמיתי), Medium/עלות בינונית (status-pill סטטי ללא סיגנל).
+- **לא בוצע שום שינוי קוד/תיעוד** — שלב סקירה בלבד.
+
+## 30/07/2026 — שלב ו׳.1 (Cockpit / Preview v2) — תיקוני UX ממוקדים
+לפי אישור מפורש: תוקנו חמשת הממצאים בעלי העלות הקטנה מסקירת שלב ו׳, כולם ב-[index-preview-v2.html](index-preview-v2.html) בלבד:
+1. Quick Actions — class `disabled` + "(בקרוב)" + tooltip; `onclick` ללא שינוי (סוגר sheet בלבד).
+2. RTL/Bidi — `direction:ltr; unicode-bidi:isolate` על `.tx-amount`.
+3. אחידות פורמט מספרים — `sentences.creditCardTotal`/`loansRemaining` ו-`getForecastWarning().message` עברו ל-`formatHomeCurrency()`.
+4. כותרת — "נתוני Mock בלבד" → "נתוני Preview".
+5. FAB — `padding-bottom` של `.app-shell`: 130px → 176px.
+- **תיקון המשך (אושר בנפרד)**: התגלו עוד 2 מקומות (`hero-amount`/`snapshot-balance`, `insight-value` באזהרת תחזית) עם באג אמיתי בבניית המחרוזת בתוך `formatHomeCurrency()` עצמה (לא רק bidi) — `'₪' + Math.round(n).toLocaleString()` הניב `₪-13,050` במקום `-₪13,050`. תוקן ישירות בפונקציה (בדיקת סימן מפורשת + `Math.abs`, ללא שינוי ערך מספרי) + אותה הגנת CSS ל-3 המקומות. **גילוי נלווה, לא טופל**: `index.html` משתמש באותה תבנית בדיוק ל-`#net-balance` — פער ידוע, מחוץ להיקף, לטיפול עתידי בלבד.
+- **בדיקות**: `node --check` תקין; 44 בדיקות VM/Node (18+26); בדיקות Edge/CDP אמיתיות עם צילומי מסך לפני/אחרי לכל תיקון. אפס Regression, אפס שגיאות Console.
+- **מסקנה**: Preview v2 (read-only) ברמת **Release Candidate מבחינת UX/UI**. הוחלט במפורש שלא להוסיף פוליש נוסף שאינו חוסם (גאוג׳, status-pill דינמי) בשלב זה.
+- **`index.html`** — לא נגע בו כלל.
+- **המשך**: נקודת ההמשך היחידה שאושרה — מיפוי ותכנון יכולות כתיבה (הוספה/עריכה/ארכוב/שחזור/מחיקה), לפני כל שינוי קוד.
+
+## 30/07/2026 — שלב ז׳.1 (Cockpit / Preview v2) — תשתית כתיבה בסיסית
+לפי אישור מפורש, לאחר שלב מיפוי מלא (ללא קוד) של 7 יכולות הכתיבה: נוספה בתוך [index-preview-v2.html](index-preview-v2.html) בלבד תשתית כתיבה — `savePreviewItems()`/`savePreviewCategoryConfig()` (מקבילות מדויקות ל-`saveToLocalStorage()`/`saveConfigToLocalStorage()` ב-`index.html`, כותבות רק ל-`PREVIEW_DATA_KEY`/`PREVIEW_CONFIG_KEY`), `getCurrentTxFilterName()` (עזר קריאה-בלבד), ו-`renderAllPreviewScreens()` (קוראת ברצף ל-5 פונקציות הרינדור הקיימות, ללא שינוי בלוגיקתן).
+- **בטיחות**: אף אחת מ-4 הפונקציות אינה נקראת אוטומטית בשום מקום בקובץ — לא בטעינת דף, לא מ-handler קיים. Preview v2 נשאר בפועל Read Only מבחינת המשתמש. גישה ל-`localStorage.setItem` כולה (4 קריאות בקובץ) מאומתת כמכוונת אך ורק ל-`PREVIEW_DATA_KEY`/`PREVIEW_CONFIG_KEY`.
+- **בדיקות**: `node --check` תקין; 32 בדיקות VM/Node (בידוד מלא בטעינה, כתיבה ידנית תקינה, אפס כתיבה מ-`renderAllPreviewScreens()`, אי-רגרסיה ברינדור) — 32/32 עברו. בדיקת Edge/CDP אמיתית עם נתוני בדיקה עשירים ב-`PREVIEW_*` וערכי-סמן ב-`REAL_DATA_KEY`/`REAL_CONFIG_KEY` — אפס שגיאות Console, אפס `exceptionThrown`, ערכי-הסמן האמיתיים נשארו ללא שינוי לחלוטין.
+- **`index.html`** — לא נגע בו כלל.
+- **המשך**: שלב ז׳.2 — ארכוב ושחזור. טרם התחיל, טרם אושר.
+
+## 30/07/2026 — שלב ז׳.2 (Cockpit / Preview v2) — תפריט פעולות שורה: ארכוב ושחזור
+לפי אישור מפורש (בוצע ברצף תתי-שלבים ז׳.2.1–ז׳.2.6 ללא עצירה, כפי שאושר): נוסף בתוך [index-preview-v2.html](index-preview-v2.html) בלבד תפריט פעולות (⋮) לשורת תנועה — **במסך התנועות בלבד**; מסך הבית ("פעילות אחרונה") ממשיך להשתמש ב-`renderTxList()` הקיים ללא שינוי.
+- **מה נוסף**: `mapItemToHomeTxRow()` הורחבה בשדות `id`/`isArchived` בלבד (5 שדות ישנים ללא שינוי); CSS ל-`.tx-menu-toggle`/`.tx-menu-dropdown`/`.tx-menu-item`; `renderTxListWithActions()` (מקבילה ל-`renderTxList()`, לא נגעה בו); `toggleRowMenu()`/`closeAllRowMenus()`/listener גלובלי לפתיחה-סגירה; `handleRowMenuAction()` שמחבר לתפריט את `archivePreviewItem()`/`unarchivePreviewItem()` (משלב ז׳.2.2).
+- **בטיחות**: כל כתיבה מוגבלת ל-`PREVIEW_DATA_KEY` בלבד; `family_finance_data`/`family_finance_cat_config` לא נגועים בשום שלב.
+- **בדיקות**: `node --check` תקין לאורך כל תתי-השלבים; בדיקת End-to-End מלאה בדפדפן אמיתי (Edge/CDP, קליקים אמיתיים) — פתיחה/סגירה, מניעת ריבוי תפריטים, ארכוב+שחזור בקליק אמיתי עם וידוא מעבר בין מסנני פעיל/ארכיון, מסך הבית ללא שינוי — הכל עבר, אפס שגיאות Console, אפס Exceptions.
+- **`index.html`** — לא נגע בו כלל.
+- **המשך**: יכולות כתיבה נוספות (הוספה/עריכה/מחיקה). טרם תוכננו/אושרו.
+
+## 30/07/2026 — שלב ז׳.3 (Cockpit / Preview v2) — מחיקה סופית מתוך תפריט ⋮
+לפי אישור מפורש: נוסף בתוך [index-preview-v2.html](index-preview-v2.html) בלבד פריט שני לתפריט ⋮ הקיים (משלב ז׳.2) — "מחק לצמיתות" — **במסך התנועות בלבד**; מסך הבית ("פעילות אחרונה") ממשיך להשתמש ב-`renderTxList()` הקיים ללא כל תפריט פעולות.
+- **החלטת מוצר**: `confirm()` פשוט של הדפדפן — ללא חלונית אישור מותאמת אישית.
+- **מה נוסף**: `deletePreviewItem(id)` — מוצאת פריט לפי id ומסירה אותו לחלוטין מ-`items` (`splice`, לא רק דגל `isArchived`), שומרת דרך `savePreviewItems()` הקיימת (`PREVIEW_DATA_KEY` בלבד) ומרנדרת מחדש דרך `renderAllPreviewScreens()` הקיימת; id חסר הוא no-op מלא. `handleDeleteMenuAction(actionBtn)` — מחוברת לכפתור החדש, קוראת id מ-`data-item-id`, מציגה `confirm()`, וקוראת ל-`deletePreviewItem()` רק אם אושר; ביטול הוא no-op מלא (התפריט נשאר פתוח בדיוק כפי שהיה). כפתור חדש עם class `tx-menu-item-danger` (`--color-danger` הקיים) להבחנה ויזואלית מפעולת ארכוב/שחזור.
+- **בטיחות**: אין נגיעה ב-`REAL_DATA_KEY`/`REAL_CONFIG_KEY`, ב-`categoryConfig`, או ב-`index.html`/`app.js`/`styles.css`; לא נוספה עריכה או הוספה.
+- **בדיקות**: `node --check` ו-`git diff --check` תקינים; **24 בדיקות VM/Node** (מחיקה תקינה כולל פריט מאורכב, id חסר no-op מלא, `categoryConfig` לא נגוע, cancel/accept של `confirm()`, מקרה קצה `items=[]`, אימות markup תנועות מול היעדרו המוחלט במסך הבית) — 24/24 עברו. **בדיקת Edge/CDP אמיתית** (קליקים אמיתיים כולל טיפול אמיתי בדיאלוג `confirm()` הילידי דרך `Page.javascriptDialogOpening`/`Page.handleJavaScriptDialog`) — **20/20 עברו**: ביטול משאיר הכול ללא שינוי, אישור מוחק בדיוק את הפריט המבוקש מה-DOM ומ-`PREVIEW_DATA_KEY`, ערכי-סמן ב-`family_finance_data`/`family_finance_cat_config` נשארו זהים ב-100%, מסך הבית נטול כל markup של תפריט, אפס `exceptionThrown`/`console.error`/`console.warning`.
+- **`index.html`** — לא נגע בו כלל.
+- **שארית סביבת בדיקה**: פרופיל Edge הזמני נוצר בתיקיית scratchpad ייעודית (לא בשורש הפרויקט) והוסר בסיום — לא נוסף אף `edge_profile*.tmp/` חדש.
+- **המשך**: יכולות כתיבה נוספות (עריכה inline, הוספת הכנסה/הוצאה/הלוואה). טרם תוכננו/אושרו.
+
+## 29/07/2026 — שלב ב׳ של תוכנית המימוש (Cockpit / Preview v2) — מבנה ו-CSS עם נתוני Mock
+לפי אישור מפורש לבצע רק שלב ב׳: נבנה בתוך [index-preview-v2.html](index-preview-v2.html) **בלבד** מבנה ה-UI המלא של ה-Cockpit + CSS מלא, לפי ה-Wireframe שאושר — **ללא כל חיבור ללוגיקה עסקית וללא חישובים**, מוזן אך ורק ע"י אובייקט `MOCK_DATA` קבוע בקוד. מנגנון הבטיחות של שלב א׳ (מפתחות Preview v2, seed חד-פעמי, כפתור איפוס) נשאר **ללא שינוי בקוד** — רק הוזז ויזואלית למסך ההגדרות.
+- **מעטפת אפליקציה**: כותרת עליונה, ניווט תחתון קבוע (4 טאבים), כפתור הוספה צף (FAB) עם חלונית "פעולות מהירות" (פתיחה/סגירה חזותית בלבד, ללא שמירה).
+- **4 מסכים**: בית (מד ראשי + Snapshot חודשי + "מה דורש תשומת לב" + פעילות אחרונה), תנועות (חיפוש ומסנן — חזותיים בלבד, ללא סינון בפועל — + רשימה כרונולוגית מאוחדת), תובנות (3 כרטיסי Mock), הגדרות (רשימת קטגוריות Mock + אזור המפתחים עם מנגנון הבטיחות המקורי).
+- **אימות**: `node --check` על בלוק ה-`<script>` המדויק מתוך הקובץ בפועל — ללא שגיאות תחביר; אימות אוטומטי שכל קריאות ה-`getElementById` (סטטיות ודינמיות) תואמות ל-id-ים קיימים בפועל ב-HTML. בדיקת דפדפן מלאה נדחתה במפורש לשלב ה׳.
+- **סבב ליטוש חזותי קצר** (אושר בנפרד, באותו שלב): הרמת ה-FAB, הבלטת הלשונית הפעילה בניווט (pill רקע), שיפור עיצוב כרטיסי התובנות (אייקון, רקע לפי טון, טיפוגרפיה), וליטושי spacing/טיפוגרפיה נקודתיים — כל השינויים ב-`index-preview-v2.html` בלבד, ללא שינוי ניווט/MOCK_DATA/לוגיקה.
+- **לא נגעו כלל**: `index.html`, `styles.css`, `app.js`, `index-preview.html` (v1), `Design/`. אין שום שינוי בהתנהגות המערכת הפעילה.
+- **commit**: `feat: complete cockpit preview v2 phase 2`, כולל רק `index-preview-v2.html` + עדכוני CURRENT_STATUS.md/CHANGELOG.md/TODO.md (לא `WORKFLOW.md`, לא `Design/`, לא `index-preview.html`). ממתין לאישור מפורש למעבר לשלב ג׳ (שכבת "מנוע הסיפור").
+
+## 30/07/2026 — שלב ג׳ של תוכנית המימוש (Cockpit / Preview v2) — שכבת "מנוע הסיפור" על Mock בלבד
+לפי אישור מפורש לבצע רק שלב ג׳ (אפשרות א׳ המצומצמת מתוך שתי החלופות שהוצגו): נבנה בתוך [index-preview-v2.html](index-preview-v2.html) **בלבד** מנגנון "מנוע הסיפור" — תוספתי-בלבד, קורא-בלבד.
+- **מבני נתונים חדשים**: `mockItems` (11 פריטים, מחקים את צורת `items[]` האמיתית, כולל פריט אחד מאורכב בכוונה), `mockCategoryConfig` (מחקה את `categoryConfig` האמיתי), `mockSnapshot` (ערכי הכנסות/הוצאות/יתרה קבועים) — נפרדים לגמרי מ-`MOCK_DATA` של שלב ב׳.
+- **7 פונקציות מלאות**: `getFixedCreditCardTotals`, `getFixedBankVsCreditSplit`, `getTotalFixedCommitments`, `getMonthSnapshot`, `getRecentActivity`, `getLoansRemainingSummary`, `buildNarrative`.
+- **תיקון בו-במקום (אושר בנפרד, באותו שלב)**: `getMonthSnapshot()` תוקנה מחישוב-סכימה-על-items לעטיפה טהורה סביב `mockSnapshot` בלבד — כדי שלא תוכל לסתור את כללי היתרה הפנויה של המערכת האמיתית. שאר 6 הפונקציות ו-4 ה-Stubs לא נגעו בתיקון.
+- **4 Stubs מפורשים**: `getBiggestUpcomingCharge`, `getProjectedBalanceAfterUpcoming`, `getForecastWarning`, `getDatedMonthOverMonthChange` — כולן מחזירות `null` עם הערה בקוד שהמימוש האמיתי (`getBillingRange`/`parseDatesAndGetLeft`/`computeForecast`, מועתקות כלשונן) שייך לשלב ד׳.
+- **אימות**: `node --check` + סקריפט VM שמריץ את בלוק ה-`<script>` המדויק מהקובץ בפועל מול `mockItems`/`mockCategoryConfig` האמיתיים. 38 בדיקות עברו (כולל הוכחה ש-`getMonthSnapshot([])`/`getMonthSnapshot(null)` מחזירות תוצאה זהה ל-Mock המלא — אין חישוב על items).
+- **לא נגעו כלל**: `index.html`, `styles.css`, `app.js`, `index-preview.html` (v1), `Design/`, `PROJECT_CONTEXT.md`, `WORKFLOW.md`. אין חיבור ל-UI, ל-localStorage, לנתונים אמיתיים, או ללוגיקה העסקית הקיימת.
+- **commit**: `feat: complete cockpit preview v2 phase 3`, כולל רק `index-preview-v2.html` + עדכוני CURRENT_STATUS.md/CHANGELOG.md/TODO.md. ממתין לאישור מפורש למעבר לשלב ד׳ (חיבור מבוקר ללוגיקה הקיימת) — טרם התחיל.
+
+## 30/07/2026 — שלב ז׳.4 (Cockpit / Preview v2) — עריכה Inline מתפריט ⋮ (טרם ב-commit)
+לפי אישור מפורש להחלטות המוצר (1א: עריכה זמינה רק לפריטים פעילים; 2א: השורה עצמה מוחלפת בטופס Inline; 3א: ולידציה משתמשת ב-`alert()` כמו במערכת הקיימת): נוסף בתוך [index-preview-v2.html](index-preview-v2.html) **בלבד** פריט שלישי לתפריט ⋮ הקיים (משלבי ז׳.2/ז׳.3) — "✏️ עריכה" — **במסך התנועות בלבד**; מסך הבית ("פעילות אחרונה") ממשיך להשתמש ב-`renderTxList()` הקיים ללא כל תפריט פעולות או עריכה.
+- **מה נוסף**: משתנה מצב חדש `previewEditingId`; `renderTxListWithActions()` הורחבה — כשה-id של שורה שווה ל-`previewEditingId` השורה מוחלפת כליל בטופס עריכה (`buildPreviewEditFormHtml()`), ופריט "✏️ עריכה" מוצג בתפריט רק כש-`!isArchived`. `buildPreviewEditFormHtml(item)` — העתקה מילולית של 5 ענפי הטופס מ-`index.html` (`dated`/`fixed`+שדה כרטיס מותנה/`variable`/`loan`/ברירת-מחדל ל-`income`). `togglePreviewCardLast4Field()` — מקבילה מדויקת ל-`toggleCardLast4Field()`. `savePreviewInlineEdit(id)` — העתקה מילולית של `saveInlineEdit()` (אותה ולידציה, אותם `alert()`, בכשל: אין שמירה ואין יציאה ממצב עריכה) שכותבת רק דרך `savePreviewItems()`/`renderAllPreviewScreens()` הקיימות. `cancelPreviewEdit()` ו-`handleEditMenuAction(actionBtn)` חדשות — ללא כתיבה, שומרות על מסנן התנועות הנוכחי (`getCurrentTxFilterName()` הקיימת).
+- **בטיחות**: אין נגיעה ב-`REAL_DATA_KEY`/`REAL_CONFIG_KEY`, ב-`categoryConfig`, או ב-`index.html`/`app.js`/`styles.css`; לא נוספה יכולת הוספה; כל כתיבה דרך `savePreviewItems()` בלבד.
+- **בדיקות**: `node --check` ו-`git diff --check` תקינים. **26 בדיקות VM/Node** — לכל אחד מ-5 סוגי הפריטים: בניית טופס נכונה, שמירה תקינה, כשל ולידציה (alert בלבד, אין שמירה, עריכה נשארת פתוחה), ביטול (no-op מלא), id חסר (no-op מלא), היעדר "עריכה" לפריט מאורכב, ובידוד מלא של `PREVIEW_*`/`categoryConfig` — 26/26 עברו. **בדיקת Edge/CDP אמיתית** (קליקים אמיתיים על ⋮ ואז "✏️ עריכה", שינוי שדה, קליק שמירה/ביטול אמיתי, `alert()` אמיתי דרך `Page.javascriptDialogOpening`) — **18/18 עברו**: פתיחת עריכה בקליק אמיתי, טופס מוצג עם ערכים קיימים, שמירה מעדכנת DOM+`PREVIEW_DATA_KEY`, ביטול משאיר הכול ללא שינוי, ולידציה שגויה מציגה alert אמיתי ומשאירה את הטופס פתוח, פריט מאורכב נטול "עריכה" בתפריט, מסך הבית נטול כל markup של תפריט/עריכה, `family_finance_data`/`family_finance_cat_config` (עם ערכי-סמן) נשארו זהים ב-100%, אפס שגיאות Console/Exceptions.
+- **`index.html`** — לא נגע בו כלל.
+- **שארית סביבת בדיקה**: פרופיל Edge הזמני נוצר בתיקיית scratchpad ייעודית (לא בשורש הפרויקט) והוסר בסיום — לא נוסף אף `edge_profile*.tmp/` חדש.
+- **המשך**: יכולות כתיבה נוספות (הוספת הכנסה/הוצאה/הלוואה). טרם תוכננו/אושרו.
+
+## 31/07/2026 — שלב ח׳ (Cockpit / Preview v2) — סבב בדיקות End-to-End מסכם
+לפי אישור מפורש: בוצע סבב בדיקות End-to-End מסכם ל-[index-preview-v2.html](index-preview-v2.html) **בלבד**, לפי תוכנית בדיקות מפורטת שאושרה מראש — שלב בדיקות בלבד, ללא שום שינוי קוד.
+- **תוצאה: PASS מלא — 200/200 בדיקות, אפס כשלים.** VM/Node: 132/132. Edge/CDP (Edge headless אמיתי, קליקים אמיתיים, `confirm()`/`alert()` אמיתיים דרך CDP): 68/68, על 3 תרחישי נתונים (עשיר/ריק/קצוות).
+- כל 4 המסכים וכל 7 יכולות הכתיבה (הוספה ל-5 סוגי הפריטים, עריכה Inline, ארכוב, שחזור, מחיקה) נבדקו יחד ברצף אינטגרציה אחד — בשונה משלבי ז׳ הקודמים שבדקו כל יכולת בנפרד.
+- **Persistence** עבר (רענון דף אמיתי באמצע התרחיש שמר על כל השינויים). **Console** נקי לחלוטין (אפס exceptions/errors/warnings). **בידוד `PREVIEW_*`** עבר במלואו — `family_finance_data`/`family_finance_cat_config` נשארו זהים ב-100% לערכי-סמן, ואומת גם ש-Storage.setItem/removeItem לא נקראו עליהם בפועל.
+- **לא נדרש תיקון קוד.** `index.html`/`app.js`/`styles.css` לא היו בהיקף ולא נבדקו.
+- לא בוצעו Commit/Push/Merge/Deploy כחלק מהסבב עצמו.
+- **המשך**: השלב הבא ל-Preview v2 טרם הוגדר.
+
+## 31/07/2026 — שלב 3ב.1 (Cockpit / Preview v2) — לוגיקת ניהול קטגוריות (ללא UI), נשמר ב-commit `d67b1db`
+לפי אישור מפורש לבצע רק שלב 3ב.1 מתוך רצף 3ב (קטגוריות + תחזית): נוספה בתוך [index-preview-v2.html](index-preview-v2.html) **בלבד** שכבת לוגיקה לניהול קטגוריות — **ללא UI, ללא HTML/CSS, ללא event listeners**.
+- **מה נוסף**: `addPreviewCategory`/`renamePreviewCategory`/`deletePreviewCategory` וכלי עזר תומכים (`isBuiltInPreviewCategoryKey`, `categoryHasPreviewItems`, `getAllowedPreviewCustomCategoryBaseTypes`, `PREVIEW_CUSTOM_CATEGORY_TYPE_OPTIONS`, `PREVIEW_CATEGORY_DELETE_BLOCKED_REASON`), עם `translateBaseType`/`pickEmojiForCategory` מועתקות כלשונן מ-`index.html`. `deletePreviewCategory()` חוסמת מחיקת קטגוריות מובנות ומחיקת קטגוריה עם תנועות (כולל בארכיון), ולעולם אינה מוחקת תנועות אוטומטית — סטייה מכוונת ומאושרת מהתנהגות `deleteCustomCategory()` הקיימת ב-`index.html`.
+- **תיקון בעקבות סקירת קוד לפני ה-commit (אושר במפורש)**: ולידציית `baseType` מול `PREVIEW_CUSTOM_CATEGORY_TYPE_OPTIONS` (דוחה ערך שרירותי ללא כל מוטציה/כתיבה); מניעת התנגשות מפתחות `custom_<timestamp>` באמצעות suffix מספרי, ללא דריסת קטגוריה קיימת.
+- **בטיחות**: אין שימוש ב-`REAL_DATA_KEY`/`REAL_CONFIG_KEY`, אין תלות ב-DOM/UI; `index.html`/`app.js`/`styles.css` לא נגעו בהם.
+- **בדיקות**: `node --check` ו-`git diff --check` תקינים. **108/108 בדיקות VM/Node עברו.**
+- **המשך**: שלב 3ב.2 — UI ניהול קטגוריות. טרם התחיל.
+
+## 31/07/2026 — שלב 3ב.3 (Cockpit / Preview v2) — לוגיקת התחזית, ללא שינוי קוד
+לפי אישור מפורש לבצע רק שלב 3ב.3 מתוך רצף 3ב (קטגוריות + תחזית): בבדיקת פתיחה לפני מימוש נמצא שלוגיקת התחזית הנדרשת **כבר קיימת ומחוברת בפועל** ב-[index-preview-v2.html](index-preview-v2.html), משלב מוקדם יותר בפרויקט שקדם לרצף 3ב — `computeForecast`/`getBillingRange`/`isBillingActiveInMonth` (עותקים מדויקים מ-`index.html`) ופונקציות הנרטיב הבנויות עליהן בלבד (`getBiggestUpcomingCharge`, `getProjectedBalanceAfterUpcoming`, `getForecastWarning`, `getDatedMonthOverMonthChange`), כבר קוראות אך ורק מ-`PREVIEW_DATA_KEY`/`PREVIEW_CONFIG_KEY` וכבר מחוברות למסך התובנות דרך `buildNarrative()`/`renderInsightsScreenFromRealData()`.
+- **החלטה** (אושרה במפורש): לסמן את שלב 3ב.3 כמסופק, **ללא שינוי בקוד המוצר**. `git diff --stat` ריק.
+- **אימות**: השוואה אוטומטית של גוף הפונקציות `computeForecast`/`getBillingRange`/`isBillingActiveInMonth` מול `index.html` — זהות (למעט התאמת `itemsOverride` המתועדת בקוד עצמו).
+- **בדיקות**: נכתבה סוויטת בדיקות ייעודית וחדשה (VM/Node, **זמנית בתיקיית scratchpad — אינה חלק מה-repository**), שכיסתה לראשונה ישירות: הכנסה, הוצאה קבועה (חודשי/שנתי/אשראי), "תשלומים שונים" מוחרג, הלוואה לפי טווח חיוב, חיוב חד-פעמי לפי חודש מדויק, החרגת ארכיון, מערך ריק, אי-השפעת קטגוריה מותאמת אישית על הסכום, בידוד `itemsOverride`, ופונקציות הנרטיב הנגזרות. **38/38 עברו.** סוויטות 3ב.1 (111/111) ו-3ב.2 (112/112) הורצו מחדש ועברו ללא רגרסיה. `node --check` ו-`git diff --check` תקינים.
+- **המשך**: שלב 3ב.4 — שילוב התחזית במסך התובנות (Insights). טרם התחיל.
+
+## 31/07/2026 — שלב 3ב.4 (Cockpit / Preview v2) — שילוב UI התחזית במסך Insights, נשמר ב-commit `eeed2d0`
+לפי אישור מפורש לבצע רק שלב 3ב.4 מתוך רצף 3ב: נוסף בתוך [index-preview-v2.html](index-preview-v2.html) **בלבד** UI גרף+טבלת תחזית (6 חודשים) למסך התובנות, מבוסס אך ורק על `computeForecast(items)` הקיים והמאומת (שלב 3ב.3) — **ללא שינוי בלוגיקה עצמה**.
+- **החלטות מוצר שאושרו**: קופסת התחזית תמיד גלויה במסך Insights (ללא כפתור קיפול, בשונה מהאקורדיון של `index.html`); שם ה-state `previewForecastView` (תואם namespace הקובץ).
+- **מה נוסף**: `niceRoundUp`/`barPath`/`attachForecastHandlers`/`renderForecast`/`toggleForecastView` — הועתקו כלשונן מ-`index.html` (גיאומטריה/סקיילינג/טולטיפ זהים), עם namespace `preview-forecast-*` נפרד ל-DOM ids/classes והתאמת CSS לשפת העיצוב הבהירה של קובץ זה. `renderForecast()` קורא ל-`computeForecast(items)` במפורש (בניגוד לקריאה הגלובלית ב-`index.html`).
+- **תיקון לפני commit**: טיוטה ראשונה השתמשה בשמות המחלקות `income-text`/`expense-text` של `index.html` (לא קיימות בקובץ זה) — הוחלפו ל-`preview-forecast-positive`/`preview-forecast-negative` חדשות, עם CSS תואם.
+- **בטיחות**: קריאה בלבד מ-`items`/`categoryConfig`; אין כתיבה חדשה לשום מפתח; `index.html`/`app.js`/`styles.css` לא נגעו בהם.
+- **בדיקות**: `node --check` תקין. **34 בדיקות VM/Node** (רינדור אוטומטי, מעבר גרף⇄טבלה, עקביות סקאלה, מערך ריק, אי-תלות בקטגוריה מותאמת אישית) — 34/34 עברו. `git diff --stat`: 183 שורות הוספה בלבד.
+- **המשך**: שלב 3ב.5 — Regression מלא. טרם התחיל.
+
+## 31/07/2026 — שלב 3ב.5 (Cockpit / Preview v2) — Regression מלא וסגירת שלב 3ב
+לפי אישור מפורש לבצע רק שלב 3ב.5 (סגירת רצף 3ב): בוצע סבב Regression End-to-End מקיף ל-[index-preview-v2.html](index-preview-v2.html) **בלבד**.
+- **VM/Node**: כל 4 סוויטות 3ב.1–3ב.4 הורצו מחדש — **295/295 עברו**, אפס רגרסיה.
+- **Edge/CDP אמיתי** (WebSocket ל-Edge headless, CDP גולמי דרך `fetch`/`WebSocket` המובנים ב-Node — ללא Puppeteer), תרחיש נתונים עשיר יחיד (7 פריטים מכל הסוגים, פריט בארכיון, 2 קטגוריות מותאמות אישית): ניהול קטגוריות (שינוי שם, מחיקה חסומה עם `alert()` אמיתי דרך `Page.javascriptDialogOpening`, הוספת קטגוריה, מחיקה מוצלחת של קטגוריה ריקה), Forecast בגרף+טבלה (מול חישוב תחזית עצמאי שנכתב מחדש, לא הועתק מהקוד) כולל עדכון אוטומטי אחרי עריכת נתון אמיתי (⋮ → עריכה → שמירה), מסנן פעיל/ארכיון במסך התנועות, ומסך הבית. hook על `Storage.prototype.setItem/removeItem` אישר אפס כתיבות ל-`family_finance_data`/`family_finance_cat_config` לאורך כל הריצה. אפס `Runtime.exceptionThrown`/`console.error`/`console.warning`.
+- **באג אמיתי נמצא ותוקן תוך כדי הסבב**: טולטיפ הגרף ותא הטבלה בתחזית הציגו יתרה שלילית כ-`₪-9,200` במקום `-₪9,200` — אותה תבנית שגויה (`'₪' + Math.round(net).toLocaleString()`) שכבר תוקנה במקומות אחרים בקובץ זה (שלב ו׳.1) דרך `formatHomeCurrency()`, אך לא הוחלה על שני מקומות התחזית שנוספו בשלב 3ב.4. **תוקן** ע"י החלפת בניית המחרוזת ב-`formatHomeCurrency()` הקיים בשני המקומות — שינוי תצוגה בלבד. לאחר התיקון: כל 4 סוויטות VM/Node הורצו מחדש (295/295) וסבב ה-Edge/CDP המלא הורץ מחדש (52/52) — **סה"כ 347/347 בדיקות עברו**. `index.html` (שם אותה תבנית מקורית עדיין קיימת, לא תוקנה) **לא נגוע כלל**.
+- **`git diff --stat`**: `index-preview-v2.html` — 2 שורות שונו בלבד (התיקון). `index.html`/`app.js`/`styles.css` — ריק.
+- **תיעוד**: CURRENT_STATUS.md/TODO.md עודכנו לסגירת רצף 3ב כולו (3ב.1–3ב.5).
+- **`edge_profile*.tmp/`**: לא נוצרו חדשים בשורש הפרויקט — הבדיקה רצה מ-scratchpad חיצוני.
+- **המשך**: **רצף 3ב כולו הושלם.** השלב הבא (שילוב Preview v2 במערכת הראשית) טרם אושר.
+
+## 31/07/2026 — שלב 4.1 — מיפוי ותכנון שילוב Preview v2 במערכת הראשית, ללא שינוי קוד
+לפי אישור מפורש: בוצע מיפוי השוואתי מלא בין [index.html](index.html)/[app.js](app.js)/[styles.css](styles.css) לבין [index-preview-v2.html](index-preview-v2.html) לפי 10 אזורים — שלב תכנון/מיפוי בלבד, ללא שום שינוי קוד.
+- **ממצא מרכזי, מאומת ב-diff ישיר**: `app.js` הוא תמונת מצב **ישנה ושגויה** מלפני שני שינויים עסקיים ב-`index.html` — חסר `toggleCardLast4Field()`/`cardLast4` לגמרי; כולל `variable` בחישוב התזרים (הפוך מ-`index.html` הנוכחי) ואינו מחריג `fixed` בכרטיס אשראי. **אסור לשמש כמקור העתקה בשום שלב עתידי.** `styles.css` נמצא כמעט תואם לחלוטין (פרט לבאג `.tabs` הידוע).
+- לוגיקת Forecast זהה ביט-לביט בין הקבצים — מוכנה לשימוש משותף. כלל מחיקת קטגוריה שונה במכוון בין הקבצים — דורש הכרעת מוצר לפני כל cutover. אין חפיפת UI/CSS כלל בין הקבצים.
+- **3 אסטרטגיות שילוב הוצגו ודורגו** (בטיחות/מורכבות/סיכון רגרסיה/קלות Rollback/זמן מימוש): A — Cutover מלא; B — Dual-Mode/Feature Flag; C — Strangler הדרגתי לפי מסך. **הומלצה אסטרטגיה A**, מפוצלת ל-7 תתי-שלבים קטנים (4.2–4.8) עם Quality Gate + commit נפרד לכל אחד.
+- **סטטוס**: המשתמש אישר את תוכנית ההכנה של תתי-שלבים **4.2–4.5 בלבד**. Cutover עצמו (4.6–4.8) ובחירת אסטרטגיה סופית (A/B/C) עדיין לא אושרו.
+- **`index.html`/`app.js`/`styles.css`/`index-preview-v2.html`** — לא נגעו בהם כלל.
+
+## 31/07/2026 — שלב 4.2 — הגנות תאימות לנתונים ישנים, ללא צורך בשינוי קוד
+לפי אישור מפורש לבצע רק שלב 4.2: נבדק אם [index-preview-v2.html](index-preview-v2.html) מסוגל לטעון בבטחה נתוני `items`/`categoryConfig` אמיתיים וישנים/חלקיים — שלב אימות/בדיקות בלבד.
+- **מיפוי שדות חסרים אפשריים**: `cardLast4` (מלפני הפיצ'ר), `where` כטקסט חופשי ישן, שדות אופציונליים חסרים (`notes`/`originalAmount`/`interest`/`day`/`total`/`start`), `categoryConfig` חלקי (`baseType` חסר, פחות מ-4 מובנות), `displayCategory` תלוי (קטגוריה שנמחקה), JSON פגום בשני מפתחות ה-Preview.
+- **ממצא מרכזי, לאחר קריאת קוד שיטתית של כל אתר גישה לשדות אלה**: **דפוסי ההגנה הנדרשים כבר קיימים בפועל בקוד** — נבנו הדרגתית בשלבים קודמים (ד׳.2, E.1/E.2, G.2–G.5, 3ব.1). קריאה בטוחה עם `||`/`&&` short-circuit בכל אתר רלוונטי; `try/catch` עם fallback בטוח (מערך/אובייקט ברירת מחדל) ב-`loadPreviewItems()`/`loadPreviewCategoryConfig()` על JSON פגום. **אין migration אוטומטי ואין כתיבה חזרה ל-`localStorage` בזמן טעינה/רינדור** — אומת ישירות בבדיקות חדשות, לא רק בקריאת קוד. נתונים מקוריים (כולל ערכים ישנים/לא-מוכרים) נשמרים ללא שינוי — לא מומצאים, לא נדרסים.
+- **בדיקות**: נכתבו שני קבצי בדיקה חדשים ב-scratchpad בלבד (לא בפרויקט) — `test_stage_4_2_legacy_data.js` (VM/Node), `test_stage_4_2_cdp.js` (Edge/CDP). **389/389 בדיקות עברו בסה"כ**: 295 בדיקות רגרסיה קיימות (3ব.1–3ב.4, ללא שינוי) + **81 בדיקות VM/Node חדשות** (8 תרחישים: `fixed` בלי `cardLast4`; `where` חופשי ישן; שדות אופציונליים חסרים; `categoryConfig` חלקי + `displayCategory` תלוי; קטגוריה מותאמת קיימת עם תנועות; מערך ריק; JSON פגום ב-`PREVIEW_DATA_KEY`; JSON פגום/סוג שגוי ב-`PREVIEW_CONFIG_KEY`; ותרחיש-על משולב) + **13 בדיקות Edge/CDP חדשות** (תרחיש-על אמיתי בדפדפן: כל 4 המסכים נטענים ומוצגים ללא קריסה מול נתונים חלקיים, מעבר גרף⇄טבלה תקין, אפס `Runtime.exceptionThrown`/`console.error`/`warning`).
+- **בטיחות**: `family_finance_data`/`family_finance_cat_config` (`REAL_DATA_KEY`/`REAL_CONFIG_KEY`) נשארו זהים ב-100% לערכי-הסמן בכל התרחישים — אפס `setItem`/`removeItem` כוונו אליהם.
+- **`git diff --stat`**: ריק — `index-preview-v2.html`, `index.html`, `app.js`, `styles.css` **לא שונו כלל**.
+- **המשך**: שלב 4.3 — גיבוי נתוני משתמש אמיתי מתועד. טרם התחיל, ממתין לאישור.
+
+## 31/07/2026 — שלב 4.3 — גיבוי נתוני משתמש אמיתי, "לא נדרש במצב הנוכחי"
+לפי אישור מפורש: לפני ביצוע גיבוי בפועל, הוצגו למשתמש הוראות מדויקות (סקריפט קריאה-בלבד ב-DevTools Console + `copy()` ללוח, ללא כל `setItem`/`removeItem`) לייצוא `family_finance_data`/`family_finance_cat_config` מהדפדפן האמיתי. המשתמש בדק ודיווח את הממצאים הבאים:
+- **אין כרגע נתונים אמיתיים** תחת `family_finance_data`/`family_finance_cat_config` במחשב זה — נמצאו רק מפתחות ה-Preview (`family_finance_preview_v2_data`/`family_finance_preview_v2_cat_config`).
+- בטלפון של המשתמש קיימים נתוני Preview — **אושר במפורש שאינם חשובים ואין צורך לגבותם**.
+- **מסקנה**: אין כרגע נתוני משתמש אמיתיים שדורשים הגנה לפני מעבר — **לא נוצר קובץ גיבוי**, אין מה לגבות.
+- **בטיחות**: לא בוצעה שום כתיבה/מחיקה/שינוי ב-`localStorage` בשלב זה (כולל מפתחות ה-Preview) — בדיקת המצב הייתה קריאה בלבד. לא בוצע שום שינוי קוד. `index.html`/`index-preview-v2.html`/`app.js`/`styles.css` לא שונו.
+- **חשוב לעתיד**: הממצא תקף רק לרגע הבדיקה — אם יתווספו נתונים אמיתיים במחשב זה (או בכל מכשיר אחר שממנו יתבצע cutover) לפני שלבי ה-cutover בפועל (4.6–4.8), **יש לחזור ולבצע גיבוי מחדש**.
+- **`git diff --stat`**: עדכון תיעוד בלבד (CHANGELOG.md/CURRENT_STATUS.md/TODO.md) — שום קובץ קוד לא שונה.
+- **המשך**: שלב 4.4 — יצירת קובץ מועמד עם מפתחות אמיתיים. טרם התחיל, ממתין לאישור.
+## 31/07/2026 — שלב 4.4 (Cockpit / Preview v2) — קובץ מועמד עם מפתחות אמיתיים (נשמר ב-commit `72a315a`)
+לפי אישור מפורש: נוצר `index-v3-candidate.html` — עותק מבוקר של `index-preview-v2.html`, מכוון למפתחות ה-localStorage האמיתיים (`family_finance_data`/`family_finance_cat_config`) במקום `PREVIEW_*`/`REAL_*`. מנגנון ה-seed/איפוס (`seedPreviewV2IfNeeded`/`resetPreviewV2Data`) הוסר לחלוטין — לא רק נוטרל — יחד עם קופסת "אזור מפתחים" ב-UI וה-CSS הנלווה. אפס שינוי בלוגיקה עסקית או בסכימת `items`/`categoryConfig`.
+- **בדיקות**: `node --check` תקין. **359/359 עברו** — 322 VM/Node (מותאמות מ-3ব.1–3ব.4 + נתונים ישנים) + 37 Edge/CDP חדשות, כולן אימתו: אפס `PREVIEW_*` נותר בקובץ, כתיבה רק ל-2 המפתחות האמיתיים, CRUD מלא/ניהול קטגוריות/Forecast תקינים.
+- **`index.html`/`index-preview-v2.html`/`app.js`/`styles.css`** — לא נגעו כלל.
+- **המשך**: שלב 4.5 — אימות מלא לפני Decision Gate.
+
+## 31/07/2026 — שלב 4.5 (Cockpit / Preview v2) — אימות מלא לפני Decision Gate (ללא שינוי קוד)
+לפי אישור מפורש: סבב אימות מקיף על `index-v3-candidate.html` לפני קבלת החלטות מוצר. **432 בדיקות עברו** — 367 VM/Node (כולל 45 בדיקות round-trip חדשות: טעינה→עריכה/הוספה/ארכוב/שחזור/מחיקה→"רענון" עם אותו store→אימות שלמות, כולל הוכחה ששדות legacy/לא-מוכרים שורדים ללא אובדן) + 65 Edge/CDP (כולל בדיקת עדכון-אוטומטי של Forecast לאחר שינוי נתון, ורענון דפדפן אמיתי mid-test).
+- **לא נמצא באג באפליקציה.** נמצא ותוקן באג בהרנס-הבדיקות עצמו בלבד (scratchpad, לא בריפו) — סקריפט ה-CDP איפס בטעות `localStorage` גם ברענון השני.
+- **`index.html`/`index-preview-v2.html`/`app.js`/`styles.css`** — לא נגעו כלל.
+- **המשך**: שלב 4.6 — Decision Gate מוצרי.
+
+## 31/07/2026 — שלב 4.6 (Cockpit / Preview v2) — Decision Gate מוצרי (ללא שינוי קוד)
+לפי אישור מפורש: שתי החלטות מוצר אושרו לפני Cutover: **(1)** מחיקת קטגוריה מותאמת אישית עם תנועות קיימות (כולל בארכיון) — **נחסמת** לחלוטין, בלי מחיקה אוטומטית של תנועות, עם הודעה ברורה למשתמש (מאשר את התנהגות Preview v2 הקיימת). **(2)** קבצים ישנים לאחר Cutover (`index-preview-v2.html`/`app.js`/`styles.css`) — **לא יימחקו** במסגרת ה-Cutover; ניקוי יהיה שלב נפרד עתידי, רק לאחר אימות חי ואישור מפורש.
+- אומת בקוד ש-`index-v3-candidate.html` **כבר תואם** להחלטה (1) ללא צורך בשום שינוי קוד (`deletePreviewCategory`/`categoryHasPreviewItems`).
+- הוצגה תוכנית Cutover מדויקת לשלב 4.7 (קבצים, rename/copy, שימור `index.html` הישן ב-Git, בדיקות חובה, Rollback, הודעת Commit מוצעת).
+- **המשך**: שלב 4.7 — Cutover בפועל, לפי התאמה אחת שביקש המשתמש: ללא יצירת קובץ "legacy" נוסף — שימור ה-`index.html` הישן אך ורק דרך Git (Tag).
+
+## 31/07/2026 — שלב 4.7 (Cockpit / Preview v2) — Cutover בפועל (נשמר ב-commit `c63a43e`)
+לפי אישור מפורש: **Tag מקומי `pre-preview-v2-cutover`** נוצר לפני כל שינוי, מצביע על `72a315a` (הקומיט האחרון לפני ה-Cutover) — זהו מנגנון ה-Rollback שאושר, במקום קובץ HTML ישן נוסף בריפו. בוצע `git rm index.html` + `git mv index-v3-candidate.html index.html` — `index.html` הפך לתוכן `index-v3-candidate.html` (מפתחות אמיתיים), ו-`index-v3-candidate.html` אינו קיים יותר כקובץ נפרד.
+- **בדיקות לאחר המעבר**: **367/367 VM/Node + 65/65 Edge/CDP עברו** מול ה-`index.html` החדש (סה"כ 432/432) — 4 מסכים, CRUD מלא (income/fixed/variable/loan/dated), ניהול קטגוריות, Forecast (גרף+טבלה+עדכון אוטומטי), רענון דפדפן אמיתי עם שימור נתונים, אפס `PREVIEW_*`, כתיבה רק ל-2 המפתחות האמיתיים, אפס Exceptions/console errors.
+- **תוקן תוך כדי**: בדיקה אחת (`12c` בסוויטת 3ব.3 המותאמת) השוותה בטעות את `index.html` מול עצמו לאחר ה-Cutover (במקום מול הגרסה הישנה) — תוקנה לקרוא את ההפניה הישנה דרך `git show pre-preview-v2-cutover:index.html`; לא באג באפליקציה, רק בהרנס-הבדיקות.
+- **`index-preview-v2.html`/`app.js`/`styles.css`** — לא נגעו כלל.
+- **המשך**: שלב 4.8 — אימות סופי, תיעוד, וסגירת Version 1.0.
+
+## 31/07/2026 — שלב 4.8 (Cockpit / Preview v2) — אימות סופי, תיעוד, וסגירת Version 1.0
+לפי אישור מפורש: סבב אימות סופי לאחר ה-Cutover. **מצב Git אומת**: branch `feature/cockpit-preview-v2`, HEAD `c63a43e`, Tag `pre-preview-v2-cutover`→`72a315a`, עץ עבודה נקי פרט ל-`edge_profile*.tmp/`. **432/432 בדיקות עברו שוב** (367 VM/Node + 65 Edge/CDP), בפרופיל Edge חדש ונקי לחלוטין (המנע רגרסיה זמנית שנבעה מפרופיל בדיקה קודם שלא נמחק במלואו — אותרה ותוקנה כליקוי בהרנס-הבדיקות, לא באפליקציה).
+- אומת ישירות בקוד (grep): אפס הופעה של `PREVIEW_DATA_KEY`/`PREVIEW_CONFIG_KEY`/`REAL_DATA_KEY`/`REAL_CONFIG_KEY`/`family_finance_preview_v2_*`/מנגנון seed/reset ב-`index.html`.
+- אומת מבנה סופי: `index-preview-v2.html`/`app.js`/`styles.css` ללא שינוי; אין `index-v2-legacy.html`; אין `index-v3-candidate.html`.
+- **תיעוד עודכן**: CURRENT_STATUS.md, CHANGELOG.md (רשומה זו), TODO.md.
+- **לא בוצע שום שינוי בלוגיקה עסקית או בעיצוב** — לא נמצא צורך.
+- **מסקנה: Version 1.0 נסגרה.** `index.html` הראשי הוא כעת ארכיטקטורת Preview v2 המלאה עם מפתחות ה-localStorage האמיתיים, ללא migration וללא שינוי סכימה.

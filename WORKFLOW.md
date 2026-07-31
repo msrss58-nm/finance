@@ -4,7 +4,7 @@
 
 ## בתחילת כל שיחה חדשה על הפרויקט
 1. לקרוא את [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md), [CURRENT_STATUS.md](CURRENT_STATUS.md) ו-[CHANGELOG.md](CHANGELOG.md).
-2. לבדוק `git status`, את הענף הנוכחי (`main`), ואת חמשת ה-commits האחרונים — **קיים Git repository מקומי בפרויקט מ-29/07/2026** (ראו CURRENT_STATUS.md ו-CHANGELOG.md). אין remote, אין push.
+2. לבדוק `git status`, את הענף הנוכחי (`main`), ואת חמשת ה-commits האחרונים — **קיים Git repository מקומי בפרויקט מ-29/07/2026, מחובר ל-remote `origin` ב-GitHub (`msrss58-nm/finance`) ומסונכרן עם `origin/main`** (ראו CURRENT_STATUS.md ו-CHANGELOG.md).
 3. להשוות בין התיעוד לבין מצב הקוד בפועל (למשל: לוודא שאין קבצים חדשים/שהשתנו מאז כתיבת התיעוד).
 4. לדווח למשתמש על כל אי-התאמה שנמצאה בין התיעוד למצב הקוד בפועל **לפני** ביצוע כל שינוי.
 

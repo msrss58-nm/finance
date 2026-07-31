@@ -338,6 +338,19 @@
         font-size: 13.5px; cursor: pointer; font-family: inherit; margin-top: 4px;
     }
 
+    .dev-box {
+        margin-top: 26px; padding: 16px; border: 1px dashed var(--color-border);
+        border-radius: 12px; background: #fafafa;
+    }
+    .dev-box h3 { font-size: 12.5px; margin: 0 0 8px; color: var(--color-text-muted); font-weight: 600; }
+    .status-line { font-size: 12px; color: var(--color-primary); }
+    .btn-reset {
+        margin-top: 10px; padding: 8px 16px; border: 1px solid var(--color-danger);
+        color: var(--color-danger); background: #fff; border-radius: 8px; cursor: pointer;
+        font-size: 13px; font-family: inherit;
+    }
+    .btn-reset:hover { background: #fee; }
+
     /* ===== Bottom navigation ===== */
     .bottom-nav {
         position: fixed; bottom: 0; left: 0; right: 0; max-width: 560px; margin: 0 auto;
@@ -476,6 +489,12 @@
     <div class="screen" id="screen-settings">
         <div class="section-title" style="margin-top:4px;">ניהול קטגוריות</div>
         <div id="category-list"></div>
+
+        <div class="dev-box">
+            <h3>אזור מפתחים — בטיחות נתוני Preview v2</h3>
+            <div class="status-line" id="status-line"></div>
+            <button type="button" class="btn-reset" onclick="resetPreviewV2Data()">איפוס נתוני Preview v2</button>
+        </div>
     </div>
 
 </div>
@@ -517,14 +536,12 @@
 </div>
 
 <script>
-    // ===== Stage 4.4 candidate: reads/writes the REAL app's own localStorage keys directly — =====
-    // ===== no separate Preview/Real distinction anymore (this file IS the candidate for      =====
-    // ===== family_finance_data/family_finance_cat_config). The seed-from-real, reset, and     =====
-    // ===== status-line mechanisms that only made sense for an isolated Preview copy have been =====
-    // ===== removed entirely (not just neutralized) — there is nothing left to seed from or    =====
-    // ===== reset against once this file's own keys ARE the real ones.                         =====
-    var DATA_KEY = 'family_finance_data';
-    var CONFIG_KEY = 'family_finance_cat_config';
+    // ===== Preview v2-only: separate localStorage keys, never touch the real app's data or v1's preview data =====
+    // (unchanged from Stage A — same keys, same seed/reset mechanism, only its UI location moved into the Settings screen)
+    var PREVIEW_DATA_KEY = 'family_finance_preview_v2_data';
+    var PREVIEW_CONFIG_KEY = 'family_finance_preview_v2_cat_config';
+    var REAL_DATA_KEY = 'family_finance_data';
+    var REAL_CONFIG_KEY = 'family_finance_cat_config';
 
     var DEFAULT_CATEGORY_CONFIG_JSON = JSON.stringify({
         income: { label: "💰 הכנסות", baseType: "income" },
@@ -532,6 +549,46 @@
         variable: { label: "🛒 תשלומים שונים", baseType: "variable" },
         loan: { label: "🏦 הלוואות", baseType: "loan" }
     });
+
+    (function seedPreviewV2IfNeeded() {
+        try {
+            if (localStorage.getItem(PREVIEW_DATA_KEY) === null) {
+                var realData = localStorage.getItem(REAL_DATA_KEY);
+                localStorage.setItem(PREVIEW_DATA_KEY, realData !== null ? realData : '[]');
+            }
+        } catch (e) { console.log('שגיאה באתחול נתוני Preview v2'); }
+
+        try {
+            if (localStorage.getItem(PREVIEW_CONFIG_KEY) === null) {
+                var realConfig = localStorage.getItem(REAL_CONFIG_KEY);
+                localStorage.setItem(PREVIEW_CONFIG_KEY, realConfig !== null ? realConfig : DEFAULT_CATEGORY_CONFIG_JSON);
+            }
+        } catch (e) { console.log('שגיאה באתחול תצורת קטגוריות ל-Preview v2'); }
+    })();
+
+    function resetPreviewV2Data() {
+        if (!confirm('לאפס את נתוני Preview v2 ולהעתיק מחדש את הנתונים מהאפליקציה הראשית? פעולה זו מוחקת רק את עותק ה-Preview v2, לא את הנתונים האמיתיים ולא את נתוני Preview v1.')) return;
+        try {
+            localStorage.removeItem(PREVIEW_DATA_KEY);
+            localStorage.removeItem(PREVIEW_CONFIG_KEY);
+        } catch (e) { console.log('שגיאה באיפוס נתוני Preview v2'); }
+        location.reload();
+    }
+
+    (function reportStatus() {
+        var itemCount = 0;
+        var catCount = 0;
+        try {
+            var items = JSON.parse(localStorage.getItem(PREVIEW_DATA_KEY) || '[]');
+            itemCount = items.length;
+        } catch (e) {}
+        try {
+            var cfg = JSON.parse(localStorage.getItem(PREVIEW_CONFIG_KEY) || '{}');
+            catCount = Object.keys(cfg).length;
+        } catch (e) {}
+        document.getElementById('status-line').textContent =
+            'מפתחות Preview v2 טעונים: ' + itemCount + ' תנועות, ' + catCount + ' קטגוריות (מפתחות אמיתיים לא נגעו).';
+    })();
 
     // ===== Stage B: screen structure + static UI, fed only by MOCK_DATA below. No business logic, no calculations. =====
     var MOCK_DATA = {
@@ -1351,16 +1408,15 @@
     }
 
     // =====================================================================================
-    // ===== Stage D.2 (originally Preview-only, now Stage 4.4 candidate): read-only          =====
-    // ===== connection to the app's own localStorage data. Reads ONLY DATA_KEY/CONFIG_KEY —  =====
-    // ===== the real family_finance_data/family_finance_cat_config keys directly, no other   =====
-    // ===== key. No setItem/removeItem anywhere in this section. Not wired to any Stage C     =====
-    // ===== function, mockItems, mockCategoryConfig, buildNarrative, or UI — `items`/         =====
-    // ===== `categoryConfig` below are declared and loaded, nothing more.                     =====
+    // ===== Stage D.2: read-only connection to Preview localStorage data.                  =====
+    // ===== Reads ONLY PREVIEW_DATA_KEY / PREVIEW_CONFIG_KEY (never REAL_DATA_KEY /         =====
+    // ===== REAL_CONFIG_KEY). No setItem/removeItem anywhere in this section. Not wired to  =====
+    // ===== any Stage C function, mockItems, mockCategoryConfig, buildNarrative, or UI —    =====
+    // ===== `items`/`categoryConfig` below are declared and loaded, nothing more.           =====
     // =====================================================================================
 
     function loadPreviewItems() {
-        var raw = localStorage.getItem(DATA_KEY);
+        var raw = localStorage.getItem(PREVIEW_DATA_KEY);
         var parsed;
         try {
             parsed = JSON.parse(raw);
@@ -1373,7 +1429,7 @@
     }
 
     function loadPreviewCategoryConfig() {
-        var raw = localStorage.getItem(CONFIG_KEY);
+        var raw = localStorage.getItem(PREVIEW_CONFIG_KEY);
         var parsed;
         try {
             parsed = JSON.parse(raw);
@@ -1383,8 +1439,8 @@
         var isPlainObject = parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed);
         if (isPlainObject) { return parsed; }
         // Safe fallback: missing key, corrupt JSON, or wrong type (array/null/primitive) falls
-        // back to DEFAULT_CATEGORY_CONFIG_JSON — the real app's own known-good default shape,
-        // not Stage C's mock data.
+        // back to the same DEFAULT_CATEGORY_CONFIG_JSON already used by seedPreviewV2IfNeeded()
+        // in Stage A — the real app's own known-good default shape, not Stage C's mock data.
         try {
             return JSON.parse(DEFAULT_CATEGORY_CONFIG_JSON);
         } catch (e2) {
@@ -1785,21 +1841,23 @@
     renderTransactionsScreenFromRealData('active');
 
     // =====================================================================================
-    // ===== Stage G.1 (originally Preview-only, now Stage 4.4 candidate): write               =====
-    // ===== infrastructure. savePreviewItems()/savePreviewCategoryConfig() mirror index.html's =====
-    // ===== own saveToLocalStorage()/saveConfigToLocalStorage() exactly (same JSON.stringify +  =====
-    // ===== try/catch shape), and write to DATA_KEY/CONFIG_KEY — the real                      =====
-    // ===== family_finance_data/family_finance_cat_config keys directly, no other key.          =====
-    // ===== renderAllPreviewScreens() re-runs the 5 existing real-data render functions in      =====
-    // ===== sequence; none of their internal logic is changed.                                  =====
+    // ===== Stage G.1: write infrastructure only — NOT called anywhere in this file yet.   =====
+    // ===== savePreviewItems()/savePreviewCategoryConfig() mirror index.html's own          =====
+    // ===== saveToLocalStorage()/saveConfigToLocalStorage() exactly (same JSON.stringify +   =====
+    // ===== try/catch shape), but write ONLY to PREVIEW_DATA_KEY/PREVIEW_CONFIG_KEY — never  =====
+    // ===== REAL_DATA_KEY/REAL_CONFIG_KEY. renderAllPreviewScreens() re-runs the 5 existing   =====
+    // ===== real-data render functions in sequence; none of their internal logic is changed.  =====
+    // ===== None of the three functions below are invoked automatically on page load or from  =====
+    // ===== any existing code path — they exist only as infrastructure for future write-      =====
+    // ===== capability stages to call after mutating `items`/`categoryConfig` in memory.       =====
     // =====================================================================================
 
     function savePreviewItems() {
-        try { localStorage.setItem(DATA_KEY, JSON.stringify(items)); } catch (e) { console.log('שגיאה בשמירת נתונים'); }
+        try { localStorage.setItem(PREVIEW_DATA_KEY, JSON.stringify(items)); } catch (e) { console.log('שגיאה בשמירת נתוני Preview v2'); }
     }
 
     function savePreviewCategoryConfig() {
-        try { localStorage.setItem(CONFIG_KEY, JSON.stringify(categoryConfig)); } catch (e) { console.log('שגיאה בשמירת תצורת קטגוריות'); }
+        try { localStorage.setItem(PREVIEW_CONFIG_KEY, JSON.stringify(categoryConfig)); } catch (e) { console.log('שגיאה בשמירת תצורת קטגוריות Preview v2'); }
     }
 
     // Mirrors setTxFilter()'s own DOM-based selection — there is no separate JS variable
@@ -1834,7 +1892,7 @@
     // ===== the Stage G.1 save/render infrastructure instead of index.html's own              =====
     // ===== saveToLocalStorage()/renderAll(). No direct localStorage access here — persistence =====
     // ===== goes exclusively through savePreviewItems() (Stage G.1), which itself only ever    =====
-    // ===== writes DATA_KEY. No other field on the found item is touched, categoryConfig      =====
+    // ===== writes PREVIEW_DATA_KEY. No other field on the found item is touched, categoryConfig=====
     // ===== is never read or written, and a missing id is a strict no-op (no save, no render). =====
     // =====================================================================================
 
@@ -1916,7 +1974,7 @@
     // ===== string. The action to take (archive vs. restore) is looked up fresh from the live    =====
     // ===== `items` array by id — not trusted from the button's own rendered label — so it is    =====
     // ===== always correct even if `items` changed since this row was last rendered. Both target =====
-    // ===== functions already call savePreviewItems() (DATA_KEY only) and                        =====
+    // ===== functions already call savePreviewItems() (PREVIEW_DATA_KEY only) and                =====
     // ===== renderAllPreviewScreens() internally, which fully rebuilds transactions-list (once    =====
     // ===== Stage G.2.6 below wires renderTransactionsScreenFromRealData() to                     =====
     // ===== renderTxListWithActions) — that rebuild is what closes this row's menu; no separate   =====
@@ -2143,7 +2201,7 @@
     // ===== — add OR inline-edit — can be open at a time (enforced from both directions:       =====
     // ===== startPreviewAdd() below discards an open edit, handleEditMenuAction() above        =====
     // ===== discards an open add). All writes go through the existing savePreviewItems()/       =====
-    // ===== renderAllPreviewScreens() (DATA_KEY only) — no new persistence path.                =====
+    // ===== renderAllPreviewScreens() (PREVIEW_DATA_KEY only) — no new persistence path.        =====
     // =====================================================================================
 
     // Copied verbatim from index.html — used only to pre-fill the "dated" add-form's date field
@@ -2400,8 +2458,8 @@
     // ===== module-level state, moved up next to items/categoryConfig — see below — so it's  =====
     // ===== assigned before Stage 3ב.2's Settings-screen render runs on page load). All      =====
     // ===== persistence goes exclusively through the existing savePreviewCategoryConfig()     =====
-    // ===== (Stage G.1), which itself only ever writes CONFIG_KEY — no other localStorage      =====
-    // ===== key is ever read or written here.                                                  =====
+    // ===== (Stage G.1), which itself only ever writes PREVIEW_CONFIG_KEY —                   =====
+    // ===== REAL_DATA_KEY/REAL_CONFIG_KEY are never read or written here.                     =====
     // =====================================================================================
 
     // Copied verbatim from index.html's own translateBaseType() — pure, no DOM access.
@@ -2559,7 +2617,7 @@
     // ===== styles.css. No forecast logic. No change to the Stage 3ב.1 functions themselves    =====
     // ===== (addPreviewCategory/renamePreviewCategory/deletePreviewCategory/etc. are called    =====
     // ===== exactly as they were left, unmodified). All persistence still goes exclusively     =====
-    // ===== through savePreviewCategoryConfig() (CONFIG_KEY only), invoked from inside          =====
+    // ===== through savePreviewCategoryConfig() (PREVIEW_CONFIG_KEY only), invoked from inside  =====
     // ===== those unmodified functions — nothing here touches localStorage directly.           =====
     // =====================================================================================
 
