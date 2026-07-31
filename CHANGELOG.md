@@ -229,3 +229,10 @@
 - **בטיחות**: אין שימוש ב-`REAL_DATA_KEY`/`REAL_CONFIG_KEY`, אין תלות ב-DOM/UI; `index.html`/`app.js`/`styles.css` לא נגעו בהם.
 - **בדיקות**: `node --check` ו-`git diff --check` תקינים. **108/108 בדיקות VM/Node עברו.**
 - **המשך**: שלב 3ב.2 — UI ניהול קטגוריות. טרם התחיל.
+
+## 31/07/2026 — שלב 3ב.3 (Cockpit / Preview v2) — לוגיקת התחזית, ללא שינוי קוד
+לפי אישור מפורש לבצע רק שלב 3ב.3 מתוך רצף 3ב (קטגוריות + תחזית): בבדיקת פתיחה לפני מימוש נמצא שלוגיקת התחזית הנדרשת **כבר קיימת ומחוברת בפועל** ב-[index-preview-v2.html](index-preview-v2.html), משלב מוקדם יותר בפרויקט שקדם לרצף 3ב — `computeForecast`/`getBillingRange`/`isBillingActiveInMonth` (עותקים מדויקים מ-`index.html`) ופונקציות הנרטיב הבנויות עליהן בלבד (`getBiggestUpcomingCharge`, `getProjectedBalanceAfterUpcoming`, `getForecastWarning`, `getDatedMonthOverMonthChange`), כבר קוראות אך ורק מ-`PREVIEW_DATA_KEY`/`PREVIEW_CONFIG_KEY` וכבר מחוברות למסך התובנות דרך `buildNarrative()`/`renderInsightsScreenFromRealData()`.
+- **החלטה** (אושרה במפורש): לסמן את שלב 3ב.3 כמסופק, **ללא שינוי בקוד המוצר**. `git diff --stat` ריק.
+- **אימות**: השוואה אוטומטית של גוף הפונקציות `computeForecast`/`getBillingRange`/`isBillingActiveInMonth` מול `index.html` — זהות (למעט התאמת `itemsOverride` המתועדת בקוד עצמו).
+- **בדיקות**: נכתבה סוויטת בדיקות ייעודית וחדשה (VM/Node, **זמנית בתיקיית scratchpad — אינה חלק מה-repository**), שכיסתה לראשונה ישירות: הכנסה, הוצאה קבועה (חודשי/שנתי/אשראי), "תשלומים שונים" מוחרג, הלוואה לפי טווח חיוב, חיוב חד-פעמי לפי חודש מדויק, החרגת ארכיון, מערך ריק, אי-השפעת קטגוריה מותאמת אישית על הסכום, בידוד `itemsOverride`, ופונקציות הנרטיב הנגזרות. **38/38 עברו.** סוויטות 3ב.1 (111/111) ו-3ב.2 (112/112) הורצו מחדש ועברו ללא רגרסיה. `node --check` ו-`git diff --check` תקינים.
+- **המשך**: שלב 3ב.4 — שילוב התחזית במסך התובנות (Insights). טרם התחיל.
