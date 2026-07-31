@@ -1335,7 +1335,7 @@
                 function show() {
                     var idx = parseInt(bar.getAttribute('data-idx'), 10);
                     var mo = months[idx];
-                    tooltip.innerHTML = '<strong>₪' + Math.round(mo.net).toLocaleString() + '</strong>' + escapeHtml(mo.label);
+                    tooltip.innerHTML = '<strong>' + formatHomeCurrency(mo.net) + '</strong>' + escapeHtml(mo.label);
                     tooltip.style.display = 'block';
                     var rect = bar.getBoundingClientRect();
                     var wrapRect = svg.parentNode.getBoundingClientRect();
@@ -1392,7 +1392,7 @@
         var tableHtml = '<table><thead><tr><th>חודש</th><th>יתרה פנויה צפויה</th></tr></thead><tbody>';
         for (var j = 0; j < months.length; j++) {
             var m2 = months[j];
-            tableHtml += '<tr><td>' + escapeHtml(m2.label) + '</td><td class="' + (m2.net >= 0 ? 'preview-forecast-positive' : 'preview-forecast-negative') + '">₪' + Math.round(m2.net).toLocaleString() + '</td></tr>';
+            tableHtml += '<tr><td>' + escapeHtml(m2.label) + '</td><td class="' + (m2.net >= 0 ? 'preview-forecast-positive' : 'preview-forecast-negative') + '">' + formatHomeCurrency(m2.net) + '</td></tr>';
         }
         tableHtml += '</tbody></table>';
         tableWrap.innerHTML = tableHtml;
