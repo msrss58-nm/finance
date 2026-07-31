@@ -278,7 +278,29 @@
         margin-bottom: 8px; box-shadow: var(--shadow);
     }
     .cat-label { font-size: 14px; }
-    .cat-edit { font-size: 12px; color: var(--color-text-muted); }
+
+    /* ===== Stage 3ב.2: category-row action buttons + add-category toggle. Deliberately small,
+       dedicated classes (not reused from .tx-edit-save/.tx-edit-cancel, which are sized for a
+       full-width two-button action bar) — these sit inline inside a compact .category-row next to
+       the label. The rename/add forms themselves still reuse .tx-edit-form/.tx-edit-group/
+       .tx-edit-actions/.tx-edit-save/.tx-edit-cancel as-is (same reasoning already applied to the
+       add-transaction form in Stage G.5: no visual reason for a separate form class set). */
+    .cat-row-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .cat-edit-btn, .cat-delete-btn, .cat-cancel-btn {
+        font-size: 12px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--color-border);
+        background: var(--color-bg); cursor: pointer; font-family: inherit;
+    }
+    .cat-delete-btn { color: var(--color-danger); border-color: var(--color-danger); }
+    .cat-confirm-delete-btn {
+        font-size: 12px; padding: 6px 10px; border-radius: 8px; border: none;
+        background: var(--color-danger); color: #fff; cursor: pointer; font-family: inherit;
+    }
+    .cat-delete-confirm-text { font-size: 12.5px; color: var(--color-danger); }
+    .cat-add-toggle {
+        display: block; width: 100%; padding: 10px; border-radius: 10px;
+        border: 1px dashed var(--color-border); background: var(--color-bg);
+        font-size: 13.5px; cursor: pointer; font-family: inherit; margin-top: 4px;
+    }
 
     .dev-box {
         margin-top: 26px; padding: 16px; border: 1px dashed var(--color-border);
@@ -1270,6 +1292,65 @@
     var previewAddCategoryKey = null;
 
     // =====================================================================================
+    // ===== Stage 3ב.1/3ב.2: category management state. Declared here (with items/          =====
+    // ===== categoryConfig above and previewEditingId/previewAddMode) rather than down next  =====
+    // ===== to the Stage 3ב.1 logic functions themselves, because renderSettingsScreenFromReal=====
+    // ===== Data() is invoked once during the page's initial synchronous load (below) and, as =====
+    // ===== of Stage 3ב.2, reads these values — they must already be assigned by then. Plain  =====
+    // ===== `var` initializers are NOT hoisted the way `function` declarations are, so this   =====
+    // ===== block cannot stay below its point of first use the way the pure Stage 3ב.1 logic  =====
+    // ===== functions (translateBaseType, addPreviewCategory, deletePreviewCategory, etc.,    =====
+    // ===== still appended near the end of the file) safely can.                              =====
+    // =====================================================================================
+
+    // The 4 keys index.html itself treats as permanent (initCategoryInputs() there renders a
+    // rename input for each of them but never a delete button — the same set this file's own
+    // Stage E.1 loop already iterates over via Object.keys(categoryConfig), just named here so
+    // the deletion guard below has something explicit to check against instead of re-deriving
+    // the set ad hoc.
+    var PREVIEW_BUILTIN_CATEGORY_KEYS = ['income', 'fixed', 'variable', 'loan'];
+
+    // Copied verbatim (value/label text) from index.html's own #new-cat-type <option> list.
+    // 'loan' is deliberately absent, matching index.html: a new custom category can never be
+    // typed as 'loan' there.
+    var PREVIEW_CUSTOM_CATEGORY_TYPE_OPTIONS = [
+        { value: 'fixed', label: 'הוצאה קבועה (סכום קבוע חודשי/שנתי)' },
+        { value: 'variable', label: 'תשלומים שונים (עסקאות עם תשלומים ותאריך סיום)' },
+        { value: 'income', label: 'הכנסה (מוסיף לתזרים הפנוי)' },
+        { value: 'dated', label: 'חיוב חד-פעמי (תאריך וסכום בלבד, למשל כרטיס אשראי)' }
+    ];
+
+    // Reason codes returned by deletePreviewCategory() when it refuses to delete — a return value
+    // rather than an alert() baked into the logic itself, so the Settings screen can render the
+    // "הודעה ברורה" (clear message) the approved product decision calls for as in-UI text.
+    var PREVIEW_CATEGORY_DELETE_BLOCKED_REASON = {
+        BUILT_IN: 'built-in',
+        HAS_ITEMS: 'has-items'
+    };
+
+    // Which category key (if any) is currently showing a rename form in the Settings screen,
+    // mirroring previewEditingId's role for the Transactions screen (Stage G.4).
+    var previewEditingCategoryKey = null;
+
+    // Stage 3ב.2 UI-only state (visual only, never persisted, always resets to its default on
+    // page load) — mirrors previewAddMode/previewEditingId's role for the Transactions screen.
+    // previewCategoryAddOpen: whether the "add category" inline form is currently shown.
+    // previewDeletingCategoryKey: which category key (if any) is showing an inline delete
+    // confirmation ("מחיקה" → "אישור מחיקה"/"ביטול"), used instead of a native confirm() per the
+    // approved 3ב.2 UI rules.
+    var previewCategoryAddOpen = false;
+    var previewDeletingCategoryKey = null;
+
+    // Enforces "only one category form open at a time" (rename OR add OR delete-confirmation, not
+    // several at once) — same convention already applied between previewAddMode/previewEditingId
+    // on the Transactions screen. Called at the start of every "open a form" action below.
+    function resetPreviewCategoryFormsState() {
+        previewEditingCategoryKey = null;
+        previewCategoryAddOpen = false;
+        previewDeletingCategoryKey = null;
+    }
+
+    // =====================================================================================
     // ===== Stage D.4 (revised, option ג׳): orchestration only — connects buildNarrative()  =====
     // ===== to the REAL Preview items/categoryConfig loaded above (Stage D.2), with a       =====
     // ===== single call. buildNarrative() itself already calls each of the 6 real Stage D.3 =====
@@ -1495,31 +1576,25 @@
     renderInsightsScreenFromRealData();
 
     // =====================================================================================
-    // ===== Stage E.1: Settings screen only — replaces category-list's Mock-fed rows       =====
-    // ===== with the real categoryConfig loaded above (Stage D.2's loadPreviewCategoryConfig()). =====
-    // ===== Display only: no add/edit/delete/save logic, no localStorage access of its own — =====
-    // ===== reads only the already-loaded `categoryConfig` variable. Does not touch Home,     =====
-    // ===== Transactions, or Insights screens, or MOCK_DATA.                                 =====
+    // ===== Stage E.1 (display-only) → Stage 3ב.2 (full add/rename/delete UI): Settings      =====
+    // ===== screen, replacing category-list's original Mock-fed rows with the real            =====
+    // ===== categoryConfig loaded above (Stage D.2's loadPreviewCategoryConfig()). As of Stage =====
+    // ===== 3ב.2, each row's markup and the add-category area are built by                    =====
+    // ===== buildPreviewCategoryRowHtml()/buildPreviewCategoryAddAreaHtml() below, which read   =====
+    // ===== the Stage 3ב.2 UI state (previewEditingCategoryKey/previewCategoryAddOpen/          =====
+    // ===== previewDeletingCategoryKey) and call the unmodified Stage 3ב.1 logic functions.     =====
+    // ===== Still does not touch Home, Transactions, or Insights screens, or MOCK_DATA.        =====
     // =====================================================================================
 
-    // Same markup/classes renderMockUI() used for this row (category-row/cat-label/cat-edit) —
-    // "עריכה (בקרוב)" stays as static, non-interactive text (no onclick), exactly as it already
-    // was in the Mock version; only the data source changes. categoryConfig keys are iterated in
-    // whatever order Object.keys() returns them (insertion order in practice) — no sorting logic
-    // invented. A missing/non-string `label` on a malformed entry falls back to the category key
-    // itself, so a corrupt entry still renders something safe instead of "undefined" or a crash.
+    // categoryConfig keys are iterated in whatever order Object.keys() returns them (insertion
+    // order in practice) — no sorting logic invented.
     function renderSettingsScreenFromRealData() {
         var html = '';
         var keys = Object.keys(categoryConfig || {});
         for (var i = 0; i < keys.length; i++) {
-            var key = keys[i];
-            var cfg = categoryConfig[key];
-            var label = (cfg && typeof cfg.label === 'string' && cfg.label) ? cfg.label : key;
-            html += '<div class="category-row">' +
-                '<div class="cat-label">' + escapeHtml(label) + '</div>' +
-                '<div class="cat-edit">עריכה (בקרוב)</div>' +
-            '</div>';
+            html += buildPreviewCategoryRowHtml(keys[i]);
         }
+        html += buildPreviewCategoryAddAreaHtml();
         document.getElementById('category-list').innerHTML = html;
     }
 
@@ -2196,49 +2271,13 @@
     }
 
     // =====================================================================================
-    // ===== Stage 3ב.1: category management — LOGIC ONLY, not wired to any UI yet. No new  =====
-    // ===== HTML/CSS, no event listeners, no buttons, no Settings-screen markup changes —    =====
-    // ===== renderSettingsScreenFromRealData() (Stage E.1) is untouched. These functions      =====
-    // ===== exist so Stage 3ב.2 can wire real Settings-screen forms to them; none of them is  =====
-    // ===== invoked anywhere in this file yet. All persistence goes exclusively through the   =====
-    // ===== existing savePreviewCategoryConfig() (Stage G.1), which itself only ever writes   =====
-    // ===== PREVIEW_CONFIG_KEY — REAL_DATA_KEY/REAL_CONFIG_KEY are never read or written here. =====
+    // ===== Stage 3ב.1: category management — pure logic functions only (not this file's    =====
+    // ===== module-level state, moved up next to items/categoryConfig — see below — so it's  =====
+    // ===== assigned before Stage 3ב.2's Settings-screen render runs on page load). All      =====
+    // ===== persistence goes exclusively through the existing savePreviewCategoryConfig()     =====
+    // ===== (Stage G.1), which itself only ever writes PREVIEW_CONFIG_KEY —                   =====
+    // ===== REAL_DATA_KEY/REAL_CONFIG_KEY are never read or written here.                     =====
     // =====================================================================================
-
-    // The 4 keys index.html itself treats as permanent (initCategoryInputs() there renders a
-    // rename input for each of them but never a delete button — the same set this file's own
-    // Stage E.1 loop already iterates over via Object.keys(categoryConfig), just named here so
-    // the deletion guard below has something explicit to check against instead of re-deriving
-    // the set ad hoc.
-    var PREVIEW_BUILTIN_CATEGORY_KEYS = ['income', 'fixed', 'variable', 'loan'];
-
-    // Copied verbatim (value/label text) from index.html's own #new-cat-type <option> list —
-    // reserved for Stage 3ב.2 to render the same picker; not read by any function in this file
-    // yet. 'loan' is deliberately absent, matching index.html: a new custom category can never be
-    // typed as 'loan' there.
-    var PREVIEW_CUSTOM_CATEGORY_TYPE_OPTIONS = [
-        { value: 'fixed', label: 'הוצאה קבועה (סכום קבוע חודשי/שנתי)' },
-        { value: 'variable', label: 'תשלומים שונים (עסקאות עם תשלומים ותאריך סיום)' },
-        { value: 'income', label: 'הכנסה (מוסיף לתזרים הפנוי)' },
-        { value: 'dated', label: 'חיוב חד-פעמי (תאריך וסכום בלבד, למשל כרטיס אשראי)' }
-    ];
-
-    // Reason codes returned by deletePreviewCategory() below when it refuses to delete — a return
-    // value rather than an alert() baked into the logic itself, so Stage 3ב.2 can render "הודעה
-    // ברורה" (the approved product decision) as in-UI text next to the category row, not a native
-    // dialog. Deliberately not an alert()/confirm() here, unlike this file's item-mutation
-    // functions (e.g. addPreviewItem's validation) — those mirror index.html's own alert()-based
-    // validation UX 1:1, but index.html has no equivalent "category delete blocked" case to mirror
-    // (its deleteCustomCategory() auto-deletes the category's items instead — see note below).
-    var PREVIEW_CATEGORY_DELETE_BLOCKED_REASON = {
-        BUILT_IN: 'built-in',
-        HAS_ITEMS: 'has-items'
-    };
-
-    // Reserved for Stage 3ב.2: which category key (if any) is currently showing a rename form in
-    // the Settings screen, mirroring previewEditingId's role for the Transactions screen (Stage
-    // G.4). Not read or written by any function in this file yet.
-    var previewEditingCategoryKey = null;
 
     // Copied verbatim from index.html's own translateBaseType() — pure, no DOM access.
     function translateBaseType(bt) {
@@ -2387,6 +2426,181 @@
         savePreviewCategoryConfig();
         renderAllPreviewScreens();
         return { success: true, reason: null };
+    }
+
+    // =====================================================================================
+    // ===== Stage 3ב.2: category management UI — wires the Stage 3ב.1 logic above to real  =====
+    // ===== Settings-screen forms. index-preview-v2.html only; no change to index.html/app.js/ =====
+    // ===== styles.css. No forecast logic. No change to the Stage 3ב.1 functions themselves    =====
+    // ===== (addPreviewCategory/renamePreviewCategory/deletePreviewCategory/etc. are called    =====
+    // ===== exactly as they were left, unmodified). All persistence still goes exclusively     =====
+    // ===== through savePreviewCategoryConfig() (PREVIEW_CONFIG_KEY only), invoked from inside  =====
+    // ===== those unmodified functions — nothing here touches localStorage directly.           =====
+    // =====================================================================================
+
+    // Renders the <option> list for the "type" <select> in the add-category form, from the same
+    // PREVIEW_CUSTOM_CATEGORY_TYPE_OPTIONS array addPreviewCategory() itself validates against —
+    // so the picker can never offer a value the logic layer would reject.
+    function buildPreviewCategoryTypeOptionsHtml() {
+        var html = '';
+        for (var i = 0; i < PREVIEW_CUSTOM_CATEGORY_TYPE_OPTIONS.length; i++) {
+            var opt = PREVIEW_CUSTOM_CATEGORY_TYPE_OPTIONS[i];
+            html += '<option value="' + opt.value + '">' + escapeHtml(opt.label) + '</option>';
+        }
+        return html;
+    }
+
+    // Opens the add-category form. Closes any other open category form first (rename/delete-
+    // confirmation), same "one form at a time" rule already used for previewAddMode/
+    // previewEditingId on the Transactions screen.
+    function startPreviewAddCategory() {
+        resetPreviewCategoryFormsState();
+        previewCategoryAddOpen = true;
+        renderSettingsScreenFromRealData();
+    }
+
+    // Strict no-op on data: clears the open flag and re-renders, same convention as
+    // cancelPreviewAdd()/cancelPreviewEdit() elsewhere in this file.
+    function cancelPreviewAddCategory() {
+        previewCategoryAddOpen = false;
+        renderSettingsScreenFromRealData();
+    }
+
+    // Reads the add-category form's two inputs and calls the unmodified addPreviewCategory()
+    // logic. On failure (empty title → addPreviewCategory() already alerts; invalid baseType →
+    // silent, unreachable via this <select> since it only ever offers the allowed values) this
+    // deliberately does NOT re-render — the form stays open exactly as the user left it, same
+    // convention as addPreviewItem()/savePreviewInlineEdit() elsewhere in this file. On success,
+    // addPreviewCategory() has already saved+re-rendered internally (with the form still marked
+    // open at that point); this only needs to close the form and render once more.
+    function submitPreviewAddCategory() {
+        var titleInput = document.getElementById('cat-add-title');
+        var typeSelect = document.getElementById('cat-add-basetype');
+        var title = titleInput ? titleInput.value : '';
+        var baseType = typeSelect ? typeSelect.value : '';
+        var newKey = addPreviewCategory(title, baseType);
+        if (newKey === null) { return; }
+        previewCategoryAddOpen = false;
+        renderSettingsScreenFromRealData();
+    }
+
+    // Opens the rename form for one category. Available for both built-in and custom categories
+    // (approved 3ב.2 product decision — only baseType change and deletion are restricted to/from
+    // built-ins, not renaming). Unknown key is a strict no-op.
+    function startPreviewEditCategory(key) {
+        if (!categoryConfig[key]) { return; }
+        resetPreviewCategoryFormsState();
+        previewEditingCategoryKey = key;
+        renderSettingsScreenFromRealData();
+    }
+
+    function cancelPreviewEditCategory() {
+        previewEditingCategoryKey = null;
+        renderSettingsScreenFromRealData();
+    }
+
+    // Reads the rename form's input and calls the unmodified renamePreviewCategory() logic.
+    // renamePreviewCategory() itself has no alert() of its own (Stage 3ב.1 left it a silent no-op
+    // on an empty/whitespace value) — this UI-layer wrapper adds the alert() so the user gets the
+    // same "empty required field" feedback as every other form in this file, without touching the
+    // Stage 3ב.1 function itself. On failure: alert only, form stays open, nothing re-rendered.
+    function submitPreviewEditCategory(key) {
+        var input = document.getElementById('cat-edit-label-' + key);
+        var newLabel = input ? input.value : '';
+        var ok = renamePreviewCategory(key, newLabel);
+        if (!ok) { alert('נא להזין שם לקטגוריה'); return; }
+        previewEditingCategoryKey = null;
+        renderSettingsScreenFromRealData();
+    }
+
+    // Opens the inline delete-confirmation for one category ("מחיקה" → "אישור מחיקה"/"ביטול")
+    // instead of a native confirm(), per the approved 3ב.2 UI rules. Available on every category
+    // row's markup is irrelevant here — the actual delete button is only rendered for non-built-in
+    // categories (see buildPreviewCategoryRowHtml below), but this function itself still checks
+    // isBuiltInPreviewCategoryKey defensively rather than trusting the caller. Unknown key is a
+    // strict no-op.
+    function startPreviewDeleteCategory(key) {
+        if (!categoryConfig[key]) { return; }
+        resetPreviewCategoryFormsState();
+        previewDeletingCategoryKey = key;
+        renderSettingsScreenFromRealData();
+    }
+
+    function cancelPreviewDeleteCategory() {
+        previewDeletingCategoryKey = null;
+        renderSettingsScreenFromRealData();
+    }
+
+    // Calls the unmodified deletePreviewCategory() logic and turns its returned {success, reason}
+    // into the "clear message" the original product decision calls for. On success,
+    // deletePreviewCategory() has already saved+re-rendered internally — the deleted row is simply
+    // gone from the next render. On failure, an alert() explains why (built-in category, or a
+    // custom category that still has items — active or archived) and the row returns to its normal
+    // (non-confirming) state. BUILT_IN can only be reached here defensively — the delete button is
+    // never rendered for a built-in category in the first place.
+    function confirmPreviewDeleteCategory(key) {
+        var result = deletePreviewCategory(key);
+        previewDeletingCategoryKey = null;
+        if (result.success) { return; }
+        if (result.reason === PREVIEW_CATEGORY_DELETE_BLOCKED_REASON.BUILT_IN) {
+            alert('לא ניתן למחוק קטגוריה מובנית.');
+        } else if (result.reason === PREVIEW_CATEGORY_DELETE_BLOCKED_REASON.HAS_ITEMS) {
+            alert('לא ניתן למחוק קטגוריה זו — קיימות לה תנועות (כולל בארכיון). יש להעביר או למחוק את התנועות תחילה.');
+        }
+        renderSettingsScreenFromRealData();
+    }
+
+    // Builds the markup for a single category row, in one of 3 mutually-exclusive states driven
+    // by the module-level state above: delete-confirmation, rename form, or the normal row with
+    // action buttons. A missing/non-string label falls back to the key itself, same safety net
+    // Stage E.1's original version already had.
+    function buildPreviewCategoryRowHtml(key) {
+        var cfg = categoryConfig[key];
+        var label = (cfg && typeof cfg.label === 'string' && cfg.label) ? cfg.label : key;
+
+        if (previewDeletingCategoryKey === key) {
+            return '<div class="category-row">' +
+                '<div class="cat-label">' + escapeHtml(label) + '</div>' +
+                '<div class="cat-row-actions">' +
+                '<span class="cat-delete-confirm-text">למחוק קטגוריה זו?</span>' +
+                '<button type="button" class="cat-confirm-delete-btn" onclick="confirmPreviewDeleteCategory(\'' + key + '\')">אישור מחיקה</button>' +
+                '<button type="button" class="cat-cancel-btn" onclick="cancelPreviewDeleteCategory()">ביטול</button>' +
+                '</div></div>';
+        }
+
+        if (previewEditingCategoryKey === key) {
+            return '<div class="tx-edit-form">' +
+                '<div class="tx-edit-group"><label>שם קטגוריה</label><input type="text" id="cat-edit-label-' + key + '" value="' + escapeHtml(label) + '"></div>' +
+                '<div class="tx-edit-actions">' +
+                '<button type="button" class="tx-edit-save" onclick="submitPreviewEditCategory(\'' + key + '\')">💾 שמור שינויים</button>' +
+                '<button type="button" class="tx-edit-cancel" onclick="cancelPreviewEditCategory()">ביטול</button>' +
+                '</div></div>';
+        }
+
+        var actionsHtml = '<button type="button" class="cat-edit-btn" onclick="startPreviewEditCategory(\'' + key + '\')">✏️ עריכה</button>';
+        if (!isBuiltInPreviewCategoryKey(key)) {
+            actionsHtml += '<button type="button" class="cat-delete-btn" onclick="startPreviewDeleteCategory(\'' + key + '\')">🗑️ מחיקה</button>';
+        }
+        return '<div class="category-row">' +
+            '<div class="cat-label">' + escapeHtml(label) + '</div>' +
+            '<div class="cat-row-actions">' + actionsHtml + '</div>' +
+            '</div>';
+    }
+
+    // Builds the markup for the add-category area: a single toggle button when closed, or the
+    // inline form when open. Reuses .tx-edit-form/.tx-edit-group/.tx-edit-actions/.tx-edit-save/
+    // .tx-edit-cancel as-is (same reasoning as the add-transaction form, Stage G.5).
+    function buildPreviewCategoryAddAreaHtml() {
+        if (!previewCategoryAddOpen) {
+            return '<button type="button" class="cat-add-toggle" onclick="startPreviewAddCategory()">+ הוסף קטגוריה</button>';
+        }
+        return '<div class="tx-edit-form">' +
+            '<div class="tx-edit-group"><label>שם הקטגוריה</label><input type="text" id="cat-add-title"></div>' +
+            '<div class="tx-edit-group"><label>סוג</label><select id="cat-add-basetype">' + buildPreviewCategoryTypeOptionsHtml() + '</select></div>' +
+            '<div class="tx-edit-actions">' +
+            '<button type="button" class="tx-edit-save" onclick="submitPreviewAddCategory()">הוסף קטגוריה +</button>' +
+            '<button type="button" class="tx-edit-cancel" onclick="cancelPreviewAddCategory()">ביטול</button>' +
+            '</div></div>';
     }
 </script>
 
