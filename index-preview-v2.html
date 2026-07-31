@@ -2194,6 +2194,200 @@
         setTxFilter('active');
         renderAllPreviewScreens();
     }
+
+    // =====================================================================================
+    // ===== Stage 3ב.1: category management — LOGIC ONLY, not wired to any UI yet. No new  =====
+    // ===== HTML/CSS, no event listeners, no buttons, no Settings-screen markup changes —    =====
+    // ===== renderSettingsScreenFromRealData() (Stage E.1) is untouched. These functions      =====
+    // ===== exist so Stage 3ב.2 can wire real Settings-screen forms to them; none of them is  =====
+    // ===== invoked anywhere in this file yet. All persistence goes exclusively through the   =====
+    // ===== existing savePreviewCategoryConfig() (Stage G.1), which itself only ever writes   =====
+    // ===== PREVIEW_CONFIG_KEY — REAL_DATA_KEY/REAL_CONFIG_KEY are never read or written here. =====
+    // =====================================================================================
+
+    // The 4 keys index.html itself treats as permanent (initCategoryInputs() there renders a
+    // rename input for each of them but never a delete button — the same set this file's own
+    // Stage E.1 loop already iterates over via Object.keys(categoryConfig), just named here so
+    // the deletion guard below has something explicit to check against instead of re-deriving
+    // the set ad hoc.
+    var PREVIEW_BUILTIN_CATEGORY_KEYS = ['income', 'fixed', 'variable', 'loan'];
+
+    // Copied verbatim (value/label text) from index.html's own #new-cat-type <option> list —
+    // reserved for Stage 3ב.2 to render the same picker; not read by any function in this file
+    // yet. 'loan' is deliberately absent, matching index.html: a new custom category can never be
+    // typed as 'loan' there.
+    var PREVIEW_CUSTOM_CATEGORY_TYPE_OPTIONS = [
+        { value: 'fixed', label: 'הוצאה קבועה (סכום קבוע חודשי/שנתי)' },
+        { value: 'variable', label: 'תשלומים שונים (עסקאות עם תשלומים ותאריך סיום)' },
+        { value: 'income', label: 'הכנסה (מוסיף לתזרים הפנוי)' },
+        { value: 'dated', label: 'חיוב חד-פעמי (תאריך וסכום בלבד, למשל כרטיס אשראי)' }
+    ];
+
+    // Reason codes returned by deletePreviewCategory() below when it refuses to delete — a return
+    // value rather than an alert() baked into the logic itself, so Stage 3ב.2 can render "הודעה
+    // ברורה" (the approved product decision) as in-UI text next to the category row, not a native
+    // dialog. Deliberately not an alert()/confirm() here, unlike this file's item-mutation
+    // functions (e.g. addPreviewItem's validation) — those mirror index.html's own alert()-based
+    // validation UX 1:1, but index.html has no equivalent "category delete blocked" case to mirror
+    // (its deleteCustomCategory() auto-deletes the category's items instead — see note below).
+    var PREVIEW_CATEGORY_DELETE_BLOCKED_REASON = {
+        BUILT_IN: 'built-in',
+        HAS_ITEMS: 'has-items'
+    };
+
+    // Reserved for Stage 3ב.2: which category key (if any) is currently showing a rename form in
+    // the Settings screen, mirroring previewEditingId's role for the Transactions screen (Stage
+    // G.4). Not read or written by any function in this file yet.
+    var previewEditingCategoryKey = null;
+
+    // Copied verbatim from index.html's own translateBaseType() — pure, no DOM access.
+    function translateBaseType(bt) {
+        if (bt === 'income') return 'הכנסה';
+        if (bt === 'fixed') return 'קבוע';
+        if (bt === 'variable') return 'תשלומים';
+        if (bt === 'dated') return 'חיוב חד-פעמי';
+        return '';
+    }
+
+    // Copied verbatim from index.html's own pickEmojiForCategory() — pure, no DOM access. Same
+    // keyword-matching rules and baseType fallbacks, unchanged.
+    function pickEmojiForCategory(title, baseType) {
+        var rules = [
+            { emoji: '💳', words: ['כרטיס אשראי', 'אשראי', 'כרטיס'] },
+            { emoji: '🚗', words: ['רכב', 'מכונית', 'דלק', 'חניה', 'טסט'] },
+            { emoji: '🏠', words: ['דירה', 'שכירות', 'משכנתא', 'בית', 'ועד בית'] },
+            { emoji: '🍔', words: ['אוכל', 'מזון', 'סופר', 'מכולת', 'מסעדה', 'משלוחים'] },
+            { emoji: '🏥', words: ['בריאות', 'רופא', 'תרופות', 'קופת חולים', 'שיניים'] },
+            { emoji: '🎓', words: ['חינוך', 'לימודים', 'בית ספר', 'אוניברסיטה', 'קורס', 'גן'] },
+            { emoji: '✈️', words: ['טיול', 'טיולים', 'חופשה', 'נסיעה', 'חול'] },
+            { emoji: '🎬', words: ['בידור', 'סרטים', 'קולנוע', 'נטפליקס', 'סטרימינג', 'תיאטרון'] },
+            { emoji: '🏋️', words: ['ספורט', 'חדר כושר', 'מכון כושר', 'אימון'] },
+            { emoji: '👕', words: ['ביגוד', 'בגדים', 'נעליים', 'אופנה'] },
+            { emoji: '💰', words: ['חיסכון', 'השקעות', 'פנסיה', 'קרן'] },
+            { emoji: '📱', words: ['טלפון', 'סלולר', 'אינטרנט', 'תקשורת'] },
+            { emoji: '💡', words: ['חשמל', 'מים', 'ארנונה', 'גז'] },
+            { emoji: '🛡️', words: ['ביטוח'] },
+            { emoji: '🎁', words: ['מתנות', 'מתנה'] },
+            { emoji: '🐾', words: ['חיות', 'כלב', 'חתול', 'וטרינר'] },
+            { emoji: '☕', words: ['קפה'] }
+        ];
+        for (var i = 0; i < rules.length; i++) {
+            for (var j = 0; j < rules[i].words.length; j++) {
+                if (title.indexOf(rules[i].words[j]) !== -1) return rules[i].emoji;
+            }
+        }
+        if (baseType === 'income') return '💰';
+        if (baseType === 'variable') return '🛍️';
+        if (baseType === 'loan') return '🏦';
+        if (baseType === 'dated') return '💳';
+        return '🏷️';
+    }
+
+    // Read-only helper: true for exactly the 4 permanent keys above.
+    function isBuiltInPreviewCategoryKey(key) {
+        return PREVIEW_BUILTIN_CATEGORY_KEYS.indexOf(key) !== -1;
+    }
+
+    // Mirrors index.html's own deleteCustomCategory() membership check
+    // (`items.some(function(i){return i.displayCategory === key;})`) exactly — including items
+    // currently in the archive, since `items` holds both active and archived items and this does
+    // not filter on isArchived. Read-only, no mutation.
+    function categoryHasPreviewItems(key) {
+        return items.some(function (i) { return i && i.displayCategory === key; });
+    }
+
+    // Mirrors index.html's own updateCategoryName(key, newVal) — same "empty/whitespace-only
+    // value is a silent no-op" behavior, works for both built-in and custom keys (index.html
+    // allows renaming both; only deletion is restricted to custom keys). Unlike
+    // updateCategoryName(), takes the new label as a parameter instead of reading a DOM input
+    // directly (no such input exists yet — that is Stage 3ב.2's job), and defensively no-ops on
+    // an unknown key rather than assuming it always exists. Returns true on success, false on
+    // no-op, so a future caller can decide how to react without this function touching the DOM.
+    function renamePreviewCategory(key, newLabel) {
+        if (!categoryConfig[key]) return false;
+        var trimmed = (newLabel == null ? '' : String(newLabel)).trim();
+        if (!trimmed) return false;
+        categoryConfig[key].label = trimmed;
+        savePreviewCategoryConfig();
+        renderAllPreviewScreens();
+        return true;
+    }
+
+    // Single source of truth for which baseType values a new custom category may have — derived
+    // from PREVIEW_CUSTOM_CATEGORY_TYPE_OPTIONS (no separate hardcoded list) so the two can never
+    // drift apart. Used by addPreviewCategory() below; Stage 3ב.2's <select> will independently
+    // only ever offer these same 4 options as markup, but addPreviewCategory() does not rely on
+    // that — it re-validates baseType itself regardless of caller.
+    function getAllowedPreviewCustomCategoryBaseTypes() {
+        return PREVIEW_CUSTOM_CATEGORY_TYPE_OPTIONS.map(function (opt) { return opt.value; });
+    }
+
+    // Mirrors index.html's own addCustomCategory() — same key format ('custom_' + Date.now()),
+    // same emoji-prefixed label construction, same alert() on an empty title (matching this
+    // file's existing alert()-based validation convention for item add/edit, e.g. addPreviewItem
+    // above). Unlike addCustomCategory(), takes title/baseType as parameters instead of reading
+    // #new-cat-title/#new-cat-type directly (those elements do not exist yet — Stage 3ב.2).
+    //
+    // Two hardening fixes over the original mirror (approved after code review, before this
+    // stage's first commit):
+    // 1. baseType is validated against getAllowedPreviewCustomCategoryBaseTypes() — an
+    //    unrecognized value is rejected (no category created, no categoryConfig mutation, no
+    //    localStorage write, returns null) rather than trusted blindly. index.html itself never
+    //    validates this (it trusts its <select> unconditionally), but this function does not rely
+    //    on Stage 3ב.2's future <select> being the only caller.
+    // 2. The candidate key starts as 'custom_' + Date.now() (same as index.html), but if that key
+    //    already exists in categoryConfig (two calls landing in the same millisecond — verified
+    //    possible in Stage 3ב.1's code review, deterministically reproduced with a fixed
+    //    Date.now()), a numeric suffix is appended and incremented ('custom_<ts>_1',
+    //    'custom_<ts>_2', ...) until a free key is found. An existing category is never
+    //    overwritten. The timestamp is captured once (`ts`) and reused for every suffixed
+    //    candidate, so the loop's own iteration speed cannot introduce a second collision.
+    //
+    // Returns the new key on success, null on any validation failure, so a future caller can react
+    // (e.g. select the new category) without this function touching the DOM itself.
+    function addPreviewCategory(title, baseType) {
+        var trimmedTitle = (title == null ? '' : String(title)).trim();
+        if (!trimmedTitle) { alert('נא להזין שם לקטגוריה'); return null; }
+        if (getAllowedPreviewCustomCategoryBaseTypes().indexOf(baseType) === -1) { return null; }
+
+        var ts = Date.now();
+        var newKey = 'custom_' + ts;
+        var suffix = 1;
+        while (categoryConfig[newKey]) {
+            newKey = 'custom_' + ts + '_' + suffix;
+            suffix++;
+        }
+
+        var emoji = pickEmojiForCategory(trimmedTitle, baseType);
+        categoryConfig[newKey] = { label: emoji + ' ' + trimmedTitle, baseType: baseType };
+        savePreviewCategoryConfig();
+        renderAllPreviewScreens();
+        return newKey;
+    }
+
+    // Deliberately DOES NOT mirror index.html's own deleteCustomCategory(), which (after a native
+    // confirm()) deletes a category's items along with the category itself. That behavior was
+    // reviewed against the approved product decisions for Stage 3ב and is intentionally NOT
+    // carried over here: built-in categories are never deletable, and a custom category that still
+    // has items (active or archived) is also refused rather than silently deleting those items —
+    // transactions are never auto-deleted by this function under any circumstance. The blocked
+    // reason is returned (see PREVIEW_CATEGORY_DELETE_BLOCKED_REASON above) rather than shown via
+    // alert()/confirm(), so Stage 3ב.2 can render the "clear message" the product decision calls
+    // for as in-UI text. An unknown key is a strict no-op (no save, no render), same convention as
+    // every other id/key-based mutation function in this file.
+    function deletePreviewCategory(key) {
+        if (!categoryConfig[key]) { return { success: false, reason: null }; }
+        if (isBuiltInPreviewCategoryKey(key)) {
+            return { success: false, reason: PREVIEW_CATEGORY_DELETE_BLOCKED_REASON.BUILT_IN };
+        }
+        if (categoryHasPreviewItems(key)) {
+            return { success: false, reason: PREVIEW_CATEGORY_DELETE_BLOCKED_REASON.HAS_ITEMS };
+        }
+        delete categoryConfig[key];
+        savePreviewCategoryConfig();
+        renderAllPreviewScreens();
+        return { success: true, reason: null };
+    }
 </script>
 
 </body>
