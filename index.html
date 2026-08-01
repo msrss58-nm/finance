@@ -78,20 +78,58 @@
         display: inline-block; background: rgba(255,255,255,.2);
         padding: 4px 12px; border-radius: 20px; font-size: 12px; margin-top: 4px;
     }
-    .hero-gauge .hero-narrative { font-size: 13px; margin-top: 12px; opacity: .92; line-height: 1.6; }
+    /* Version 1.1, Stage 1: hero-narrative removed — the green hero card now shows only the
+       label, the amount, and the status pill (the two explanatory "החודש: ..." lines are gone). */
 
     /* ===== Snapshot ===== */
-    .snapshot-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; }
+    /* Version 1.1, Stage 1: the "יתרה" card was removed (balance is already the hero-amount above);
+       only income + expenses remain, so this is now a 2-column grid. */
+    .snapshot-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 16px; }
     .snapshot-card {
         background: var(--color-surface); border-radius: 12px; padding: 12px 6px;
         text-align: center; box-shadow: var(--shadow);
     }
     .snapshot-card .label { font-size: 10.5px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: .3px; }
-    /* Stage F.1 follow-up: same bidi isolation fix as .tx-amount/.hero-amount — snapshot-balance
-       is the only one of the 3 snapshot cards that can go negative. Display-only, value unchanged. */
     .snapshot-card .value { font-size: 15px; font-weight: 700; margin-top: 5px; direction: ltr; unicode-bidi: isolate; }
     .snapshot-card.income .value { color: var(--color-primary); }
     .snapshot-card.expenses .value { color: var(--color-danger); }
+
+    /* ===== Version 1.1, Stage 1: automatic per-category tiles (below income/expenses) ===== */
+    .category-tiles-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
+    .category-tile {
+        background: var(--color-surface); border-radius: 12px; padding: 12px 6px;
+        text-align: center; box-shadow: var(--shadow);
+        cursor: pointer; user-select: none; -webkit-user-select: none;
+        /* Lets normal vertical page scrolling start immediately on a tile; only once a genuine
+           long-press-without-movement engages drag mode does the JS lock this down to 'none'. */
+        touch-action: pan-y;
+        transition: transform .12s ease, box-shadow .12s ease;
+    }
+    .category-tile.dragging {
+        opacity: .65; transform: scale(1.05); box-shadow: 0 6px 20px rgba(0,0,0,.18);
+        position: relative; z-index: 5;
+    }
+    .category-tile-icon {
+        width: 30px; height: 30px; border-radius: 50%; background: #eef2f0;
+        display: flex; align-items: center; justify-content: center; font-size: 14px;
+        margin: 0 auto 6px;
+    }
+    .category-tile-label {
+        font-size: 10.5px; color: var(--color-text-muted);
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .category-tile-value { font-size: 13.5px; font-weight: 700; margin-top: 4px; direction: ltr; unicode-bidi: isolate; }
+
+    /* ===== Version 1.1, Stage 1: active category-filter chip on the Transactions screen ===== */
+    .category-filter-chip {
+        display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        background: var(--color-primary-bg); color: var(--color-primary-dark);
+        border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; font-size: 12.5px; font-weight: 600;
+    }
+    .category-filter-chip button {
+        background: none; border: none; color: inherit; font-size: 14px; font-weight: 700;
+        cursor: pointer; padding: 0 2px; font-family: inherit;
+    }
 
     /* ===== Attention list ===== */
     .attention-item {
@@ -409,7 +447,6 @@
             <div class="hero-label">כמה פנוי לי להוציא החודש</div>
             <div class="hero-amount" id="hero-amount"></div>
             <div class="status-pill" id="hero-status"></div>
-            <div class="hero-narrative" id="hero-narrative"></div>
         </div>
 
         <div class="snapshot-grid">
@@ -421,11 +458,13 @@
                 <div class="label">הוצאות</div>
                 <div class="value" id="snapshot-expenses"></div>
             </div>
-            <div class="snapshot-card">
-                <div class="label">יתרה</div>
-                <div class="value" id="snapshot-balance"></div>
-            </div>
         </div>
+
+        <!-- Version 1.1, Stage 1: automatic per-category tiles — populated only by
+             renderCategoryTilesFromRealData() from the real categoryConfig; no category names are
+             ever hardcoded here. Short click on a tile filters Transactions by that category; a
+             long press + drag reorders tiles (order persisted separately from categoryConfig). -->
+        <div class="category-tiles-grid" id="category-tiles-grid"></div>
 
         <div class="section-title">מה דורש תשומת לב</div>
         <div id="attention-list"></div>
@@ -447,6 +486,9 @@
             <button type="button" class="filter-btn active" id="filter-active" onclick="setTxFilter('active')">תנועות פעילות</button>
             <button type="button" class="filter-btn" id="filter-archived" onclick="setTxFilter('archived')">ארכיון</button>
         </div>
+        <!-- Version 1.1, Stage 1: populated only when a category tile filter is active (see
+             renderCategoryFilterIndicator()/filterTransactionsByCategory()/clearCategoryFilter()). -->
+        <div id="category-filter-indicator"></div>
         <div id="transactions-list"></div>
     </div>
 
@@ -678,11 +720,9 @@
     function renderMockUI() {
         document.getElementById('hero-amount').textContent = MOCK_DATA.hero.amount;
         document.getElementById('hero-status').textContent = MOCK_DATA.hero.statusLabel;
-        document.getElementById('hero-narrative').textContent = MOCK_DATA.hero.narrative;
 
         document.getElementById('snapshot-income').textContent = MOCK_DATA.snapshot.income;
         document.getElementById('snapshot-expenses').textContent = MOCK_DATA.snapshot.expenses;
-        document.getElementById('snapshot-balance').textContent = MOCK_DATA.snapshot.balance;
 
         // attention-list is no longer rendered from MOCK_DATA.attention here — see Stage E.3's
         // renderAttentionListFromRealData() below, which renders it from real getBiggestUpcoming
@@ -842,6 +882,52 @@
             }
         }
         return total;
+    }
+
+    // Version 1.1, Stage 1: per-category monthly totals for the Home screen's automatic category
+    // tiles. Mirrors the legacy (pre-Cockpit) index.html's own catStats[cKey].monthly accumulation
+    // verbatim — same per-type conditions as getMonthSnapshot()/getTotalFixedCommitments() above,
+    // just grouped by category key instead of collapsed into two grand totals:
+    //   - cKey is item.displayCategory, falling back to item.type when displayCategory is missing
+    //     or no longer a real categoryConfig key (identical fallback to the legacy renderAll()).
+    //   - fixed: yearly period converted to monthly; bank AND credit both included (the existing
+    //     "dashboard tile shows everything" decision, same as getTotalFixedCommitments() above).
+    //   - variable/loan: current installment amount, only while parseDatesAndGetLeft(...).left > 0.
+    //   - dated: only when its exact year+month matches the current year+month.
+    //   - income: full amount.
+    // Archived items are excluded entirely. Returns a plain { categoryKey: monthlyAmount } object
+    // covering every key currently in categoryConfig (0 for categories with no matching items).
+    function getCategoryMonthlyTotals(items, categoryConfig) {
+        var totals = {};
+        for (var key in categoryConfig) { totals[key] = 0; }
+        for (var i = 0; i < items.length; i++) {
+            var item = items[i];
+            if (item.isArchived) { continue; }
+            var cKey = item.displayCategory || item.type;
+            if (!categoryConfig[cKey]) { cKey = item.type; }
+            if (!(cKey in totals)) { totals[cKey] = 0; }
+
+            if (item.type === 'income') {
+                totals[cKey] += item.amount;
+            } else if (item.type === 'fixed') {
+                totals[cKey] += (item.period === 'שנתי') ? (item.amount / 12) : item.amount;
+            } else if (item.type === 'variable') {
+                var dtVar = parseDatesAndGetLeft(item.start, item.total, 1);
+                if (dtVar.left > 0) { totals[cKey] += item.amount; }
+            } else if (item.type === 'loan') {
+                var dtLoan = parseDatesAndGetLeft(item.start, item.total, item.day);
+                if (dtLoan.left > 0) { totals[cKey] += item.amount; }
+            } else if (item.type === 'dated') {
+                if (item.start) {
+                    var itemDate = new Date(item.start);
+                    var now = new Date();
+                    if (itemDate.getFullYear() === now.getFullYear() && itemDate.getMonth() === now.getMonth()) {
+                        totals[cKey] += item.amount;
+                    }
+                }
+            }
+        }
+        return totals;
     }
 
     // Copied verbatim (income/expense inclusion logic only) from renderAll() in index.html — same
@@ -1411,6 +1497,23 @@
     var previewAddMode = null;
     var previewAddCategoryKey = null;
 
+    // Version 1.1, Stage 1: which category key (if any) the Transactions screen is currently
+    // filtered to, set only via clicking a Home category tile (filterTransactionsByCategory()) and
+    // cleared via the filter chip's ✕ (clearCategoryFilter()) or automatically if the category is
+    // deleted (see renderTransactionsScreenFromRealData()). null = no category filter (all items).
+    // Independent of, and combined with, the existing active/archived filter — never persisted.
+    var currentCategoryFilterKey = null;
+
+    // Version 1.1, Stage 1: declared here — BEFORE the initial renderHomeScreenFromRealData() call
+    // further down — rather than next to the reconcile/render functions that use them below.
+    // `var x = ...` only assigns its initial value when execution actually reaches that line; a
+    // `var` statement placed textually after the first call that reads/writes these would silently
+    // clobber the value that call had already computed, back to this initializer, the moment
+    // execution reached it. Kept together with the other early state above for the same reason.
+    var CATEGORY_TILE_ORDER_KEY = 'family_finance_category_tile_order';
+    var categoryTileOrder = [];
+    var categoryTileTotalsCache = {};
+
     // =====================================================================================
     // ===== Stage 3ב.1/3ב.2: category management state. Declared here (with items/          =====
     // ===== categoryConfig above and previewEditingId/previewAddMode) rather than down next  =====
@@ -1550,17 +1653,20 @@
         document.getElementById('hero-amount').textContent = formatHomeCurrency(snapshot.balance);
         document.getElementById('snapshot-income').textContent = formatHomeCurrency(snapshot.income);
         document.getElementById('snapshot-expenses').textContent = formatHomeCurrency(snapshot.expenses);
-        document.getElementById('snapshot-balance').textContent = formatHomeCurrency(snapshot.balance);
 
         // hero-status (the small status pill) is intentionally left untouched — there is no
         // narrative field that maps to a short status label without inventing new wording or
         // logic (it would require the still-unimplemented getForecastWarning). See report.
-        var narrativeResult = buildPreviewNarrativeData().narrative;
-        document.getElementById('hero-narrative').textContent = narrativeResult.monthSnapshot;
+        // Version 1.1, Stage 1: hero-narrative (the "החודש: ..." sentence) removed from the hero
+        // card per product decision — buildPreviewNarrativeData() is no longer called here at all
+        // (its other fields are still used independently by the Insights/Attention screens).
 
         // Same row count the existing (Mock) Home design showed (4).
         var recent = getRecentActivity(items, 4).map(mapItemToHomeTxRow);
         renderTxList('recent-activity-list', recent);
+
+        // Version 1.1, Stage 1: automatic per-category tiles, below income/expenses.
+        renderCategoryTilesFromRealData();
     }
 
     // Called once, after items/categoryConfig (and everything Stage D.3/D.4 depend on) are
@@ -1771,12 +1877,28 @@
     // (recent-activity-list) still calls plain renderTxList() and is completely untouched, so the
     // ⋮ menu appears on the Transactions screen only, per the approved decision.
     function renderTransactionsScreenFromRealData(filterName) {
+        // Version 1.1, Stage 1: self-heal a stale category filter (e.g. the category was deleted
+        // from Settings in the meantime) — categoryHasPreviewItems() already blocks deleting a
+        // category that still has items, so this only ever clears a filter that would otherwise
+        // show a permanently-empty list with no way back to "all categories" from the UI.
+        if (currentCategoryFilterKey !== null && !categoryConfig[currentCategoryFilterKey]) {
+            currentCategoryFilterKey = null;
+        }
+
         var wantArchived = (filterName === 'archived');
         var filtered = items.filter(function (it) {
             return !!(it && it.isArchived) === wantArchived;
         });
+        if (currentCategoryFilterKey !== null) {
+            filtered = filtered.filter(function (it) {
+                var cKey = (it && it.displayCategory) || (it && it.type);
+                if (!categoryConfig[cKey]) { cKey = it.type; }
+                return cKey === currentCategoryFilterKey;
+            });
+        }
         filtered.sort(function (a, b) { return safeItemId(b) - safeItemId(a); });
         renderTxListWithActions('transactions-list', filtered.map(mapItemToHomeTxRow));
+        renderCategoryFilterIndicator();
     }
 
     // Called once, after items/categoryConfig and the renders above — same ordering guarantee.
@@ -1811,6 +1933,256 @@
         var archivedBtn = document.getElementById('filter-archived');
         return (archivedBtn && archivedBtn.classList.contains('active')) ? 'archived' : 'active';
     }
+
+    // =====================================================================================
+    // ===== Version 1.1, Stage 1: Home screen automatic category tiles — order persistence,  =====
+    // ===== rendering, click-to-filter, and long-press drag-to-reorder. Additive only: does   =====
+    // ===== not touch items/categoryConfig, DATA_KEY, or CONFIG_KEY. Tile order is stored      =====
+    // ===== under its own new key (CATEGORY_TILE_ORDER_KEY) so it never collides with, and     =====
+    // ===== never needs to be read by, the existing data/config structures.                    =====
+    // =====================================================================================
+
+    // CATEGORY_TILE_ORDER_KEY/categoryTileOrder/categoryTileTotalsCache are declared earlier
+    // (alongside items/categoryConfig/currentCategoryFilterKey), before the initial
+    // renderHomeScreenFromRealData() call — see the comment there for why.
+
+    function loadCategoryTileOrder() {
+        try {
+            var raw = localStorage.getItem(CATEGORY_TILE_ORDER_KEY);
+            var parsed = raw ? JSON.parse(raw) : [];
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    function saveCategoryTileOrder(order) {
+        try { localStorage.setItem(CATEGORY_TILE_ORDER_KEY, JSON.stringify(order)); } catch (e) { console.log('שגיאה בשמירת סדר אריחי קטגוריות'); }
+    }
+
+    // Reconciles the persisted order against the current categoryConfig: a category present in
+    // categoryConfig but missing from the saved order (new category) is appended at the end, in
+    // Object.keys(categoryConfig) order; a key present in the saved order but no longer in
+    // categoryConfig (deleted category) is dropped. Persists the reconciled order back only when
+    // it actually differs from what was stored, so a normal render with nothing to reconcile never
+    // triggers an extra write.
+    function reconcileCategoryTileOrder() {
+        var stored = loadCategoryTileOrder();
+        var validKeys = Object.keys(categoryConfig || {});
+        var validSet = {};
+        for (var i = 0; i < validKeys.length; i++) { validSet[validKeys[i]] = true; }
+
+        var reconciled = [];
+        var seen = {};
+        for (var j = 0; j < stored.length; j++) {
+            var k = stored[j];
+            if (validSet[k] && !seen[k]) { reconciled.push(k); seen[k] = true; }
+        }
+        for (var m = 0; m < validKeys.length; m++) {
+            var vk = validKeys[m];
+            if (!seen[vk]) { reconciled.push(vk); seen[vk] = true; }
+        }
+
+        var changed = (reconciled.length !== stored.length) || reconciled.some(function (key, idx) { return key !== stored[idx]; });
+        if (changed) { saveCategoryTileOrder(reconciled); }
+        categoryTileOrder = reconciled;
+        return reconciled;
+    }
+
+    // Builds the grid markup for a given order + totals snapshot — used both by the full render
+    // below and by the lightweight in-drag re-render, which reuses the same cached totals rather
+    // than recomputing them on every pointermove.
+    function renderCategoryTileGridHtml(order, totals) {
+        var html = '';
+        for (var i = 0; i < order.length; i++) {
+            var key = order[i];
+            var cfg = categoryConfig[key];
+            if (!cfg) { continue; }
+            var icon = HOME_ITEM_ICON_BY_TYPE[cfg.baseType] || '💳';
+            var amount = formatHomeCurrency(totals[key] || 0);
+            var safeKey = escapeHtml(key);
+            html += '<div class="category-tile" data-category-key="' + safeKey + '">' +
+                '<div class="category-tile-icon">' + icon + '</div>' +
+                '<div class="category-tile-label">' + escapeHtml(cfg.label || key) + '</div>' +
+                '<div class="category-tile-value">' + amount + '</div>' +
+            '</div>';
+        }
+        return html;
+    }
+
+    function renderCategoryTilesFromRealData() {
+        var order = reconcileCategoryTileOrder();
+        categoryTileTotalsCache = getCategoryMonthlyTotals(items, categoryConfig);
+        var gridEl = document.getElementById('category-tiles-grid');
+        if (gridEl) { gridEl.innerHTML = renderCategoryTileGridHtml(order, categoryTileTotalsCache); }
+    }
+
+    // Only rebuilds the grid from the current in-memory categoryTileOrder/categoryTileTotalsCache
+    // — no reconciliation, no totals recomputation. Used exclusively while a drag is in progress,
+    // so intermediate reorders stay fast and never write to localStorage until the drop.
+    function renderCategoryTileGridOnly() {
+        var gridEl = document.getElementById('category-tiles-grid');
+        if (gridEl) { gridEl.innerHTML = renderCategoryTileGridHtml(categoryTileOrder, categoryTileTotalsCache); }
+    }
+
+    // Click (short press, no drag) on a category tile: navigate to Transactions and filter by that
+    // category. Does not change the active/archived toggle — combines with whichever is currently
+    // selected, matching the approved minimal-scope decision (no forced reset).
+    function filterTransactionsByCategory(key) {
+        currentCategoryFilterKey = key;
+        showScreen('transactions');
+        renderTransactionsScreenFromRealData(getCurrentTxFilterName());
+    }
+
+    function clearCategoryFilter() {
+        currentCategoryFilterKey = null;
+        renderTransactionsScreenFromRealData(getCurrentTxFilterName());
+    }
+
+    // Shows/hides the small "מסונן לפי: X ✕" chip above the Transactions list. Called from inside
+    // renderTransactionsScreenFromRealData() itself, so it always stays in sync with the filter
+    // that function just applied (including the stale-key self-heal at its top).
+    function renderCategoryFilterIndicator() {
+        var el = document.getElementById('category-filter-indicator');
+        if (!el) { return; }
+        if (currentCategoryFilterKey === null || !categoryConfig[currentCategoryFilterKey]) {
+            el.innerHTML = '';
+            return;
+        }
+        var label = categoryConfig[currentCategoryFilterKey].label || currentCategoryFilterKey;
+        el.innerHTML = '<div class="category-filter-chip"><span>מסונן לפי: ' + escapeHtml(label) + '</span>' +
+            '<button type="button" onclick="clearCategoryFilter()">✕</button></div>';
+    }
+
+    // ----- Long-press + drag reordering (Pointer Events cover mouse/touch/pen uniformly) -----
+    //
+    // State machine, per press:
+    //   1. pointerdown on a .category-tile starts a CATEGORY_TILE_LONG_PRESS_MS timer.
+    //   2. If the pointer moves more than CATEGORY_TILE_MOVE_CANCEL_PX before the timer fires,
+    //      the press is cancelled outright — this is a normal scroll/swipe, not a drag attempt,
+    //      and nothing is prevented so the browser's native scrolling proceeds untouched.
+    //   3. If the timer fires first (no significant movement yet), drag mode engages: the tile
+    //      gets a visual '.dragging' class, the grid's touch-action is locked to 'none' (so
+    //      subsequent pointermove can safely preventDefault() and take over from native touch
+    //      scrolling), and further pointermove calls reorder categoryTileOrder in-memory whenever
+    //      the pointer crosses into a different tile's bounding box.
+    //   4. On pointerup/pointercancel: if drag mode was ever engaged, the final order is persisted
+    //      and the click is suppressed entirely (per the "prevent opening a category when the
+    //      action became a drag" requirement) — this holds even for a long-press-then-release
+    //      with no actual movement, since drag mode already engaged. Otherwise (short press,
+    //      released before the timer fired) it's treated as a genuine tap and navigates.
+    var CATEGORY_TILE_LONG_PRESS_MS = 450;
+    var CATEGORY_TILE_MOVE_CANCEL_PX = 10;
+    var categoryTilePress = null;
+
+    function getCategoryTileIndexAtPoint(clientX, clientY) {
+        var tiles = document.querySelectorAll('#category-tiles-grid .category-tile');
+        for (var i = 0; i < tiles.length; i++) {
+            var rect = tiles[i].getBoundingClientRect();
+            if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    function cleanupCategoryTilePressListeners() {
+        document.removeEventListener('pointermove', onCategoryTilePointerMove);
+        document.removeEventListener('pointerup', onCategoryTilePointerUp);
+        document.removeEventListener('pointercancel', onCategoryTilePointerUp);
+    }
+
+    function onCategoryTilePointerDown(e) {
+        var tileEl = e.target.closest ? e.target.closest('.category-tile') : null;
+        if (!tileEl) { return; }
+        var key = tileEl.getAttribute('data-category-key');
+        if (!key) { return; }
+
+        categoryTilePress = {
+            key: key,
+            pointerId: e.pointerId,
+            startX: e.clientX,
+            startY: e.clientY,
+            dragging: false,
+            tileEl: tileEl,
+            timerId: null
+        };
+        categoryTilePress.timerId = setTimeout(function () {
+            if (!categoryTilePress) { return; }
+            categoryTilePress.dragging = true;
+            if (categoryTilePress.tileEl) { categoryTilePress.tileEl.classList.add('dragging'); }
+            var gridEl = document.getElementById('category-tiles-grid');
+            if (gridEl) { gridEl.style.touchAction = 'none'; }
+        }, CATEGORY_TILE_LONG_PRESS_MS);
+
+        document.addEventListener('pointermove', onCategoryTilePointerMove);
+        document.addEventListener('pointerup', onCategoryTilePointerUp);
+        document.addEventListener('pointercancel', onCategoryTilePointerUp);
+    }
+
+    function onCategoryTilePointerMove(e) {
+        if (!categoryTilePress || e.pointerId !== categoryTilePress.pointerId) { return; }
+
+        if (!categoryTilePress.dragging) {
+            var dx = e.clientX - categoryTilePress.startX;
+            var dy = e.clientY - categoryTilePress.startY;
+            if (Math.sqrt(dx * dx + dy * dy) > CATEGORY_TILE_MOVE_CANCEL_PX) {
+                // Moved before the long-press engaged: a normal scroll/swipe, not a drag attempt.
+                // Nothing was prevented, so native scrolling already proceeded on its own.
+                clearTimeout(categoryTilePress.timerId);
+                categoryTilePress = null;
+                cleanupCategoryTilePressListeners();
+            }
+            return;
+        }
+
+        // Drag mode is active: take over from native touch scrolling.
+        e.preventDefault();
+
+        var fromIndex = categoryTileOrder.indexOf(categoryTilePress.key);
+        var toIndex = getCategoryTileIndexAtPoint(e.clientX, e.clientY);
+        if (fromIndex === -1 || toIndex === -1 || toIndex === fromIndex) { return; }
+
+        categoryTileOrder.splice(fromIndex, 1);
+        categoryTileOrder.splice(toIndex, 0, categoryTilePress.key);
+        renderCategoryTileGridOnly();
+
+        var refreshedEl = document.querySelector('#category-tiles-grid .category-tile[data-category-key="' + categoryTilePress.key + '"]');
+        if (refreshedEl) {
+            refreshedEl.classList.add('dragging');
+            categoryTilePress.tileEl = refreshedEl;
+        }
+    }
+
+    function onCategoryTilePointerUp(e) {
+        if (!categoryTilePress || e.pointerId !== categoryTilePress.pointerId) { return; }
+
+        var wasDragging = categoryTilePress.dragging;
+        var key = categoryTilePress.key;
+
+        clearTimeout(categoryTilePress.timerId);
+        if (categoryTilePress.tileEl) { categoryTilePress.tileEl.classList.remove('dragging'); }
+        var gridEl = document.getElementById('category-tiles-grid');
+        if (gridEl) { gridEl.style.touchAction = ''; }
+
+        categoryTilePress = null;
+        cleanupCategoryTilePressListeners();
+
+        if (wasDragging) {
+            saveCategoryTileOrder(categoryTileOrder);
+            return;
+        }
+
+        filterTransactionsByCategory(key);
+    }
+
+    // Registered once on the stable grid container (not on individual tiles, which are destroyed
+    // and recreated on every render) — the same delegation pattern already used elsewhere in this
+    // file (e.g. the document-level 'click' listener that closes row menus).
+    (function () {
+        var gridEl = document.getElementById('category-tiles-grid');
+        if (gridEl) { gridEl.addEventListener('pointerdown', onCategoryTilePointerDown); }
+    })();
 
     function renderAllPreviewScreens() {
         renderHomeScreenFromRealData();
