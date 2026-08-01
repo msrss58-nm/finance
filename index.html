@@ -120,6 +120,25 @@
     }
     .category-tile-value { font-size: 13.5px; font-weight: 700; margin-top: 4px; direction: ltr; unicode-bidi: isolate; }
 
+    /* ===== Version 1.1, Stage 3.5: computed "stat" tiles (יתרת תשלומים שונים / יתרת הלוואות) — =====
+       ===== deliberately their own class, NOT .category-tile, so the Stage 1 drag-reorder      =====
+       ===== pointerdown handler's `.category-tile` matching (and its index math against          =====
+       ===== categoryTileOrder) never sees them — these tiles are not categories and are never     =====
+       ===== draggable/reorderable. A few properties are intentionally duplicated from             =====
+       ===== .category-tile rather than sharing that selector, to keep this isolation total. Their =====
+       ===== .category-tile-icon/-label/-value children reuse those existing classes as-is. */
+    .stat-tile {
+        background: var(--color-surface); border-radius: 12px; padding: 12px 6px;
+        text-align: center; box-shadow: var(--shadow);
+        cursor: pointer; user-select: none; -webkit-user-select: none;
+    }
+    .stat-tile-toggle { display: flex; justify-content: center; gap: 4px; margin-top: 6px; }
+    .stat-tile-toggle-btn {
+        font-size: 9.5px; padding: 2px 8px; border-radius: 8px; border: 1px solid var(--color-border);
+        background: var(--color-bg); color: var(--color-text-muted); cursor: pointer; font-family: inherit;
+    }
+    .stat-tile-toggle-btn.active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+
     /* ===== Version 1.1, Stage 1: active category-filter chip on the Transactions screen ===== */
     .category-filter-chip {
         display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -458,7 +477,7 @@
                 <div class="value" id="snapshot-income"></div>
             </div>
             <div class="snapshot-card expenses">
-                <div class="label">הוצאות</div>
+                <div class="label">סך הכול הוצאות</div>
                 <div class="value" id="snapshot-expenses"></div>
             </div>
         </div>
@@ -1046,6 +1065,81 @@
         return { totalRemaining: totalRemaining, loanCount: loanCount };
     }
 
+    // Version 1.1, Stage 3.5: "יתרת תשלומים שונים" stat tile — sum of every active (non-archived)
+    // variable item's remaining installments (amount × payments left). Mirrors
+    // getLoansRemainingSummary()'s own totalRemaining accumulation immediately above, just for
+    // type 'variable' instead of 'loan', and reuses the same billing-day convention (1) already
+    // established for variable items in getCategoryMonthlyTotals() — no new date arithmetic.
+    function getVariableRemainingBalance(items) {
+        var total = 0;
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            if (it.type === 'variable' && !it.isArchived) {
+                var dt = parseDatesAndGetLeft(it.start, it.total, 1);
+                total += it.amount * dt.left;
+            }
+        }
+        return total;
+    }
+
+    // Version 1.1, Stage 3.5: "יתרת הלוואות" stat tile — two aggregate figures across every active
+    // loan: `total` (קרן + ריבית — everything still scheduled to be paid) is the exact same
+    // amount×left accumulation getLoansRemainingSummary().totalRemaining already computes, reused
+    // as-is here rather than duplicated. `principal` (קרן בלבד) is new: the outstanding loan
+    // balance after `elapsed` real payments of the loan's own recorded `amount` — the standard
+    // fixed-payment amortization recursion
+    //   B_k = P·(1+r)^k − amount·[(1+r)^k − 1] / r
+    // where P = item.originalAmount, r = the monthly rate derived from item.interest (annual %, so
+    // r = interest/100/12), and k = elapsed payments already made (item.total − dt.left). A loan
+    // with no/zero/invalid interest (r = 0) falls back to straight-line reduction — P − amount·k.
+    //
+    // Bug fixed after review (caught before this stage's commit): the first version of this
+    // formula derived principal from originalAmount/interest/total ALONE — P·[(1+r)^n−(1+r)^k] /
+    // [(1+r)^n−1] — which never actually reads item.amount, so it silently assumed the recorded
+    // payment already happened to be the theoretically exact one needed to amortize P at r over
+    // exactly n installments. This app never enforces that (amount/originalAmount/interest/total
+    // are 4 independently hand-entered fields — updateCategoryName-style forms, no cross-
+    // validation anywhere), so for a real loan whose recorded payment is smaller than that
+    // theoretical figure, the old formula could report a "קרן" larger than "סה"כ" (amount×left) —
+    // i.e. a principal that exceeds everything left to pay, principal+interest included, which is
+    // never possible for a real loan. The fixed formula above uses the loan's own `amount` (the
+    // same value `total` is built from) instead of assuming a theoretical one, so both figures
+    // describe the same actual payment stream. `remainingPrincipal` is additionally capped at that
+    // loan's own `amount × dt.left` as a hard safety net — principal can never be MORE than
+    // everything left to pay, by definition — for the (still-possible, given 4 unvalidated fields)
+    // case where the recorded amount/interest/total genuinely don't amortize the loan by schedule.
+    function getLoansBalanceSummary(items) {
+        var principal = 0;
+        var total = 0;
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            if (it.type !== 'loan' || it.isArchived) { continue; }
+            var dt = parseDatesAndGetLeft(it.start, it.total, it.day);
+            var loanTotalRemaining = it.amount * dt.left;
+            total += loanTotalRemaining;
+
+            var n = parseInt(it.total, 10);
+            if (!n || n <= 0 || dt.left <= 0) { continue; }
+            var originalAmount = (typeof it.originalAmount === 'number' && !isNaN(it.originalAmount)) ? it.originalAmount : 0;
+            var elapsed = n - dt.left;
+            if (elapsed < 0) { elapsed = 0; }
+
+            var annualRatePct = parseFloat(it.interest);
+            var monthlyRate = (isFinite(annualRatePct) && annualRatePct > 0) ? (annualRatePct / 100 / 12) : 0;
+            var remainingPrincipal;
+            if (monthlyRate > 0) {
+                var growth = Math.pow(1 + monthlyRate, elapsed);
+                remainingPrincipal = originalAmount * growth - it.amount * (growth - 1) / monthlyRate;
+            } else {
+                remainingPrincipal = originalAmount - it.amount * elapsed;
+            }
+            if (remainingPrincipal < 0) { remainingPrincipal = 0; }
+            if (remainingPrincipal > loanTotalRemaining) { remainingPrincipal = loanTotalRemaining; }
+            principal += remainingPrincipal;
+        }
+        return { principal: principal, total: total };
+    }
+
     // ----- Stage D.6 Part B: real implementations, built only on top of computeForecast()/  -----
     // ----- getBillingRange()/isBillingActiveInMonth() (all copied verbatim above) — no new  -----
     // ----- date arithmetic invented here.                                                   -----
@@ -1555,6 +1649,39 @@
     var categoryTileOrder = [];
     var categoryTileTotalsCache = {};
 
+    // Version 1.1, Stage 3.5: the two new computed "stat" tiles (יתרת תשלומים שונים / יתרת
+    // הלוואות) reuse the same cache-once-per-full-render convention as categoryTileTotalsCache
+    // above — recomputed only in renderCategoryTilesFromRealData(), then read as-is by
+    // renderCategoryTileGridHtml() on every lightweight drag re-render (renderCategoryTileGridOnly),
+    // so dragging a real category tile never re-triggers these calculations. Declared here (before
+    // any render call) for the same var-hoisting reason as CATEGORY_TILE_ORDER_KEY above.
+    var categoryTileVariableRemainingCache = 0;
+    var categoryTileLoanBalanceCache = { principal: 0, total: 0 };
+
+    // Version 1.1, Stage 3.5: which value the "יתרת הלוואות" stat tile's small toggle currently
+    // shows — 'principal' (קרן בלבד) or 'total' (קרן + ריבית, the full remaining amount). Its own
+    // new localStorage key, independent of DATA_KEY/CONFIG_KEY/CATEGORY_TILE_ORDER_KEY, per the
+    // task's explicit "מפתח חדש עבור מצב המתג" allowance. Declared/loaded here (before the first
+    // Home render) for the same reason as categoryTileOrder above.
+    var LOAN_BALANCE_VIEW_KEY = 'family_finance_loan_balance_view';
+    var loanBalanceView = loadLoanBalanceView();
+    // Version 1.1, Stage 3.5: strips a leading emoji (+ its trailing space) from a category's
+    // stored label for Home-tile display ONLY — categoryConfig[key].label itself (used everywhere
+    // else: Settings, the category page, add-transaction forms) is never touched or persisted
+    // differently. Every built-in/custom label in this app is built as "emoji + space + name"
+    // (DEFAULT_CATEGORY_CONFIG_JSON, addPreviewCategory()'s pickEmojiForCategory()), so a leading
+    // run of pictographic/ZWJ/variation-selector characters is always exactly the prefix to drop.
+    var HOME_TILE_LEADING_EMOJI_RE = /^[\p{Extended_Pictographic}\u200D\uFE0F]+\s*/u;
+
+    // Version 1.1, Stage 3.5: presentation-only Home-tile label overrides for the two built-in
+    // categories whose dashboard wording changed ("יורד החודש – ...") — categoryConfig itself keeps
+    // its normal label (Settings/category page/forms are unaffected). Every other category
+    // (including 'fixed' and any custom category) just shows its normal label, emoji stripped.
+    var HOME_TILE_LABEL_OVERRIDE_BY_KEY = {
+        variable: 'יורד החודש – תשלומים שונים',
+        loan: 'יורד החודש – הלוואות'
+    };
+
     // =====================================================================================
     // ===== Stage 3ב.1/3ב.2: category management state. Declared here (with items/          =====
     // ===== categoryConfig above and previewEditingId/previewAddMode) rather than down next  =====
@@ -2006,15 +2133,37 @@
         try { localStorage.setItem(CATEGORY_TILE_ORDER_KEY, JSON.stringify(order)); } catch (e) { console.log('שגיאה בשמירת סדר אריחי קטגוריות'); }
     }
 
+    // Version 1.1, Stage 3.5: persists the "יתרת הלוואות" stat tile's toggle choice (קרן/סה"כ)
+    // under its own dedicated key — never mixed into DATA_KEY/CONFIG_KEY/CATEGORY_TILE_ORDER_KEY.
+    // Any stored value other than the literal 'principal' falls back to 'total' (also the default
+    // for a first-ever visit, matching the metric this Home screen already showed before this
+    // stage via getLoansRemainingSummary — the new "principal-only" breakdown is the one the user
+    // has to opt into).
+    function loadLoanBalanceView() {
+        try {
+            return (localStorage.getItem(LOAN_BALANCE_VIEW_KEY) === 'principal') ? 'principal' : 'total';
+        } catch (e) {
+            return 'total';
+        }
+    }
+
+    function saveLoanBalanceView(view) {
+        try { localStorage.setItem(LOAN_BALANCE_VIEW_KEY, view); } catch (e) { console.log('שגיאה בשמירת מצב תצוגת יתרת הלוואות'); }
+    }
+
     // Reconciles the persisted order against the current categoryConfig: a category present in
     // categoryConfig but missing from the saved order (new category) is appended at the end, in
     // Object.keys(categoryConfig) order; a key present in the saved order but no longer in
     // categoryConfig (deleted category) is dropped. Persists the reconciled order back only when
     // it actually differs from what was stored, so a normal render with nothing to reconcile never
-    // triggers an extra write.
+    // triggers an extra write. Version 1.1, Stage 3.5: 'income' is excluded from validKeys — its
+    // Home tile was removed by product decision (the hero/snapshot cards already show income), so
+    // it self-heals out of any previously-saved order the same way a deleted category already did,
+    // and is never re-added even though it still exists (and stays fully usable) in categoryConfig
+    // itself — Settings and its own category page are untouched by this exclusion.
     function reconcileCategoryTileOrder() {
         var stored = loadCategoryTileOrder();
-        var validKeys = Object.keys(categoryConfig || {});
+        var validKeys = Object.keys(categoryConfig || {}).filter(function (k) { return k !== 'income'; });
         var validSet = {};
         for (var i = 0; i < validKeys.length; i++) { validSet[validKeys[i]] = true; }
 
@@ -2035,23 +2184,81 @@
         return reconciled;
     }
 
+    function getHomeTileDisplayLabel(key, cfg) {
+        if (HOME_TILE_LABEL_OVERRIDE_BY_KEY[key]) { return HOME_TILE_LABEL_OVERRIDE_BY_KEY[key]; }
+        var label = (cfg && typeof cfg.label === 'string' && cfg.label) ? cfg.label : key;
+        return label.replace(HOME_TILE_LEADING_EMOJI_RE, '');
+    }
+
+    // Version 1.1, Stage 3.5, item 6 ("הכנה לעתיד"): both new stat tiles already call this single
+    // handler on click, so a future stage can open a detail screen per `statId` without touching
+    // this stage's markup/CSS again. Deliberately empty for now — no action, no message, no
+    // navigation.
+    function handleStatTileClick(statId) {
+    }
+
+    // Version 1.1, Stage 3.5: "יתרת תשלומים שונים" — a plain, non-draggable .stat-tile (see its CSS
+    // comment for why it's not .category-tile), rendered immediately after the 'variable' category
+    // tile so it always sits next to it regardless of drag history.
+    function buildVariableRemainingStatTileHtml() {
+        var amount = formatHomeCurrency(categoryTileVariableRemainingCache);
+        return '<div class="stat-tile" onclick="handleStatTileClick(\'variable-remaining\')">' +
+            '<div class="category-tile-icon"></div>' +
+            '<div class="category-tile-label">יתרת תשלומים שונים</div>' +
+            '<div class="category-tile-value">' + amount + '</div>' +
+        '</div>';
+    }
+
+    // Version 1.1, Stage 3.5: "יתרת הלוואות" — same non-draggable .stat-tile treatment, plus a
+    // small קרן/סה"כ toggle. The toggle buttons stop propagation so tapping them never also fires
+    // the tile's own (currently no-op) click handler, same convention already used elsewhere in
+    // this file for a nested button inside a clickable row/card.
+    function buildLoanBalanceStatTileHtml() {
+        var isPrincipal = (loanBalanceView === 'principal');
+        var shownAmount = isPrincipal ? categoryTileLoanBalanceCache.principal : categoryTileLoanBalanceCache.total;
+        var amount = formatHomeCurrency(shownAmount);
+        return '<div class="stat-tile" onclick="handleStatTileClick(\'loan-balance\')">' +
+            '<div class="category-tile-icon"></div>' +
+            '<div class="category-tile-label">יתרת הלוואות</div>' +
+            '<div class="category-tile-value">' + amount + '</div>' +
+            '<div class="stat-tile-toggle">' +
+            '<button type="button" class="stat-tile-toggle-btn' + (isPrincipal ? ' active' : '') + '" onclick="event.stopPropagation(); setLoanBalanceView(\'principal\')">קרן</button>' +
+            '<button type="button" class="stat-tile-toggle-btn' + (!isPrincipal ? ' active' : '') + '" onclick="event.stopPropagation(); setLoanBalanceView(\'total\')">סה"כ</button>' +
+            '</div></div>';
+    }
+
+    // Version 1.1, Stage 3.5: switches the "יתרת הלוואות" tile's toggle and persists the choice.
+    // Reuses renderCategoryTileGridOnly() (Stage 1) as-is to redraw the grid from the already-
+    // cached order/totals — this toggle never changes which categories are shown or their amounts,
+    // so no reconciliation or recomputation is needed.
+    function setLoanBalanceView(view) {
+        loanBalanceView = (view === 'principal') ? 'principal' : 'total';
+        saveLoanBalanceView(loanBalanceView);
+        renderCategoryTileGridOnly();
+    }
+
     // Builds the grid markup for a given order + totals snapshot — used both by the full render
     // below and by the lightweight in-drag re-render, which reuses the same cached totals rather
-    // than recomputing them on every pointermove.
+    // than recomputing them on every pointermove. Version 1.1, Stage 3.5: no longer renders any
+    // emoji (the icon circle is kept, empty, to preserve the tile's existing layout/design exactly
+    // — only its emoji content is dropped); inserts the two new stat tiles right after their
+    // sibling category ('variable'/'loan') regardless of where those fall in `order`.
     function renderCategoryTileGridHtml(order, totals) {
         var html = '';
         for (var i = 0; i < order.length; i++) {
             var key = order[i];
             var cfg = categoryConfig[key];
             if (!cfg) { continue; }
-            var icon = HOME_ITEM_ICON_BY_TYPE[cfg.baseType] || '💳';
             var amount = formatHomeCurrency(totals[key] || 0);
             var safeKey = escapeHtml(key);
+            var label = getHomeTileDisplayLabel(key, cfg);
             html += '<div class="category-tile" data-category-key="' + safeKey + '">' +
-                '<div class="category-tile-icon">' + icon + '</div>' +
-                '<div class="category-tile-label">' + escapeHtml(cfg.label || key) + '</div>' +
+                '<div class="category-tile-icon"></div>' +
+                '<div class="category-tile-label">' + escapeHtml(label) + '</div>' +
                 '<div class="category-tile-value">' + amount + '</div>' +
             '</div>';
+            if (key === 'variable') { html += buildVariableRemainingStatTileHtml(); }
+            if (key === 'loan') { html += buildLoanBalanceStatTileHtml(); }
         }
         return html;
     }
@@ -2059,6 +2266,8 @@
     function renderCategoryTilesFromRealData() {
         var order = reconcileCategoryTileOrder();
         categoryTileTotalsCache = getCategoryMonthlyTotals(items, categoryConfig);
+        categoryTileVariableRemainingCache = getVariableRemainingBalance(items);
+        categoryTileLoanBalanceCache = getLoansBalanceSummary(items);
         var gridEl = document.getElementById('category-tiles-grid');
         if (gridEl) { gridEl.innerHTML = renderCategoryTileGridHtml(order, categoryTileTotalsCache); }
     }
