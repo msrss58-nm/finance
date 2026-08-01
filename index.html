@@ -497,7 +497,7 @@
 
     <!-- ===== מסך 2: תנועות ===== -->
     <div class="screen" id="screen-transactions">
-        <div class="section-title" style="margin-top:4px;">תנועות</div>
+        <div class="section-title" style="margin-top:4px;" id="transactions-screen-title">תנועות</div>
         <!-- Stage G.5: dedicated add-transaction form area, empty by default. Populated only when
              previewAddMode !== null (see renderAddFormArea() in the script). -->
         <div id="preview-add-form-area"></div>
@@ -2044,6 +2044,19 @@
     // file where renderTxListWithActions() is actually invoked. renderHomeScreenFromRealData()
     // (recent-activity-list) still calls plain renderTxList() and is completely untouched, so the
     // ⋮ menu appears on the Transactions screen only, per the approved decision.
+    // Version 1.1, Stage 3.6: the Transactions screen's own title reflects whether it's currently
+    // a category page or the general list — "תנועות" with no filter, the category's own label
+    // (emoji included, unlike the Home tiles' stripped display) while one is active. Called from
+    // inside renderTransactionsScreenFromRealData(), after that function's own stale-filter
+    // self-heal, so this never shows a deleted category's name.
+    function updateTransactionsScreenTitle() {
+        var titleEl = document.getElementById('transactions-screen-title');
+        if (!titleEl) { return; }
+        var cfg = (currentCategoryFilterKey !== null) ? categoryConfig[currentCategoryFilterKey] : null;
+        var label = (cfg && typeof cfg.label === 'string' && cfg.label) ? cfg.label : currentCategoryFilterKey;
+        titleEl.textContent = cfg ? label : 'תנועות';
+    }
+
     function renderTransactionsScreenFromRealData(filterName) {
         // Version 1.1, Stage 1: self-heal a stale category filter (e.g. the category was deleted
         // from Settings in the meantime) — categoryHasPreviewItems() already blocks deleting a
@@ -2052,6 +2065,7 @@
         if (currentCategoryFilterKey !== null && !categoryConfig[currentCategoryFilterKey]) {
             currentCategoryFilterKey = null;
         }
+        updateTransactionsScreenTitle();
 
         var wantArchived = (filterName === 'archived');
         var filtered = items.filter(function (it) {
