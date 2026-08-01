@@ -350,7 +350,11 @@
         display: flex; justify-content: space-between; align-items: center;
         background: var(--color-surface); border-radius: 12px; padding: 12px 14px;
         margin-bottom: 8px; box-shadow: var(--shadow);
+        /* Version 1.1, Stage 2: the row itself is now clickable (toggleCategoryRowExpanded()) to
+           reveal its ✏️/🗑️ actions — border-color transition gives a subtle cue when expanded. */
+        cursor: pointer; border: 1px solid transparent; transition: border-color .12s ease;
     }
+    .category-row.expanded { border-color: var(--color-primary); }
     .cat-label { font-size: 14px; }
 
     /* ===== Stage 3ב.2: category-row action buttons + add-category toggle. Deliberately small,
@@ -539,7 +543,12 @@
 </div>
 
 <!-- ===== כפתור הוספה צף ===== -->
-<button type="button" class="fab" onclick="toggleQuickActions()">+</button>
+<!-- Version 1.1, Stage 2: hidden on the Home screen only (showScreen() toggles this); style="display:
+     none" here matches the default active screen (Home) in the static markup above — every other
+     screen shows it via showScreen(). handleFabClick() below decides whether a click opens the
+     normal Quick Actions sheet or, when a category filter is active on the Transactions screen,
+     the existing add-transaction form pre-filled for that category. -->
+<button type="button" class="fab" id="fab-button" style="display:none;" onclick="handleFabClick()">+</button>
 
 <!-- ===== חלונית פעולות מהירות (חזותי בלבד בשלב זה) ===== -->
 <div class="quick-actions-overlay" id="quick-actions-overlay" onclick="toggleQuickActions(false)">
@@ -765,6 +774,11 @@
         var navBtns = document.querySelectorAll('.nav-btn');
         for (var j = 0; j < navBtns.length; j++) { navBtns[j].classList.remove('active'); }
         document.getElementById('nav-' + name).classList.add('active');
+
+        // Version 1.1, Stage 2: the floating + button is hidden on Home only — every other screen
+        // shows it (matches its pre-Stage-2 behavior everywhere except Home).
+        var fabEl = document.getElementById('fab-button');
+        if (fabEl) { fabEl.style.display = (name === 'home') ? 'none' : 'flex'; }
     }
 
     // ===== Transactions filter toggle — visual only, does not filter the mock list =====
@@ -787,6 +801,24 @@
         var isOpen = overlay.classList.contains('open');
         var shouldOpen = (typeof forceState === 'boolean') ? forceState : !isOpen;
         if (shouldOpen) { overlay.classList.add('open'); } else { overlay.classList.remove('open'); }
+    }
+
+    // Version 1.1, Stage 2: the single FAB now has two behaviors depending on context. While
+    // actually looking at a category's filtered transaction list (Transactions screen +
+    // currentCategoryFilterKey set — i.e. a "category view"), it skips the generic Quick Actions
+    // sheet entirely and opens the existing add-transaction form directly for that category
+    // (startPreviewAddForCategory() below, defined once startPreviewAdd()/buildPreviewAddFormHtml()
+    // exist further down — safe due to function hoisting, same pattern used throughout this file).
+    // Everywhere else (Transactions screen with no category filter, Insights, Settings) it falls
+    // back to the original toggleQuickActions() behavior, unchanged.
+    function handleFabClick() {
+        var txScreenEl = document.getElementById('screen-transactions');
+        var onCategoryView = !!(txScreenEl && txScreenEl.classList.contains('active') && currentCategoryFilterKey !== null && categoryConfig[currentCategoryFilterKey]);
+        if (onCategoryView) {
+            startPreviewAddForCategory(currentCategoryFilterKey);
+        } else {
+            toggleQuickActions();
+        }
     }
 
     renderMockUI();
@@ -1564,13 +1596,23 @@
     var previewCategoryAddOpen = false;
     var previewDeletingCategoryKey = null;
 
+    // Version 1.1, Stage 2: which category row (if any) is currently "expanded" — i.e. showing its
+    // ✏️ עריכה/🗑️ מחיקה action buttons. Collapsed (null) is the default for every row; a normal
+    // row click toggles this (toggleCategoryRowExpanded() below). A single scalar, so expanding one
+    // row automatically collapses whichever other row was previously expanded — never persisted,
+    // always resets to null on page load, same as every other Settings UI-only state here.
+    var previewExpandedCategoryKey = null;
+
     // Enforces "only one category form open at a time" (rename OR add OR delete-confirmation, not
     // several at once) — same convention already applied between previewAddMode/previewEditingId
-    // on the Transactions screen. Called at the start of every "open a form" action below.
+    // on the Transactions screen. Called at the start of every "open a form" action below. Also
+    // collapses any expanded row (Version 1.1, Stage 2) — e.g. opening "+ הוסף קטגוריה" while a
+    // different row's actions are showing tidies that row back up too.
     function resetPreviewCategoryFormsState() {
         previewEditingCategoryKey = null;
         previewCategoryAddOpen = false;
         previewDeletingCategoryKey = null;
+        previewExpandedCategoryKey = null;
     }
 
     // =====================================================================================
@@ -2039,9 +2081,12 @@
         renderTransactionsScreenFromRealData(getCurrentTxFilterName());
     }
 
-    // Shows/hides the small "מסונן לפי: X ✕" chip above the Transactions list. Called from inside
-    // renderTransactionsScreenFromRealData() itself, so it always stays in sync with the filter
-    // that function just applied (including the stale-key self-heal at its top).
+    // Shows/hides the small category-name + monthly-total chip above the Transactions list —
+    // this IS the "category view" header from Version 1.1, Stage 2's requirement 2 (name + monthly
+    // summary). Called from inside renderTransactionsScreenFromRealData() itself, so it always
+    // stays in sync with the filter that function just applied (including the stale-key self-heal
+    // at its top). The monthly total is computed fresh via the existing getCategoryMonthlyTotals()
+    // (Stage 1) — no new calculation logic, same figures the Home tile for this category shows.
     function renderCategoryFilterIndicator() {
         var el = document.getElementById('category-filter-indicator');
         if (!el) { return; }
@@ -2050,7 +2095,8 @@
             return;
         }
         var label = categoryConfig[currentCategoryFilterKey].label || currentCategoryFilterKey;
-        el.innerHTML = '<div class="category-filter-chip"><span>מסונן לפי: ' + escapeHtml(label) + '</span>' +
+        var monthlyTotal = getCategoryMonthlyTotals(items, categoryConfig)[currentCategoryFilterKey] || 0;
+        el.innerHTML = '<div class="category-filter-chip"><span>' + escapeHtml(label) + ' — סה"כ החודש: ' + formatHomeCurrency(monthlyTotal) + '</span>' +
             '<button type="button" onclick="clearCategoryFilter()">✕</button></div>';
     }
 
@@ -2569,6 +2615,23 @@
         renderAddFormArea();
     }
 
+    // Version 1.1, Stage 2: opens the SAME add-transaction form as startPreviewAdd()/
+    // chooseExpenseAddType() — no new add mechanism — but goes straight to the concrete baseType
+    // form for the given category (skipping both the Quick Actions sheet and the fixed/variable/
+    // dated picker, since the category already tells us the type). previewAddCategoryKey is
+    // pre-set to `key`, so buildPreviewAddFormHtml()'s existing category <select> (shown only when
+    // more than one category shares that baseType) opens with this category already selected —
+    // the user can still change it via that same existing dropdown, exactly as before. Called only
+    // while already on the Transactions screen showing this category's filtered list (see
+    // handleFabClick() above), so no navigation here. Unknown key is a strict no-op.
+    function startPreviewAddForCategory(key) {
+        if (!categoryConfig[key]) { return; }
+        previewEditingId = null;
+        previewAddMode = categoryConfig[key].baseType;
+        previewAddCategoryKey = key;
+        renderAddFormArea();
+    }
+
     // Called from the expense-type picker's 3 buttons. A baseType with no matching category
     // (only possible for 'dated' — see buildPreviewAddFormHtml()'s picker markup, which disables
     // that button entirely in this case) is a strict no-op: the picker's own disabled state should
@@ -3007,6 +3070,9 @@
         var ok = renamePreviewCategory(key, newLabel);
         if (!ok) { alert('נא להזין שם לקטגוריה'); return; }
         previewEditingCategoryKey = null;
+        // Version 1.1, Stage 2: collapse the row's action buttons back after a successful rename —
+        // on failure (handled above via early return) the form stays open, untouched.
+        previewExpandedCategoryKey = null;
         renderSettingsScreenFromRealData();
     }
 
@@ -3038,7 +3104,12 @@
     function confirmPreviewDeleteCategory(key) {
         var result = deletePreviewCategory(key);
         previewDeletingCategoryKey = null;
-        if (result.success) { return; }
+        if (result.success) {
+            // Version 1.1, Stage 2: the row (and its expanded action buttons) is gone entirely on
+            // success, so there's nothing left to keep expanded.
+            previewExpandedCategoryKey = null;
+            return;
+        }
         if (result.reason === PREVIEW_CATEGORY_DELETE_BLOCKED_REASON.BUILT_IN) {
             alert('לא ניתן למחוק קטגוריה מובנית.');
         } else if (result.reason === PREVIEW_CATEGORY_DELETE_BLOCKED_REASON.HAS_ITEMS) {
@@ -3047,10 +3118,20 @@
         renderSettingsScreenFromRealData();
     }
 
-    // Builds the markup for a single category row, in one of 3 mutually-exclusive states driven
-    // by the module-level state above: delete-confirmation, rename form, or the normal row with
-    // action buttons. A missing/non-string label falls back to the key itself, same safety net
-    // Stage E.1's original version already had.
+    // Version 1.1, Stage 2: toggles whether a category row shows its ✏️ עריכה/🗑️ מחיקה action
+    // buttons — "expanded". Clicking an already-expanded row collapses it back (a single scalar
+    // variable, so expanding one row implicitly collapses whichever other row was expanded before).
+    // Unknown key is a strict no-op (nothing to expand). Never touches items/categoryConfig.
+    function toggleCategoryRowExpanded(key) {
+        if (!categoryConfig[key]) { return; }
+        previewExpandedCategoryKey = (previewExpandedCategoryKey === key) ? null : key;
+        renderSettingsScreenFromRealData();
+    }
+
+    // Builds the markup for a single category row, in one of 4 mutually-exclusive states driven by
+    // the module-level state above: delete-confirmation, rename form, expanded (showing action
+    // buttons), or collapsed (label only, clickable to expand). A missing/non-string label falls
+    // back to the key itself, same safety net Stage E.1's original version already had.
     function buildPreviewCategoryRowHtml(key) {
         var cfg = categoryConfig[key];
         var label = (cfg && typeof cfg.label === 'string' && cfg.label) ? cfg.label : key;
@@ -3074,13 +3155,23 @@
                 '</div></div>';
         }
 
-        var actionsHtml = '<button type="button" class="cat-edit-btn" onclick="startPreviewEditCategory(\'' + key + '\')">✏️ עריכה</button>';
-        if (!isBuiltInPreviewCategoryKey(key)) {
-            actionsHtml += '<button type="button" class="cat-delete-btn" onclick="startPreviewDeleteCategory(\'' + key + '\')">🗑️ מחיקה</button>';
+        // Version 1.1, Stage 2: ✏️ עריכה/🗑️ מחיקה only render once this row is expanded — clicking
+        // the row itself (not a nested button) toggles that. event.stopPropagation() on the buttons
+        // (same convention already used for .quick-actions-sheet's own onclick) keeps a button click
+        // from also bubbling up to the row's onclick and immediately re-collapsing it.
+        var isExpanded = (previewExpandedCategoryKey === key);
+        var actionsHtml = '';
+        if (isExpanded) {
+            actionsHtml = '<div class="cat-row-actions">' +
+                '<button type="button" class="cat-edit-btn" onclick="event.stopPropagation(); startPreviewEditCategory(\'' + key + '\')">✏️ עריכה</button>';
+            if (!isBuiltInPreviewCategoryKey(key)) {
+                actionsHtml += '<button type="button" class="cat-delete-btn" onclick="event.stopPropagation(); startPreviewDeleteCategory(\'' + key + '\')">🗑️ מחיקה</button>';
+            }
+            actionsHtml += '</div>';
         }
-        return '<div class="category-row">' +
+        return '<div class="category-row' + (isExpanded ? ' expanded' : '') + '" onclick="toggleCategoryRowExpanded(\'' + key + '\')">' +
             '<div class="cat-label">' + escapeHtml(label) + '</div>' +
-            '<div class="cat-row-actions">' + actionsHtml + '</div>' +
+            actionsHtml +
             '</div>';
     }
 
