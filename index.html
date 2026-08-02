@@ -209,6 +209,13 @@
         background: var(--color-bg); color: var(--color-text); outline: none;
     }
 
+    /* Version 1.1, Stage 4.0.2.1: applied only to active-item rows in renderTxListWithActions()
+       (never in plain renderTxList()'s Home rows, and never on an archived row — editing stays
+       exactly as restricted as before, this only changes how it's triggered). Signals the row
+       itself is now the click target for opening its edit form. */
+    .tx-row.tx-row-clickable { cursor: pointer; }
+    .tx-row.tx-row-clickable:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+
     /* Dropdown panel: position:absolute removes it from document flow entirely, so its own
        content height can never affect .tx-row's height or push neighboring rows — it simply
        floats over whatever content is already there. top:100% + left:0 anchors it just below
@@ -716,13 +723,23 @@
             // onclick or any JS string — data-item-id is the only place it appears, as plain
             // attribute text, exactly as required.
             var safeId = escapeHtml(String(t.id));
-            // Stage G.4: "✏️ עריכה" is only offered for active items (product decision 1א) — an
-            // archived row's dropdown still shows exactly "שחזר" + "מחק לצמיתות", unchanged from
-            // Stage G.3. Placed first in the dropdown to match index.html's own button order
-            // (עריכה, then archive/restore, then delete).
-            var editMenuItemHtml = t.isArchived ? '' :
-                '<button type="button" class="tx-menu-item" data-item-id="' + safeId + '" onclick="handleEditMenuAction(this)">✏️ עריכה</button>';
-            html += '<div class="tx-row">' +
+            // Version 1.1, Stage 4.0.2.1: the "✏️ עריכה" dropdown item is removed entirely — the
+            // row itself is now the edit trigger (see rowOpenAttrs below). Editing is still only
+            // available for active items (same "product decision 1א" restriction this dropdown
+            // item used to enforce by simply not existing for archived rows) — that restriction
+            // now lives in rowOpenAttrs instead: an archived row gets no onclick/tabindex/pointer
+            // cursor at all, so it is neither clickable nor keyboard-focusable as an edit trigger,
+            // exactly as before.
+            //
+            // handleTxRowClick()'s own first line bails out (no-op) when the click actually
+            // originated inside .tx-menu-toggle or .tx-menu-dropdown (the same closest()-based
+            // check the existing document-level "close other row menus" listener already uses) —
+            // so ⋮/archive/restore/delete keep working completely unchanged, with no stopPropagation
+            // needed anywhere: those buttons' own onclick handlers still fire first regardless, and
+            // the row-level handler simply recognizes their origin and does nothing further.
+            var rowOpenAttrs = t.isArchived ? '' :
+                ' class="tx-row tx-row-clickable" tabindex="0" role="button" aria-label="' + escapeHtml('ערוך תנועה: ' + t.title) + '" onclick="handleTxRowClick(event, ' + t.id + ')" onkeydown="handleTxRowKeydown(event, ' + t.id + ')"';
+            html += '<div' + (rowOpenAttrs || ' class="tx-row"') + '>' +
                 '<div class="tx-icon">' + t.icon + '</div>' +
                 '<div class="tx-info">' +
                     '<div class="tx-title">' + escapeHtml(t.title) + '</div>' +
@@ -731,7 +748,6 @@
                 '<div class="tx-amount ' + t.type + '">' + escapeHtml(t.amount) + '</div>' +
                 '<button type="button" class="tx-menu-toggle" data-item-id="' + safeId + '" aria-label="' + escapeHtml('פעולות עבור ' + t.title) + '" onclick="toggleRowMenu(this)">⋮</button>' +
                 '<div class="tx-menu-dropdown">' +
-                    editMenuItemHtml +
                     '<button type="button" class="tx-menu-item" data-item-id="' + safeId + '" onclick="handleRowMenuAction(this)">' + escapeHtml(actionLabel) + '</button>' +
                     // Stage G.3: second, destructive menu item — same data-item-id-only wiring
                     // convention as the button above (id never enters a concatenated onclick
@@ -2755,14 +2771,27 @@
         return html;
     }
 
-    // Called via onclick="handleEditMenuAction(this)" from the dropdown's "✏️ עריכה" item — same
-    // data-item-id-only wiring convention as every other row-menu handler in this file. A missing/
-    // nonexistent id is a strict no-op (previewEditingId is never set, nothing re-renders).
-    // Archived items never reach this handler in practice (renderTxListWithActions() omits the
-    // "✏️ עריכה" button entirely for them, per product decision 1א), but the id is still verified
-    // against the live `items` array here rather than trusted blindly.
-    function handleEditMenuAction(actionBtn) {
-        var id = parseInt(actionBtn.getAttribute('data-item-id'), 10);
+    // Version 1.1, Stage 4.0.2.1: called via onclick="handleTxRowClick(event, <id>)" straight off
+    // the .tx-row div itself (rowOpenAttrs in renderTxListWithActions()) — replaces the old
+    // dropdown "✏️ עריכה" item (removed) as the way to open a row's edit form. `id` is a literal
+    // number baked into the onclick at render time, the same convention already used for
+    // savePreviewInlineEdit(<id>) on the edit form's own save button — not a data-item-id lookup,
+    // since there's no button element here to read one off.
+    //
+    // First line: if the click actually originated on the ⋮ toggle or inside its dropdown (menu
+    // open/close, archive/restore, delete), do nothing — those already have their own onclick
+    // handlers, which still run first regardless; this only stops the SAME click from also being
+    // treated as "open edit for this row" once it bubbles up to the row. Reuses the identical
+    // closest()-based check the existing document-level "close other row menus" listener already
+    // uses, so no stopPropagation is needed anywhere for this.
+    //
+    // A missing/nonexistent id is a strict no-op (previewEditingId is never set, nothing
+    // re-renders). Archived items never reach this at all in practice — renderTxListWithActions()
+    // gives an archived row no onclick/tabindex whatsoever (rowOpenAttrs is empty for them), same
+    // restriction the removed "✏️ עריכה" button used to enforce by simply not existing — but the
+    // id is still verified against the live `items` array here rather than trusted blindly.
+    function handleTxRowClick(event, id) {
+        if (event && event.target && event.target.closest && (event.target.closest('.tx-menu-toggle') || event.target.closest('.tx-menu-dropdown'))) { return; }
         var idx = items.findIndex(function (i) { return i.id === id; });
         if (idx === -1) return;
         // Stage G.5: enforce "only one form open at a time" in both directions — opening an inline
@@ -2778,6 +2807,20 @@
         // cancelPreviewEdit() below uses. Preserves whichever filter (active/archived) is
         // currently selected, exactly like every other Transactions re-render in this file.
         renderTransactionsScreenFromRealData(getCurrentTxFilterName());
+    }
+
+    // Version 1.1, Stage 4.0.2.1: keyboard equivalent of clicking the row — only Enter/Space
+    // activate it (native button-activation keys), matching this row's role="button" semantics.
+    // preventDefault() stops Space from also scrolling the page, the standard native-button
+    // behavior a real <button> gets for free. Delegates to handleTxRowClick() itself rather than
+    // duplicating its body — including that same closest()-based bail-out, which matters here too:
+    // pressing Enter/Space while focus is on the nested ⋮ button (or a dropdown item) fires this
+    // keydown handler as well (it bubbles, same as the click event does), and must be just as
+    // harmless there as a mouse click is.
+    function handleTxRowKeydown(event, id) {
+        if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') { return; }
+        event.preventDefault();
+        handleTxRowClick(event, id);
     }
 
     // Called via onclick="cancelPreviewEdit()" from the edit form's own "ביטול" button — takes no
@@ -2880,7 +2923,7 @@
     // ===== (#preview-add-form-area), and the same field-by-field validation/logic as         =====
     // ===== index.html's own addNewItem() (copied literally per branch below). Only one form   =====
     // ===== — add OR inline-edit — can be open at a time (enforced from both directions:       =====
-    // ===== startPreviewAdd() below discards an open edit, handleEditMenuAction() above        =====
+    // ===== startPreviewAdd() below discards an open edit, handleTxRowClick() above             =====
     // ===== discards an open add). All writes go through the existing savePreviewItems()/       =====
     // ===== renderAllPreviewScreens() (DATA_KEY only) — no new persistence path.                =====
     // =====================================================================================
