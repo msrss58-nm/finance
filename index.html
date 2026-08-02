@@ -431,6 +431,19 @@
         cursor: pointer; z-index: 60; display: flex; align-items: center; justify-content: center;
     }
 
+    /* Version 1.1, Stage 4.0.2.2: non-blocking auto-archive notice — fixed at the TOP of the
+       viewport (not the bottom, where .fab/.bottom-nav already live) so it never overlaps them.
+       z-index 80 is intentionally above .quick-actions-overlay's 70 (the highest existing layer)
+       so it's still visible if a sweep result happens to coincide with that sheet being open, but
+       it never captures clicks/taps of its own (JS only toggles display:none/block; no onclick) —
+       "no blocking Popup" per the approved requirement. */
+    .auto-archive-toast {
+        position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+        max-width: calc(100% - 32px); background: var(--color-primary); color: #fff;
+        padding: 10px 18px; border-radius: 10px; font-size: 13px; font-weight: 600;
+        text-align: center; box-shadow: var(--shadow); z-index: 80;
+    }
+
     /* ===== Quick actions sheet ===== */
     .quick-actions-overlay {
         position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 70; display: none;
@@ -574,6 +587,12 @@
      normal Quick Actions sheet or, when a category filter is active on the Transactions screen,
      the existing add-transaction form pre-filled for that category. -->
 <button type="button" class="fab" id="fab-button" style="display:none;" onclick="handleFabClick()">+</button>
+
+<!-- Version 1.1, Stage 4.0.2.2: non-blocking, self-dismissing notice for the automatic end-of-
+     commitment archive sweep (showAutoArchiveToast()) — no native alert()/confirm(), never blocks
+     interaction. Empty/hidden by default; only ever shown when the sweep actually archived >=1
+     item on this page load. -->
+<div class="auto-archive-toast" id="auto-archive-toast" style="display:none;" role="status" aria-live="polite"></div>
 
 <!-- ===== חלונית פעולות מהירות (חזותי בלבד בשלב זה) ===== -->
 <div class="quick-actions-overlay" id="quick-actions-overlay" onclick="toggleQuickActions(false)">
@@ -1156,6 +1175,93 @@
         return { principal: principal, total: total };
     }
 
+    // =====================================================================================
+    // ===== Version 1.1, Stage 4.0.2.2: automatic end-of-commitment archiving — loan/variable =====
+    // ===== items whose payments are fully done AND whose last billing date is strictly in    =====
+    // ===== the past (not today itself) are archived automatically, once, at load time.       =====
+    // =====================================================================================
+
+    // Read-only: returns the subset of `itemsList` eligible for automatic archiving right now.
+    // Reuses getBillingRange()/parseDatesAndGetLeft()/resolveEffectiveDay() exactly as already
+    // established elsewhere in this file — no new date arithmetic, no new "how many payments are
+    // left" logic. Eligibility (per the approved decision):
+    //   - type is 'loan' or 'variable' only — income/fixed/dated are never touched.
+    //   - not already archived, and no archiveReason yet (belt-and-suspenders: in practice
+    //     archiveReason is only ever set together with isArchived, but both are checked so a
+    //     hand-edited/imported item with one but not the other is still treated as "already
+    //     handled" rather than re-processed).
+    //   - has both `start` and `total` (missing either -> getBillingRange() itself would return
+    //     null for a falsy total, and a missing/empty start is rejected explicitly here) and
+    //     `total` parses to a positive integer — anything else is "not unambiguous" and skipped.
+    //   - parseDatesAndGetLeft(...).left === 0 — every payment already billed, via the exact same
+    //     calculation getLoansBalanceSummary()/getVariableRemainingBalance() already rely on.
+    //   - AND today (date-only) is strictly AFTER the billing range's own last date — this is the
+    //     "one full day must have passed" rule: an item whose final payment bills today is
+    //     deliberately left alone (it may still need to visibly appear today), matching
+    //     getBillingRange()'s own `last` Date (already routed through the Stage 4.0.2 clamp
+    //     helper, so a 29/30/31 last-billing-day is handled the same way it already is everywhere
+    //     else). An unparseable start (Invalid Date) never satisfies this comparison, so it's
+    //     naturally excluded without a separate explicit check.
+    function getAutoArchiveCandidates(itemsList) {
+        var today = new Date();
+        var todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        var candidates = [];
+        for (var i = 0; i < itemsList.length; i++) {
+            var it = itemsList[i];
+            if (!it || it.isArchived || it.archiveReason) { continue; }
+            if (it.type !== 'loan' && it.type !== 'variable') { continue; }
+            if (!it.start || !it.total) { continue; }
+            var totalNum = parseInt(it.total, 10);
+            if (!isFinite(totalNum) || totalNum <= 0) { continue; }
+
+            var effectiveDay = resolveEffectiveDay(it);
+            var range = getBillingRange(it.start, it.total, effectiveDay);
+            if (!range || isNaN(range.last.getTime())) { continue; }
+
+            var dt = parseDatesAndGetLeft(it.start, it.total, effectiveDay);
+            if (dt.left !== 0) { continue; }
+            if (!(todayZero.getTime() > range.last.getTime())) { continue; }
+
+            candidates.push(it);
+        }
+        return candidates;
+    }
+
+    // Mutates every candidate item in place (isArchived/archiveReason/archivedAt only — title,
+    // amount, and every other field are untouched, so no history/amount is altered) and persists
+    // once via the existing savePreviewItems() (DATA_KEY only, same as every other write path in
+    // this file) — no new localStorage key, no schema change. `archivedAt` is today's date via the
+    // existing todayStr() (already used to pre-fill the 'dated' add form), so it's always
+    // "YYYY-MM-DD", no new date-formatting logic. Returns the number of items archived so the
+    // caller can decide whether/what to tell the user. A count of 0 does nothing at all — no
+    // write, no render trigger — so a run with nothing to archive has zero side effects.
+    function runAutoArchiveSweep(itemsList) {
+        var candidates = getAutoArchiveCandidates(itemsList);
+        if (candidates.length === 0) { return 0; }
+        var archivedAtStr = todayStr();
+        for (var i = 0; i < candidates.length; i++) {
+            candidates[i].isArchived = true;
+            candidates[i].archiveReason = 'completed';
+            candidates[i].archivedAt = archivedAtStr;
+        }
+        savePreviewItems();
+        return candidates.length;
+    }
+
+    // Shows the "✓ X התחייבויות הסתיימו והועברו לארכיון" notice once, then self-dismisses — no
+    // native alert()/confirm() (those block interaction; the approved requirement explicitly rules
+    // that out), just a fixed-position element (#auto-archive-toast, hidden by default in the
+    // static HTML) whose text/visibility this toggles. Only ever called once per page load (from
+    // the single runAutoArchiveSweep() call site below), so "shown once" falls out of that call
+    // discipline rather than needing its own dedup state here.
+    function showAutoArchiveToast(count) {
+        var el = document.getElementById('auto-archive-toast');
+        if (!el) { return; }
+        el.textContent = '✓ ' + count + ' התחייבויות הסתיימו והועברו לארכיון';
+        el.style.display = 'block';
+        setTimeout(function () { el.style.display = 'none'; }, 4000);
+    }
+
     // ----- Stage D.6 Part B: real implementations, built only on top of computeForecast()/  -----
     // ----- getBillingRange()/isBillingActiveInMonth() (all copied verbatim above) — no new  -----
     // ----- date arithmetic invented here.                                                   -----
@@ -1671,6 +1777,17 @@
 
     var items = loadPreviewItems();
     var categoryConfig = loadPreviewCategoryConfig();
+
+    // Version 1.1, Stage 4.0.2.2: runs exactly once per page load, right after `items`/
+    // `categoryConfig` are available and before any screen renders for the first time — so an
+    // item this sweep archives is already reflected (lists, sums, Home tiles) in that very first
+    // render, with no separate "flash of stale state" re-render needed. runAutoArchiveSweep()
+    // itself is a strict no-op (no write, no re-render trigger) when nothing qualifies, so a
+    // normal load with nothing to archive has zero extra cost beyond the one read-only scan.
+    var autoArchivedCount = runAutoArchiveSweep(items);
+    if (autoArchivedCount > 0) {
+        showAutoArchiveToast(autoArchivedCount);
+    }
 
     // Stage G.4: tracks which item's row (Transactions screen only) is currently showing the
     // inline edit form in place of its normal row markup. null means no row is being edited.
@@ -2586,18 +2703,31 @@
     // ===== is never read or written, and a missing id is a strict no-op (no save, no render). =====
     // =====================================================================================
 
+    // Version 1.1, Stage 4.0.2.2: manual archiving now also records archiveReason='manual' and
+    // archivedAt (today, via the existing todayStr()) — the same two bookkeeping fields
+    // runAutoArchiveSweep() writes for an automatic archive, so both paths are distinguishable
+    // afterward. No other field, and no other archiving behavior, changed.
     function archivePreviewItem(id) {
         var idx = items.findIndex(function (i) { return i.id === id; });
         if (idx === -1) return;
         items[idx].isArchived = true;
+        items[idx].archiveReason = 'manual';
+        items[idx].archivedAt = todayStr();
         savePreviewItems();
         renderAllPreviewScreens();
     }
 
+    // Restoring clears archiveReason/archivedAt along with isArchived — the item is no longer
+    // archived at all, so neither field describes anything true anymore; this also means a
+    // restored loan/variable that still meets the automatic-archive criteria is eligible for
+    // runAutoArchiveSweep() to reconsider on a future load, rather than being permanently skipped
+    // by its now-stale archiveReason.
     function unarchivePreviewItem(id) {
         var idx = items.findIndex(function (i) { return i.id === id; });
         if (idx === -1) return;
         items[idx].isArchived = false;
+        delete items[idx].archiveReason;
+        delete items[idx].archivedAt;
         savePreviewItems();
         renderAllPreviewScreens();
     }
