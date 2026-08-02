@@ -11,15 +11,42 @@
         --color-border: #e5e7eb;
         --color-text: #16181d;
         --color-text-muted: #6b7280;
-        --color-primary: #0a7d3d;
-        --color-primary-dark: #066b32;
         --color-danger: #c0392b;
         --color-warning: #b45309;
         --color-warning-bg: #fef3e2;
-        --color-primary-bg: #eaf7ef;
         --radius: 14px;
         --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
     }
+
+    /* Version 1.1, Stage 4.0.3: primary-color palette (fixed set, no free picker) — data-color is
+       set on <html> by applySettingsToDom(). --color-primary/-dark are used as backgrounds under
+       white text (hero, FAB, buttons) and stay identical in both themes; --color-primary-text is a
+       separate variable used only where the primary color is text/fill ON var(--color-surface) —
+       it needs a brighter tint in dark mode to stay readable on a near-black surface, which a
+       single shared variable can't do for every color at once. */
+    :root, :root[data-color="green"] { --color-primary: #0a7d3d; --color-primary-dark: #066b32; --color-primary-bg: #eaf7ef; --color-primary-text: #0a7d3d; }
+    :root[data-color="blue"] { --color-primary: #164b96; --color-primary-dark: #0f3a78; --color-primary-bg: #e8f0fc; --color-primary-text: #164b96; }
+    :root[data-color="purple"] { --color-primary: #5b2f96; --color-primary-dark: #46247a; --color-primary-bg: #f1eaf9; --color-primary-text: #5b2f96; }
+    :root[data-color="teal"] { --color-primary: #0d7274; --color-primary-dark: #095c5d; --color-primary-bg: #e5f6f6; --color-primary-text: #0d7274; }
+    :root[data-color="orange"] { --color-primary: #b8560f; --color-primary-dark: #95450c; --color-primary-bg: #fdece0; --color-primary-text: #b8560f; }
+    :root[data-color="graphite"] { --color-primary: #3f4650; --color-primary-dark: #2c3138; --color-primary-bg: #eceef1; --color-primary-text: #3f4650; }
+
+    :root[data-theme="dark"] {
+        --color-bg: #14161a;
+        --color-surface: #1e2126;
+        --color-border: #2c2f36;
+        --color-text: #eef0f3;
+        --color-text-muted: #9aa0aa;
+        --color-danger: #e5695c;
+        --color-warning: #e0a84f;
+        --color-warning-bg: #3a2f18;
+    }
+    :root[data-theme="dark"][data-color="green"] { --color-primary-text: #3ddc84; }
+    :root[data-theme="dark"][data-color="blue"] { --color-primary-text: #6fa8f5; }
+    :root[data-theme="dark"][data-color="purple"] { --color-primary-text: #b592e8; }
+    :root[data-theme="dark"][data-color="teal"] { --color-primary-text: #4fd0d2; }
+    :root[data-theme="dark"][data-color="orange"] { --color-primary-text: #f0a35f; }
+    :root[data-theme="dark"][data-color="graphite"] { --color-primary-text: #b9c0cc; }
 
     * { box-sizing: border-box; }
 
@@ -91,7 +118,7 @@
     }
     .snapshot-card .label { font-size: 10.5px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: .3px; }
     .snapshot-card .value { font-size: 15px; font-weight: 700; margin-top: 5px; direction: ltr; unicode-bidi: isolate; }
-    .snapshot-card.income .value { color: var(--color-primary); }
+    .snapshot-card.income .value { color: var(--color-primary-text); }
     .snapshot-card.expenses .value { color: var(--color-danger); }
 
     /* ===== Version 1.1, Stage 1: automatic per-category tiles (below income/expenses) ===== */
@@ -183,7 +210,7 @@
        surrounding RTL page, rendering as "₪3,200-" instead. Pure display fix — the underlying
        string/value built by JS is unchanged. */
     .tx-amount { font-size: 14px; font-weight: 700; white-space: nowrap; direction: ltr; unicode-bidi: isolate; }
-    .tx-amount.income { color: var(--color-primary); }
+    .tx-amount.income { color: var(--color-primary-text); }
     .tx-amount.expense { color: var(--color-danger); }
 
     /* Stage G.2.3: CSS-only infrastructure for a future per-row actions menu (Stage G.2.4+).
@@ -352,7 +379,7 @@
     .preview-forecast-chart-wrap svg { width: 100%; height: auto; display: block; overflow: visible; }
     .preview-forecast-bar { cursor: pointer; }
     .preview-forecast-bar:hover, .preview-forecast-bar:focus { filter: brightness(1.15); outline: none; }
-    .preview-forecast-bar-pos { fill: var(--color-primary); }
+    .preview-forecast-bar-pos { fill: var(--color-primary-text); }
     .preview-forecast-bar-neg { fill: var(--color-danger); }
     .preview-forecast-zero-line { stroke: var(--color-border); stroke-width: 1; }
     .preview-forecast-axis-label { font-size: 7px; fill: var(--color-text-muted); }
@@ -368,7 +395,7 @@
         padding: 6px; text-align: center; border-bottom: 1px solid var(--color-border);
     }
     .preview-forecast-table-wrap th { color: var(--color-text-muted); font-weight: 500; font-size: 11.5px; }
-    .preview-forecast-positive { color: var(--color-primary); font-weight: 700; }
+    .preview-forecast-positive { color: var(--color-primary-text); font-weight: 700; }
     .preview-forecast-negative { color: var(--color-danger); font-weight: 700; }
 
     /* ===== Settings ===== */
@@ -413,14 +440,14 @@
     }
     .nav-btn {
         background: none; border: none; display: flex; flex-direction: column; align-items: center;
-        gap: 3px; font-size: 11px; color: var(--color-text-muted); cursor: pointer;
-        padding: 4px 10px; font-family: inherit;
+        gap: 3px; font-size: 10.5px; color: var(--color-text-muted); cursor: pointer;
+        padding: 4px 6px; font-family: inherit;
     }
     .nav-btn .nav-icon {
-        font-size: 18px; padding: 3px 13px; border-radius: 12px;
+        font-size: 18px; padding: 3px 10px; border-radius: 12px;
         transition: background-color .15s ease;
     }
-    .nav-btn.active { color: var(--color-primary); font-weight: 700; }
+    .nav-btn.active { color: var(--color-primary-text); font-weight: 700; }
     .nav-btn.active .nav-icon { background: var(--color-primary-bg); }
 
     /* ===== Floating quick-add button ===== */
@@ -472,6 +499,71 @@
         width: 100%; text-align: center; padding: 10px; background: none; border: none;
         color: var(--color-text-muted); font-size: 13px; margin-top: 4px; cursor: pointer; font-family: inherit;
     }
+
+    /* ===== Version 1.1, Stage 4.0.3: Settings screen ===== */
+    .settings-section { margin-bottom: 22px; }
+    .settings-section-title { font-size: 14.5px; font-weight: 700; margin-bottom: 10px; }
+    .settings-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; gap: 10px; }
+    .settings-row-label { font-size: 13.5px; }
+    .settings-hint { font-size: 12px; color: var(--color-text-muted); margin: 4px 0 10px; line-height: 1.5; }
+    .settings-hint.settings-error { color: var(--color-danger); }
+    .settings-choice-row { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+    .settings-choice-btn {
+        padding: 8px 14px; border-radius: 10px; border: 1px solid var(--color-border);
+        background: var(--color-surface); color: var(--color-text); font-size: 12.5px; cursor: pointer; font-family: inherit;
+    }
+    .settings-choice-btn.active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+    .settings-color-row { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+    .settings-color-swatch {
+        width: 32px; height: 32px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0;
+    }
+    .settings-color-swatch.active { border-color: var(--color-text); }
+    .settings-color-green { background: #0a7d3d; }
+    .settings-color-blue { background: #164b96; }
+    .settings-color-purple { background: #5b2f96; }
+    .settings-color-teal { background: #0d7274; }
+    .settings-color-orange { background: #b8560f; }
+    .settings-color-graphite { background: #3f4650; }
+    .settings-toggle-btn {
+        padding: 6px 16px; border-radius: 20px; border: 1px solid var(--color-border); flex-shrink: 0;
+        background: var(--color-surface); color: var(--color-text-muted); font-size: 12px; cursor: pointer; font-family: inherit;
+    }
+    .settings-toggle-btn.on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+    .settings-data-actions { display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px; }
+    .settings-danger-zone { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--color-border); }
+    .settings-danger-btn {
+        width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--color-danger);
+        background: none; color: var(--color-danger); font-size: 13.5px; font-weight: 600; cursor: pointer; font-family: inherit;
+    }
+    .restore-summary-list, .whats-new-list { font-size: 12.5px; padding-right: 18px; margin: 6px 0 12px; }
+    .restore-summary-list li, .whats-new-list li { margin-bottom: 4px; }
+    .activity-log-list { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
+    .activity-log-row { background: var(--color-bg); border-radius: 10px; padding: 8px 12px; font-size: 12px; }
+    .activity-log-action { font-weight: 600; }
+    .activity-log-detail { color: var(--color-text-muted); margin-top: 2px; }
+    .activity-log-ts { color: var(--color-text-muted); font-size: 11px; margin-top: 3px; }
+
+    /* ===== Version 1.1, Stage 4.0.3: privacy-lock overlay — covers the whole viewport above     =====
+       everything else (z-index 1000, higher than the auto-archive toast's 80 and the quick-       =====
+       actions sheet's 70) whenever a PIN is set and the app is locked; unlockApp() hides it again. */
+    .lock-overlay {
+        position: fixed; inset: 0; background: var(--color-bg); z-index: 1000;
+        display: none; align-items: center; justify-content: center; flex-direction: column; padding: 24px;
+    }
+    .lock-card { text-align: center; max-width: 320px; width: 100%; }
+    .lock-icon { font-size: 40px; margin-bottom: 10px; }
+    .lock-title { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+    .lock-subtitle { font-size: 13px; color: var(--color-text-muted); margin-bottom: 18px; }
+    .lock-pin-input {
+        width: 100%; text-align: center; letter-spacing: 6px; font-size: 20px; padding: 12px;
+        border-radius: 10px; border: 1px solid var(--color-border); margin-bottom: 8px; font-family: inherit;
+        background: var(--color-surface); color: var(--color-text);
+    }
+    .lock-error { color: var(--color-danger); font-size: 12.5px; min-height: 16px; margin-bottom: 10px; }
+    .lock-unlock-btn {
+        width: 100%; padding: 12px; border-radius: 10px; border: none; background: var(--color-primary);
+        color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit;
+    }
 </style>
 </head>
 <body>
@@ -507,6 +599,12 @@
              ever hardcoded here. Short click on a tile filters Transactions by that category; a
              long press + drag reorders tiles (order persisted separately from categoryConfig). -->
         <div class="category-tiles-grid" id="category-tiles-grid"></div>
+
+        <!-- Version 1.1, Stage 4.0.3: התראות בתוך האפליקציה בלבד (לא Push) — ראו
+             computeHomeNotifications()/renderHomeNotificationsFromRealData(). ריק כברירת מחדל,
+             כמו attention-list למטה. -->
+        <div class="section-title">🔔 התראות (בתוך האפליקציה)</div>
+        <div id="home-notifications-list"></div>
 
         <div class="section-title">מה דורש תשומת לב</div>
         <div id="attention-list"></div>
@@ -556,10 +654,19 @@
         <div id="insights-feed"></div>
     </div>
 
-    <!-- ===== מסך 4: הגדרות ===== -->
-    <div class="screen" id="screen-settings">
+    <!-- ===== מסך 4: קטגוריות ===== -->
+    <!-- Version 1.1, Stage 4.0.3: זהו מסך "הגדרות" הישן (id="screen-settings") ששונה שמו
+         בלבד — כל ניהול הקטגוריות (category-list ולוגיקת renderCategoriesScreenFromRealData())
+         נשאר בו ללא שינוי. הגדרות המערכת עברו למסך נפרד למטה. -->
+    <div class="screen" id="screen-categories">
         <div class="section-title" style="margin-top:4px;">ניהול קטגוריות</div>
         <div id="category-list"></div>
+    </div>
+
+    <!-- ===== מסך 5: הגדרות ===== -->
+    <div class="screen" id="screen-settings">
+        <div class="section-title" style="margin-top:4px;">הגדרות</div>
+        <div id="settings-screen-body"></div>
     </div>
 
 </div>
@@ -574,6 +681,9 @@
     </button>
     <button type="button" class="nav-btn" id="nav-insights" onclick="showScreen('insights')">
         <span class="nav-icon">💡</span><span>תובנות</span>
+    </button>
+    <button type="button" class="nav-btn" id="nav-categories" onclick="showScreen('categories')">
+        <span class="nav-icon">📁</span><span>קטגוריות</span>
     </button>
     <button type="button" class="nav-btn" id="nav-settings" onclick="showScreen('settings')">
         <span class="nav-icon">⚙️</span><span>הגדרות</span>
@@ -593,6 +703,19 @@
      interaction. Empty/hidden by default; only ever shown when the sweep actually archived >=1
      item on this page load. -->
 <div class="auto-archive-toast" id="auto-archive-toast" style="display:none;" role="status" aria-live="polite"></div>
+
+<!-- Version 1.1, Stage 4.0.3: "נעילת פרטיות" — לא הצפנה. מוצג רק כש-appSettings.pinEnabled
+     ו-pinHash קיימים (ראו lockApp()/unlockApp()/shouldShowLockScreenOnLoad()). -->
+<div class="lock-overlay" id="lock-overlay" style="display:none;" role="dialog" aria-modal="true" aria-label="נעילת פרטיות">
+    <div class="lock-card">
+        <div class="lock-icon">🔒</div>
+        <div class="lock-title">האפליקציה נעולה</div>
+        <div class="lock-subtitle">הזן/י PIN לפתיחה</div>
+        <input type="password" inputmode="numeric" id="lock-pin-input" class="lock-pin-input" maxlength="6" autocomplete="off" onkeydown="if(event.key==='Enter'){verifyPinAndUnlock();}">
+        <div id="lock-error" class="lock-error"></div>
+        <button type="button" class="lock-unlock-btn" onclick="verifyPinAndUnlock()">פתח</button>
+    </div>
+</div>
 
 <!-- ===== חלונית פעולות מהירות (חזותי בלבד בשלב זה) ===== -->
 <div class="quick-actions-overlay" id="quick-actions-overlay" onclick="toggleQuickActions(false)">
@@ -620,6 +743,35 @@
     // ===== reset against once this file's own keys ARE the real ones.                         =====
     var DATA_KEY = 'family_finance_data';
     var CONFIG_KEY = 'family_finance_cat_config';
+
+    // Version 1.1, Stage 4.0.3: settings + activity log keys — both new, both start with
+    // 'family_finance_' (same prefix DATA_KEY/CONFIG_KEY already use), which is also the exact
+    // prefix collectAppLocalStorageBackup()/confirmResetAllData() sweep to find every app key
+    // without hardcoding a fixed list.
+    var SETTINGS_KEY = 'family_finance_settings';
+    var ACTIVITY_LOG_KEY = 'family_finance_activity_log';
+    var ACTIVITY_LOG_MAX = 200;
+    var APP_VERSION = '1.1.0 Preview';
+
+    var PRIMARY_COLOR_OPTIONS = [
+        { key: 'green', label: 'ירוק' },
+        { key: 'blue', label: 'כחול' },
+        { key: 'purple', label: 'סגול' },
+        { key: 'teal', label: 'טורקיז' },
+        { key: 'orange', label: 'כתום' },
+        { key: 'graphite', label: 'אפור כהה' }
+    ];
+    var THEME_OPTIONS = [
+        { key: 'light', label: 'בהיר' },
+        { key: 'dark', label: 'כהה' },
+        { key: 'system', label: 'לפי המערכת' }
+    ];
+    var FONT_SIZE_OPTIONS = [
+        { key: 'small', label: 'קטן' },
+        { key: 'medium', label: 'רגיל' },
+        { key: 'large', label: 'גדול' }
+    ];
+    var FONT_SIZE_ZOOM = { small: 0.9, medium: 1, large: 1.12 };
 
     var DEFAULT_CATEGORY_CONFIG_JSON = JSON.stringify({
         income: { label: "💰 הכנסות", baseType: "income" },
@@ -814,7 +966,7 @@
         document.getElementById('insights-feed').innerHTML = insightsHtml;
 
         // category-list is no longer rendered from MOCK_DATA.categories here — see Stage E.1's
-        // renderSettingsScreenFromRealData() below, which renders it from the real categoryConfig
+        // renderCategoriesScreenFromRealData() below, which renders it from the real categoryConfig
         // instead. This function no longer reads MOCK_DATA.categories at all.
     }
 
@@ -1239,10 +1391,15 @@
         var candidates = getAutoArchiveCandidates(itemsList);
         if (candidates.length === 0) { return 0; }
         var archivedAtStr = todayStr();
+        // Version 1.1, Stage 4.0.3: lastAutoArchivedTitles feeds the "התחייבות שהסתיימה"
+        // notification on Home (computeHomeNotifications()) — captured here, once, from exactly
+        // the items this run actually archived (not every archived item ever).
+        lastAutoArchivedTitles = candidates.map(function (c) { return c.title || ''; });
         for (var i = 0; i < candidates.length; i++) {
             candidates[i].isArchived = true;
             candidates[i].archiveReason = 'completed';
             candidates[i].archivedAt = archivedAtStr;
+            appendActivityLog('auto_archive', candidates[i].title || '');
         }
         savePreviewItems();
         return candidates.length;
@@ -1775,8 +1932,134 @@
         }
     }
 
+    // =====================================================================================
+    // ===== Version 1.1, Stage 4.0.3: settings + activity log persistence. Two new keys,   =====
+    // ===== both prefixed 'family_finance_' like DATA_KEY/CONFIG_KEY, loaded once here      =====
+    // ===== (same convention as loadPreviewItems/loadPreviewCategoryConfig above) — a       =====
+    // ===== missing/corrupt/wrong-shape value always falls back to a safe default rather    =====
+    // ===== than throwing.                                                                   =====
+    // =====================================================================================
+
+    function getDefaultAppSettings() {
+        return {
+            theme: 'system',
+            primaryColor: 'green',
+            fontSize: 'medium',
+            pinHash: null,
+            pinEnabled: false,
+            autoLockMinutes: null,
+            notifications: { upcomingPayment: true, upcomingIncome: true, completedObligation: true },
+            experimentalFlags: {}
+        };
+    }
+
+    function loadAppSettings() {
+        var defaults = getDefaultAppSettings();
+        var raw = null;
+        try { raw = localStorage.getItem(SETTINGS_KEY); } catch (e) { raw = null; }
+        if (!raw) { return defaults; }
+        var parsed;
+        try { parsed = JSON.parse(raw); } catch (e) { return defaults; }
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) { return defaults; }
+
+        var merged = getDefaultAppSettings();
+        for (var k in merged) {
+            if (k === 'notifications' || k === 'experimentalFlags') { continue; }
+            if (parsed[k] !== undefined && parsed[k] !== null) { merged[k] = parsed[k]; }
+        }
+        if (parsed.notifications && typeof parsed.notifications === 'object') {
+            for (var nk in merged.notifications) {
+                if (parsed.notifications[nk] !== undefined) { merged.notifications[nk] = !!parsed.notifications[nk]; }
+            }
+        }
+        if (parsed.experimentalFlags && typeof parsed.experimentalFlags === 'object' && !Array.isArray(parsed.experimentalFlags)) {
+            merged.experimentalFlags = parsed.experimentalFlags;
+        }
+        return merged;
+    }
+
+    function saveAppSettings() {
+        try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(appSettings)); } catch (e) { console.log('שגיאה בשמירת הגדרות'); }
+    }
+
+    function loadActivityLog() {
+        var raw = null;
+        try { raw = localStorage.getItem(ACTIVITY_LOG_KEY); } catch (e) { raw = null; }
+        if (!raw) { return []; }
+        try {
+            var parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (e) { return []; }
+    }
+
+    function saveActivityLog() {
+        try { localStorage.setItem(ACTIVITY_LOG_KEY, JSON.stringify(activityLog)); } catch (e) { console.log('שגיאה בשמירת יומן פעילות'); }
+    }
+
+    function nowTimestampStr() {
+        var d = new Date();
+        var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+        return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    }
+
+    // Append-only, capped at ACTIVITY_LOG_MAX (oldest entries dropped first — per approved
+    // decision, never PIN/hash/secret values, and never a per-click technical log).
+    function appendActivityLog(action, detail) {
+        activityLog.push({ ts: nowTimestampStr(), action: action, detail: detail || '' });
+        if (activityLog.length > ACTIVITY_LOG_MAX) {
+            activityLog.splice(0, activityLog.length - ACTIVITY_LOG_MAX);
+        }
+        saveActivityLog();
+    }
+
+    // SHA-256 via the browser's native Web Crypto API (crypto.subtle) — no external library. A
+    // fixed static prefix stands in for a per-user salt; this is explicitly a "privacy lock" per
+    // the approved product decision, not real encryption, and the Settings UI says so.
+    async function hashPin(pin) {
+        var enc = new TextEncoder();
+        var data = enc.encode('ffpro-pin-v1:' + pin);
+        var hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        var hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+    }
+
+    function resolveEffectiveTheme() {
+        if (appSettings.theme === 'dark') { return 'dark'; }
+        if (appSettings.theme === 'light') { return 'light'; }
+        try {
+            return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+        } catch (e) { return 'light'; }
+    }
+
+    // Applies theme/primary-color (via <html data-theme>/<html data-color>, read by the CSS
+    // palette rules near :root) and font-size (via body.style.zoom — the file's CSS uses fixed px
+    // sizes throughout rather than rem, so zoom is the one mechanism that reliably scales
+    // everything, including the fixed-position bottom-nav/FAB, uniformly).
+    function applySettingsToDom() {
+        document.documentElement.setAttribute('data-theme', resolveEffectiveTheme());
+        document.documentElement.setAttribute('data-color', appSettings.primaryColor || 'green');
+        document.body.style.zoom = FONT_SIZE_ZOOM[appSettings.fontSize] || 1;
+    }
+
     var items = loadPreviewItems();
     var categoryConfig = loadPreviewCategoryConfig();
+    var appSettings = loadAppSettings();
+    var activityLog = loadActivityLog();
+    var lastAutoArchivedTitles = [];
+    var appBackgroundedAt = null;
+    var settingsPinFormMode = null;
+    var pendingRestoreBackup = null;
+    var resetConfirmMode = false;
+
+    applySettingsToDom();
+
+    (function () {
+        if (!window.matchMedia) { return; }
+        var mq = window.matchMedia('(prefers-color-scheme: dark)');
+        var handler = function () { if (appSettings.theme === 'system') { applySettingsToDom(); } };
+        if (mq.addEventListener) { mq.addEventListener('change', handler); }
+        else if (mq.addListener) { mq.addListener(handler); }
+    })();
 
     // Version 1.1, Stage 4.0.2.2: runs exactly once per page load, right after `items`/
     // `categoryConfig` are available and before any screen renders for the first time — so an
@@ -2008,6 +2291,10 @@
 
         // Version 1.1, Stage 1: automatic per-category tiles, below income/expenses.
         renderCategoryTilesFromRealData();
+
+        // Version 1.1, Stage 4.0.3: in-app notifications only (no OS push) — see
+        // computeHomeNotifications().
+        renderHomeNotificationsFromRealData();
     }
 
     // Called once, after items/categoryConfig (and everything Stage D.3/D.4 depend on) are
@@ -2161,7 +2448,7 @@
 
     // categoryConfig keys are iterated in whatever order Object.keys() returns them (insertion
     // order in practice) — no sorting logic invented.
-    function renderSettingsScreenFromRealData() {
+    function renderCategoriesScreenFromRealData() {
         var html = '';
         var keys = Object.keys(categoryConfig || {});
         for (var i = 0; i < keys.length; i++) {
@@ -2173,6 +2460,12 @@
 
     // Called once, after items/categoryConfig and the two renders above — same ordering
     // guarantee, no code moved.
+    renderCategoriesScreenFromRealData();
+
+    // Version 1.1, Stage 4.0.3: the new, separate Settings screen — see
+    // renderSettingsScreenFromRealData() further below (Stage 4.0.3 section) for the full
+    // implementation; declared as a function statement so this forward reference is safe (same
+    // hoisting pattern used throughout this file).
     renderSettingsScreenFromRealData();
 
     // =====================================================================================
@@ -2682,6 +2975,7 @@
         renderAttentionListFromRealData();
         renderInsightsScreenFromRealData();
         renderForecast();
+        renderCategoriesScreenFromRealData();
         renderSettingsScreenFromRealData();
         renderTransactionsScreenFromRealData(getCurrentTxFilterName());
         // Stage G.5: keeps the add-transaction form area in sync with previewAddMode across any
@@ -2713,6 +3007,7 @@
         items[idx].isArchived = true;
         items[idx].archiveReason = 'manual';
         items[idx].archivedAt = todayStr();
+        appendActivityLog('manual_archive', items[idx].title || '');
         savePreviewItems();
         renderAllPreviewScreens();
     }
@@ -2728,6 +3023,7 @@
         items[idx].isArchived = false;
         delete items[idx].archiveReason;
         delete items[idx].archivedAt;
+        appendActivityLog('restore', items[idx].title || '');
         savePreviewItems();
         renderAllPreviewScreens();
     }
@@ -3177,7 +3473,7 @@
             html += '<button type="button" class="expense-type-btn" onclick="chooseExpenseAddType(\'fixed\')">🏡 הוצאה קבועה</button>';
             html += '<button type="button" class="expense-type-btn" onclick="chooseExpenseAddType(\'variable\')">🛒 הוצאה משתנה</button>';
             if (datedDisabled) {
-                html += '<button type="button" class="expense-type-btn disabled" disabled title="קודם צור קטגוריה מסוג \'חיוב חד-פעמי\' במסך ההגדרות">📅 הוצאה מתוארכת</button>';
+                html += '<button type="button" class="expense-type-btn disabled" disabled title="קודם צור קטגוריה מסוג \'חיוב חד-פעמי\' במסך הקטגוריות">📅 הוצאה מתוארכת</button>';
             } else {
                 html += '<button type="button" class="expense-type-btn" onclick="chooseExpenseAddType(\'dated\')">📅 הוצאה מתוארכת</button>';
             }
@@ -3414,6 +3710,7 @@
         if (!trimmed) return false;
         categoryConfig[key].label = trimmed;
         savePreviewCategoryConfig();
+        appendActivityLog('category_renamed', key + ' → ' + trimmed);
         renderAllPreviewScreens();
         return true;
     }
@@ -3487,6 +3784,7 @@
             categoryConfig[newKey].defaultDayOfMonth = defaultDayOfMonth;
         }
         savePreviewCategoryConfig();
+        appendActivityLog('category_created', categoryConfig[newKey].label);
         renderAllPreviewScreens();
         return newKey;
     }
@@ -3509,8 +3807,10 @@
         if (categoryHasPreviewItems(key)) {
             return { success: false, reason: PREVIEW_CATEGORY_DELETE_BLOCKED_REASON.HAS_ITEMS };
         }
+        var deletedLabel = (categoryConfig[key] && categoryConfig[key].label) || key;
         delete categoryConfig[key];
         savePreviewCategoryConfig();
+        appendActivityLog('category_deleted', deletedLabel);
         renderAllPreviewScreens();
         return { success: true, reason: null };
     }
@@ -3543,14 +3843,14 @@
     function startPreviewAddCategory() {
         resetPreviewCategoryFormsState();
         previewCategoryAddOpen = true;
-        renderSettingsScreenFromRealData();
+        renderCategoriesScreenFromRealData();
     }
 
     // Strict no-op on data: clears the open flag and re-renders, same convention as
     // cancelPreviewAdd()/cancelPreviewEdit() elsewhere in this file.
     function cancelPreviewAddCategory() {
         previewCategoryAddOpen = false;
-        renderSettingsScreenFromRealData();
+        renderCategoriesScreenFromRealData();
     }
 
     // Reads the add-category form's two inputs and calls the unmodified addPreviewCategory()
@@ -3590,7 +3890,7 @@
         var newKey = addPreviewCategory(title, baseType, defaultDayOfMonth);
         if (newKey === null) { return; }
         previewCategoryAddOpen = false;
-        renderSettingsScreenFromRealData();
+        renderCategoriesScreenFromRealData();
     }
 
     // Opens the rename form for one category. Available for both built-in and custom categories
@@ -3649,6 +3949,8 @@
             }
         }
 
+        var previousDay = categoryConfig[key] ? categoryConfig[key].defaultDayOfMonth : undefined;
+
         var ok = renamePreviewCategory(key, newLabel);
         if (!ok) { alert('נא להזין שם לקטגוריה'); return; }
 
@@ -3657,6 +3959,9 @@
                 delete categoryConfig[key].defaultDayOfMonth;
             } else {
                 categoryConfig[key].defaultDayOfMonth = dayNum;
+            }
+            if (previousDay !== categoryConfig[key].defaultDayOfMonth) {
+                appendActivityLog('default_day_changed', key + ' → ' + (categoryConfig[key].defaultDayOfMonth || 'ללא'));
             }
             savePreviewCategoryConfig();
             renderAllPreviewScreens();
@@ -3697,7 +4002,7 @@
         var result = deletePreviewCategory(key);
         previewDeletingCategoryKey = null;
         if (result.success) {
-            if (wasCurrentCategory) { showScreen('settings'); }
+            if (wasCurrentCategory) { showScreen('categories'); }
             renderAllPreviewScreens();
             return;
         }
@@ -3762,6 +4067,656 @@
             '<button type="button" class="tx-edit-cancel" onclick="cancelPreviewAddCategory()">ביטול</button>' +
             '</div></div>';
     }
+
+    // =====================================================================================
+    // ===== Version 1.1, Stage 4.0.3: the new, separate Settings screen — security (PIN/    =====
+    // ===== auto-lock), appearance (theme/color/font size), in-app notifications, data       =====
+    // ===== (backup/restore/CSV export/reset), experimental (empty registry), about, and     =====
+    // ===== activity log. Category management itself is unchanged (see                       =====
+    // ===== renderCategoriesScreenFromRealData() above) — nothing here touches items/         =====
+    // ===== categoryConfig other than reading them for notifications/CSV export.              =====
+    // =====================================================================================
+
+    // ----- In-app notifications (Home screen) -----------------------------------------------
+
+    function getTomorrowDateOnly() {
+        var t = new Date();
+        return new Date(t.getFullYear(), t.getMonth(), t.getDate() + 1);
+    }
+
+    // Read-only: "upcoming payment/income tomorrow" reuses resolveEffectiveDay() (Stage 4.0.2) —
+    // no new date logic. "completed obligation" reuses lastAutoArchivedTitles, set by this same
+    // page load's runAutoArchiveSweep() run — i.e. only obligations that finished just now, not
+    // every already-archived item ever.
+    function computeHomeNotifications() {
+        var notes = [];
+        if (!appSettings || !appSettings.notifications) { return notes; }
+        var tomorrowDay = getTomorrowDateOnly().getDate();
+
+        if (appSettings.notifications.upcomingPayment) {
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i];
+                if (!it || it.isArchived) { continue; }
+                if (it.type !== 'fixed' && it.type !== 'variable' && it.type !== 'loan') { continue; }
+                if (resolveEffectiveDay(it) === tomorrowDay) {
+                    notes.push({ title: 'תשלום צפוי מחר', detail: it.title || '', amount: it.amount });
+                }
+            }
+        }
+        if (appSettings.notifications.upcomingIncome) {
+            for (var j = 0; j < items.length; j++) {
+                var it2 = items[j];
+                if (!it2 || it2.isArchived) { continue; }
+                if (it2.type !== 'income') { continue; }
+                if (resolveEffectiveDay(it2) === tomorrowDay) {
+                    notes.push({ title: 'הכנסה צפויה מחר', detail: it2.title || '', amount: it2.amount });
+                }
+            }
+        }
+        if (appSettings.notifications.completedObligation && lastAutoArchivedTitles.length) {
+            for (var k = 0; k < lastAutoArchivedTitles.length; k++) {
+                notes.push({ title: 'התחייבות הסתיימה', detail: lastAutoArchivedTitles[k], amount: null });
+            }
+        }
+        return notes;
+    }
+
+    // Reuses .attention-item/.attention-title/.attention-detail/.attention-amount — the same
+    // card markup renderAttentionListFromRealData() already uses — for visual consistency.
+    function renderHomeNotificationsFromRealData() {
+        var el = document.getElementById('home-notifications-list');
+        if (!el) { return; }
+        var notes = computeHomeNotifications();
+        var html = '';
+        for (var i = 0; i < notes.length; i++) {
+            var n = notes[i];
+            html += '<div class="attention-item">' +
+                '<div>' +
+                    '<div class="attention-title">' + escapeHtml(n.title) + '</div>' +
+                    '<div class="attention-detail">' + escapeHtml(n.detail) + '</div>' +
+                '</div>' +
+                (n.amount != null ? '<div class="attention-amount">' + escapeHtml(formatHomeCurrency(n.amount)) + '</div>' : '') +
+            '</div>';
+        }
+        el.innerHTML = html;
+    }
+
+    // ----- Appearance: theme / primary color / font size -----------------------------------
+
+    function setThemeSetting(theme) {
+        appSettings.theme = theme;
+        saveAppSettings();
+        applySettingsToDom();
+        renderSettingsScreenFromRealData();
+    }
+    function setPrimaryColorSetting(colorKey) {
+        appSettings.primaryColor = colorKey;
+        saveAppSettings();
+        applySettingsToDom();
+        renderSettingsScreenFromRealData();
+    }
+    function setFontSizeSetting(size) {
+        appSettings.fontSize = size;
+        saveAppSettings();
+        applySettingsToDom();
+        renderSettingsScreenFromRealData();
+    }
+
+    function buildAppearanceSectionHtml() {
+        var html = '<div class="settings-row-label">ערכת נושא</div><div class="settings-choice-row">';
+        for (var i = 0; i < THEME_OPTIONS.length; i++) {
+            var t = THEME_OPTIONS[i];
+            html += '<button type="button" class="settings-choice-btn' + (appSettings.theme === t.key ? ' active' : '') + '" onclick="setThemeSetting(\'' + t.key + '\')">' + escapeHtml(t.label) + '</button>';
+        }
+        html += '</div>';
+
+        html += '<div class="settings-row-label">צבע ראשי</div><div class="settings-color-row">';
+        for (var j = 0; j < PRIMARY_COLOR_OPTIONS.length; j++) {
+            var c = PRIMARY_COLOR_OPTIONS[j];
+            html += '<button type="button" class="settings-color-swatch settings-color-' + c.key + (appSettings.primaryColor === c.key ? ' active' : '') + '" onclick="setPrimaryColorSetting(\'' + c.key + '\')" title="' + escapeHtml(c.label) + '" aria-label="' + escapeHtml(c.label) + '"></button>';
+        }
+        html += '</div>';
+
+        html += '<div class="settings-row-label">גודל גופן</div><div class="settings-choice-row">';
+        for (var k = 0; k < FONT_SIZE_OPTIONS.length; k++) {
+            var f = FONT_SIZE_OPTIONS[k];
+            html += '<button type="button" class="settings-choice-btn' + (appSettings.fontSize === f.key ? ' active' : '') + '" onclick="setFontSizeSetting(\'' + f.key + '\')">' + escapeHtml(f.label) + '</button>';
+        }
+        html += '</div>';
+        return html;
+    }
+
+    // ----- Notifications toggles ------------------------------------------------------------
+
+    function toggleNotificationSetting(key) {
+        if (!appSettings.notifications) { appSettings.notifications = {}; }
+        appSettings.notifications[key] = !appSettings.notifications[key];
+        saveAppSettings();
+        renderSettingsScreenFromRealData();
+        renderHomeNotificationsFromRealData();
+    }
+
+    function buildNotificationsSectionHtml() {
+        var defs = [
+            { key: 'upcomingPayment', label: 'תשלום שצפוי מחר' },
+            { key: 'upcomingIncome', label: 'הכנסה שצפויה מחר' },
+            { key: 'completedObligation', label: 'התחייבות שהסתיימה' }
+        ];
+        var html = '<div class="settings-hint">התראות אלה מוצגות בתוך האפליקציה בלבד, כשהיא פתוחה — אינן התראות מערכת (Push).</div>';
+        for (var i = 0; i < defs.length; i++) {
+            var d = defs[i];
+            var on = !!(appSettings.notifications && appSettings.notifications[d.key]);
+            html += '<div class="settings-row">' +
+                '<div class="settings-row-label">' + escapeHtml(d.label) + '</div>' +
+                '<button type="button" class="settings-toggle-btn' + (on ? ' on' : '') + '" onclick="toggleNotificationSetting(\'' + d.key + '\')" aria-pressed="' + on + '">' + (on ? 'פעיל' : 'כבוי') + '</button>' +
+            '</div>';
+        }
+        return html;
+    }
+
+    // ----- Security: PIN ("privacy lock", not encryption) + auto-lock ----------------------
+
+    function openPinForm(mode) {
+        settingsPinFormMode = mode;
+        renderSettingsScreenFromRealData();
+    }
+    function closePinForm() {
+        settingsPinFormMode = null;
+        renderSettingsScreenFromRealData();
+    }
+
+    async function submitSetPin() {
+        var p1 = document.getElementById('pin-set-new');
+        var p2 = document.getElementById('pin-set-confirm');
+        var v1 = p1 ? p1.value : '';
+        var v2 = p2 ? p2.value : '';
+        if (!/^\d{4,6}$/.test(v1)) { alert('PIN חייב להכיל 4 עד 6 ספרות'); return; }
+        if (v1 !== v2) { alert('הקודים אינם תואמים'); return; }
+        var hash = await hashPin(v1);
+        appSettings.pinHash = hash;
+        appSettings.pinEnabled = true;
+        saveAppSettings();
+        settingsPinFormMode = null;
+        renderSettingsScreenFromRealData();
+    }
+
+    async function submitChangePin() {
+        var cur = document.getElementById('pin-change-current');
+        var p1 = document.getElementById('pin-change-new');
+        var p2 = document.getElementById('pin-change-confirm');
+        var curVal = cur ? cur.value : '';
+        var v1 = p1 ? p1.value : '';
+        var v2 = p2 ? p2.value : '';
+        var curHash = await hashPin(curVal);
+        if (curHash !== appSettings.pinHash) { alert('קוד נוכחי שגוי'); return; }
+        if (!/^\d{4,6}$/.test(v1)) { alert('PIN חייב להכיל 4 עד 6 ספרות'); return; }
+        if (v1 !== v2) { alert('הקודים אינם תואמים'); return; }
+        appSettings.pinHash = await hashPin(v1);
+        saveAppSettings();
+        settingsPinFormMode = null;
+        renderSettingsScreenFromRealData();
+    }
+
+    async function submitRemovePin() {
+        var cur = document.getElementById('pin-remove-current');
+        var curVal = cur ? cur.value : '';
+        var curHash = await hashPin(curVal);
+        if (curHash !== appSettings.pinHash) { alert('קוד נוכחי שגוי'); return; }
+        appSettings.pinHash = null;
+        appSettings.pinEnabled = false;
+        saveAppSettings();
+        settingsPinFormMode = null;
+        renderSettingsScreenFromRealData();
+    }
+
+    // "שכחתי PIN": no current-PIN verification (that is the entire point) — requires typing the
+    // exact word "איפוס" instead of a native confirm(), matching this file's existing typed-
+    // confirmation convention. Cancels the PIN only; never touches items/categoryConfig.
+    function submitForgotPin() {
+        var input = document.getElementById('pin-forgot-word');
+        var val = input ? input.value.trim() : '';
+        if (val !== 'איפוס') { alert('יש להקליד בדיוק את המילה "איפוס" כדי לאשר'); return; }
+        appSettings.pinHash = null;
+        appSettings.pinEnabled = false;
+        saveAppSettings();
+        settingsPinFormMode = null;
+        renderSettingsScreenFromRealData();
+    }
+
+    function handleAutoLockChange(value) {
+        appSettings.autoLockMinutes = (value === '') ? null : parseInt(value, 10);
+        saveAppSettings();
+    }
+
+    function buildSettingsPinSectionHtml() {
+        var html = '';
+        if (appSettings.pinEnabled && appSettings.pinHash) {
+            html += '<div class="settings-hint">PIN פעיל. הנתונים המקומיים אינם מוצפנים — זו נעילת פרטיות למסך בלבד.</div>';
+            if (settingsPinFormMode === 'change') {
+                html += '<div class="tx-edit-form">' +
+                    '<div class="tx-edit-group"><label>קוד נוכחי</label><input type="password" inputmode="numeric" id="pin-change-current"></div>' +
+                    '<div class="tx-edit-group"><label>קוד חדש (4–6 ספרות)</label><input type="password" inputmode="numeric" id="pin-change-new"></div>' +
+                    '<div class="tx-edit-group"><label>אימות קוד חדש</label><input type="password" inputmode="numeric" id="pin-change-confirm"></div>' +
+                    '<div class="tx-edit-actions">' +
+                    '<button type="button" class="tx-edit-save" onclick="submitChangePin()">שמור קוד חדש</button>' +
+                    '<button type="button" class="tx-edit-cancel" onclick="closePinForm()">ביטול</button>' +
+                    '</div></div>';
+            } else if (settingsPinFormMode === 'remove') {
+                html += '<div class="tx-edit-form">' +
+                    '<div class="tx-edit-group"><label>קוד נוכחי</label><input type="password" inputmode="numeric" id="pin-remove-current"></div>' +
+                    '<div class="tx-edit-actions">' +
+                    '<button type="button" class="tx-edit-save" onclick="submitRemovePin()">בטל PIN</button>' +
+                    '<button type="button" class="tx-edit-cancel" onclick="closePinForm()">ביטול</button>' +
+                    '</div></div>';
+            } else if (settingsPinFormMode === 'forgot') {
+                html += '<div class="tx-edit-form">' +
+                    '<div class="settings-hint">שכחת/ה את הקוד? הקלד/י את המילה "איפוס" כדי לבטל את ה-PIN. הנתונים הפיננסיים לא יימחקו.</div>' +
+                    '<div class="tx-edit-group"><label>הקלד/י "איפוס"</label><input type="text" id="pin-forgot-word"></div>' +
+                    '<div class="tx-edit-actions">' +
+                    '<button type="button" class="tx-edit-save" onclick="submitForgotPin()">בטל PIN</button>' +
+                    '<button type="button" class="tx-edit-cancel" onclick="closePinForm()">ביטול</button>' +
+                    '</div></div>';
+            } else {
+                html += '<div class="tx-edit-actions">' +
+                    '<button type="button" class="tx-edit-save" onclick="openPinForm(\'change\')">שנה קוד</button>' +
+                    '<button type="button" class="tx-edit-cancel" onclick="openPinForm(\'remove\')">בטל PIN</button>' +
+                    '</div>' +
+                    '<button type="button" class="cat-add-toggle" onclick="openPinForm(\'forgot\')">שכחתי את הקוד</button>';
+            }
+        } else {
+            html += '<div class="settings-hint">PIN כבוי. הנתונים המקומיים אינם מוצפנים — PIN מוסיף נעילת פרטיות למסך בלבד.</div>';
+            if (settingsPinFormMode === 'set') {
+                html += '<div class="tx-edit-form">' +
+                    '<div class="tx-edit-group"><label>קוד חדש (4–6 ספרות)</label><input type="password" inputmode="numeric" id="pin-set-new"></div>' +
+                    '<div class="tx-edit-group"><label>אימות קוד</label><input type="password" inputmode="numeric" id="pin-set-confirm"></div>' +
+                    '<div class="tx-edit-actions">' +
+                    '<button type="button" class="tx-edit-save" onclick="submitSetPin()">הפעל PIN</button>' +
+                    '<button type="button" class="tx-edit-cancel" onclick="closePinForm()">ביטול</button>' +
+                    '</div></div>';
+            } else {
+                html += '<button type="button" class="cat-add-toggle" onclick="openPinForm(\'set\')">+ הגדר PIN</button>';
+            }
+        }
+        return html;
+    }
+
+    function buildAutoLockSectionHtml() {
+        var disabled = !(appSettings.pinEnabled && appSettings.pinHash);
+        var val = (appSettings.autoLockMinutes === null || appSettings.autoLockMinutes === undefined) ? '' : String(appSettings.autoLockMinutes);
+        var html = '<div class="settings-row" style="margin-top:6px;"><div class="settings-row-label">נעילה אוטומטית</div></div>';
+        if (disabled) {
+            html += '<div class="settings-hint">יש להפעיל PIN כדי להשתמש בנעילה אוטומטית.</div>';
+        }
+        html += '<select id="settings-autolock-select" ' + (disabled ? 'disabled' : '') + ' onchange="handleAutoLockChange(this.value)">' +
+            '<option value=""' + (val === '' ? ' selected' : '') + '>כבויה</option>' +
+            '<option value="0"' + (val === '0' ? ' selected' : '') + '>מיד</option>' +
+            '<option value="1"' + (val === '1' ? ' selected' : '') + '>1 דקה</option>' +
+            '<option value="5"' + (val === '5' ? ' selected' : '') + '>5 דקות</option>' +
+            '<option value="15"' + (val === '15' ? ' selected' : '') + '>15 דקות</option>' +
+            '<option value="30"' + (val === '30' ? ' selected' : '') + '>30 דקות</option>' +
+            '</select>';
+        return html;
+    }
+
+    // Lock overlay: shown at load when a PIN is set, and again after backgrounding past the
+    // auto-lock threshold (see the visibilitychange listener below). isAppCurrentlyLocked() reads
+    // the overlay's own display style as the single source of truth rather than a separate
+    // tracked variable, so there is nothing that can go stale between the two.
+    function isAppCurrentlyLocked() {
+        var overlay = document.getElementById('lock-overlay');
+        return !!(overlay && overlay.style.display === 'flex');
+    }
+
+    function shouldShowLockScreenOnLoad() {
+        return !!(appSettings.pinEnabled && appSettings.pinHash);
+    }
+
+    function lockApp() {
+        var overlay = document.getElementById('lock-overlay');
+        if (overlay) { overlay.style.display = 'flex'; }
+        var errEl = document.getElementById('lock-error');
+        if (errEl) { errEl.textContent = ''; }
+        var input = document.getElementById('lock-pin-input');
+        if (input) {
+            input.value = '';
+            setTimeout(function () { input.focus(); }, 0);
+        }
+    }
+
+    function unlockApp() {
+        var overlay = document.getElementById('lock-overlay');
+        if (overlay) { overlay.style.display = 'none'; }
+    }
+
+    async function verifyPinAndUnlock() {
+        var input = document.getElementById('lock-pin-input');
+        var errEl = document.getElementById('lock-error');
+        var val = input ? input.value : '';
+        if (!val) { return; }
+        var hash = await hashPin(val);
+        if (hash === appSettings.pinHash) {
+            if (errEl) { errEl.textContent = ''; }
+            if (input) { input.value = ''; }
+            unlockApp();
+        } else {
+            if (errEl) { errEl.textContent = 'קוד שגוי, נסה/י שוב'; }
+            if (input) { input.value = ''; input.focus(); }
+        }
+    }
+
+    // Auto-lock: backgrounding the tab starts the clock; returning before the configured
+    // threshold does NOT lock (approved requirement). autoLockMinutes === null means "off" — the
+    // listener is then a no-op regardless of how long the tab was hidden.
+    document.addEventListener('visibilitychange', function () {
+        if (!appSettings.pinEnabled || !appSettings.pinHash) { return; }
+        if (document.hidden) {
+            appBackgroundedAt = Date.now();
+            return;
+        }
+        if (appBackgroundedAt !== null && appSettings.autoLockMinutes !== null && appSettings.autoLockMinutes !== undefined) {
+            var elapsedMs = Date.now() - appBackgroundedAt;
+            var thresholdMs = appSettings.autoLockMinutes * 60000;
+            if (elapsedMs >= thresholdMs) { lockApp(); }
+        }
+        appBackgroundedAt = null;
+    });
+
+    // ----- Data: backup / restore / CSV export / reset -------------------------------------
+
+    function collectAppLocalStorageBackup() {
+        var backup = { schemaVersion: 1, exportedAt: nowTimestampStr(), data: {} };
+        for (var i = 0; i < localStorage.length; i++) {
+            var key = localStorage.key(i);
+            if (key && key.indexOf('family_finance_') === 0) {
+                backup.data[key] = localStorage.getItem(key);
+            }
+        }
+        return backup;
+    }
+
+    function downloadTextFile(filename, content, mimeType) {
+        var blob = new Blob([content], { type: mimeType });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    function exportBackupJson() {
+        var backup = collectAppLocalStorageBackup();
+        downloadTextFile('familyfinance-backup-' + todayStr() + '.json', JSON.stringify(backup, null, 2), 'application/json');
+        appendActivityLog('backup', 'גיבוי הורד (' + Object.keys(backup.data).length + ' מפתחות)');
+        renderSettingsScreenFromRealData();
+    }
+
+    // Validates shape + every value's own JSON.parse-ability before anything is trusted — a
+    // corrupt/malformed file must never reach confirmRestoreBackup()'s write loop at all (see the
+    // approved "קובץ פגום... לא יכתוב שום דבר" requirement).
+    function isValidBackupShape(obj) {
+        if (!obj || typeof obj !== 'object') { return false; }
+        if (!obj.data || typeof obj.data !== 'object' || Array.isArray(obj.data)) { return false; }
+        var keys = Object.keys(obj.data);
+        if (keys.length === 0) { return false; }
+        for (var i = 0; i < keys.length; i++) {
+            var k = keys[i];
+            if (k.indexOf('family_finance_') !== 0) { return false; }
+            if (typeof obj.data[k] !== 'string') { return false; }
+            try { JSON.parse(obj.data[k]); } catch (e) { return false; }
+        }
+        try {
+            if (obj.data[DATA_KEY] !== undefined && !Array.isArray(JSON.parse(obj.data[DATA_KEY]))) { return false; }
+            if (obj.data[CONFIG_KEY] !== undefined) {
+                var cfg = JSON.parse(obj.data[CONFIG_KEY]);
+                if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) { return false; }
+            }
+            if (obj.data[SETTINGS_KEY] !== undefined) {
+                var st = JSON.parse(obj.data[SETTINGS_KEY]);
+                if (!st || typeof st !== 'object' || Array.isArray(st)) { return false; }
+            }
+            if (obj.data[ACTIVITY_LOG_KEY] !== undefined && !Array.isArray(JSON.parse(obj.data[ACTIVITY_LOG_KEY]))) { return false; }
+        } catch (e) { return false; }
+        return true;
+    }
+
+    function triggerRestoreFilePicker() {
+        var input = document.getElementById('restore-file-input');
+        if (input) { input.value = ''; input.click(); }
+    }
+
+    function handleRestoreFileSelected(inputEl) {
+        var file = inputEl && inputEl.files && inputEl.files[0];
+        if (!file) { return; }
+        var reader = new FileReader();
+        reader.onload = function () {
+            var parsed = null;
+            try { parsed = JSON.parse(reader.result); } catch (e) { parsed = null; }
+            if (!parsed || !isValidBackupShape(parsed)) {
+                pendingRestoreBackup = null;
+                var el = document.getElementById('restore-preview-area');
+                if (el) { el.innerHTML = '<div class="settings-hint settings-error">קובץ הגיבוי אינו תקין — לא בוצע שינוי.</div>'; }
+                return;
+            }
+            pendingRestoreBackup = parsed;
+            renderRestorePreview();
+        };
+        reader.readAsText(file);
+    }
+
+    function renderRestorePreview() {
+        var el = document.getElementById('restore-preview-area');
+        if (!el) { return; }
+        if (!pendingRestoreBackup) { el.innerHTML = ''; return; }
+        var data = pendingRestoreBackup.data;
+        var itemCount = data[DATA_KEY] ? JSON.parse(data[DATA_KEY]).length : 0;
+        var catCount = data[CONFIG_KEY] ? Object.keys(JSON.parse(data[CONFIG_KEY])).length : 0;
+        var hasSettings = !!data[SETTINGS_KEY];
+        var logCount = data[ACTIVITY_LOG_KEY] ? JSON.parse(data[ACTIVITY_LOG_KEY]).length : 0;
+        el.innerHTML = '<div class="tx-edit-form">' +
+            '<div class="settings-hint">הגיבוי שנבחר יחליף את הנתונים הנוכחיים:</div>' +
+            '<ul class="restore-summary-list">' +
+                '<li>תנועות: ' + itemCount + '</li>' +
+                '<li>קטגוריות: ' + catCount + '</li>' +
+                '<li>הגדרות: ' + (hasSettings ? 'כן' : 'לא') + '</li>' +
+                '<li>יומן פעילות: ' + logCount + ' רשומות</li>' +
+            '</ul>' +
+            '<div class="tx-edit-actions">' +
+            '<button type="button" class="settings-danger-btn" onclick="confirmRestoreBackup()">כן, שחזר ודרוס נתונים קיימים</button>' +
+            '<button type="button" class="tx-edit-cancel" onclick="cancelRestoreBackup()">ביטול</button>' +
+            '</div></div>';
+    }
+
+    function cancelRestoreBackup() {
+        pendingRestoreBackup = null;
+        var el = document.getElementById('restore-preview-area');
+        if (el) { el.innerHTML = ''; }
+    }
+
+    // All keys are written in one tight synchronous loop only after isValidBackupShape() has
+    // already validated every value — as atomic as plain localStorage allows. The in-memory
+    // `activityLog` is re-read from the just-written key (not appended to the pre-restore array)
+    // so the 'data_restore' entry lands after the restored log, then location.reload() re-derives
+    // every other in-memory variable from the new localStorage state instead of hand-patching each
+    // one here.
+    function confirmRestoreBackup() {
+        if (!pendingRestoreBackup || !isValidBackupShape(pendingRestoreBackup)) { return; }
+        var data = pendingRestoreBackup.data;
+        var keys = Object.keys(data);
+        for (var i = 0; i < keys.length; i++) {
+            try { localStorage.setItem(keys[i], data[keys[i]]); } catch (e) { }
+        }
+        try {
+            var freshLog = JSON.parse(localStorage.getItem(ACTIVITY_LOG_KEY) || '[]');
+            if (!Array.isArray(freshLog)) { freshLog = []; }
+            freshLog.push({ ts: nowTimestampStr(), action: 'data_restore', detail: 'שוחזר מגיבוי (' + keys.length + ' מפתחות)' });
+            if (freshLog.length > ACTIVITY_LOG_MAX) { freshLog.splice(0, freshLog.length - ACTIVITY_LOG_MAX); }
+            localStorage.setItem(ACTIVITY_LOG_KEY, JSON.stringify(freshLog));
+        } catch (e) { }
+        pendingRestoreBackup = null;
+        location.reload();
+    }
+
+    function csvEscapeField(val) {
+        if (val === null || val === undefined) { return ''; }
+        var s = String(val);
+        if (/[",\n\r]/.test(s)) { s = '"' + s.replace(/"/g, '""') + '"'; }
+        return s;
+    }
+
+    function exportTransactionsCsv() {
+        var columns = ['id', 'type', 'displayCategory', 'title', 'amount', 'originalAmount', 'start', 'day', 'total', 'interest', 'where', 'cardLast4', 'period', 'notes', 'isArchived', 'archiveReason', 'archivedAt', 'customFields'];
+        var lines = [columns.join(',')];
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            var row = columns.map(function (col) {
+                if (col === 'customFields') { return csvEscapeField(it.customFields ? JSON.stringify(it.customFields) : ''); }
+                return csvEscapeField(it[col]);
+            });
+            lines.push(row.join(','));
+        }
+        // UTF-8 BOM so Excel opens Hebrew text correctly instead of mojibake.
+        downloadTextFile('familyfinance-transactions-' + todayStr() + '.csv', '﻿' + lines.join('\r\n'), 'text/csv;charset=utf-8;');
+    }
+
+    function startResetAllData() {
+        resetConfirmMode = true;
+        renderResetConfirmArea();
+    }
+    function cancelResetAllData() {
+        resetConfirmMode = false;
+        renderResetConfirmArea();
+    }
+    function renderResetConfirmArea() {
+        var el = document.getElementById('reset-confirm-area');
+        if (!el) { return; }
+        if (!resetConfirmMode) { el.innerHTML = ''; return; }
+        el.innerHTML = '<div class="tx-edit-form">' +
+            '<div class="settings-hint settings-error">פעולה זו תמחק לצמיתות את כל הנתונים, הקטגוריות, ההגדרות ויומן הפעילות. לא ניתן לבטל לאחר הביצוע.</div>' +
+            '<div class="tx-edit-group"><label>הקלד/י "איפוס" לאישור</label><input type="text" id="reset-confirm-word"></div>' +
+            '<div class="tx-edit-actions">' +
+            '<button type="button" class="settings-danger-btn" onclick="confirmResetAllData()">מחק הכל</button>' +
+            '<button type="button" class="tx-edit-cancel" onclick="cancelResetAllData()">ביטול</button>' +
+            '</div></div>';
+    }
+    // Keys are collected first, then removed in a second loop — removing while iterating
+    // localStorage would shift indexes and skip keys.
+    function confirmResetAllData() {
+        var input = document.getElementById('reset-confirm-word');
+        var val = input ? input.value.trim() : '';
+        if (val !== 'איפוס') { alert('יש להקליד בדיוק את המילה "איפוס" כדי לאשר'); return; }
+        var keysToRemove = [];
+        for (var i = 0; i < localStorage.length; i++) {
+            var k = localStorage.key(i);
+            if (k && k.indexOf('family_finance_') === 0) { keysToRemove.push(k); }
+        }
+        for (var j = 0; j < keysToRemove.length; j++) {
+            try { localStorage.removeItem(keysToRemove[j]); } catch (e) { }
+        }
+        location.reload();
+    }
+
+    function buildDataSectionHtml() {
+        return '<div class="settings-data-actions">' +
+            '<button type="button" class="cat-add-toggle" onclick="exportBackupJson()">⬇️ גיבוי (הורדת קובץ JSON)</button>' +
+            '<button type="button" class="cat-add-toggle" onclick="triggerRestoreFilePicker()">⬆️ שחזור מגיבוי</button>' +
+            '<input type="file" id="restore-file-input" accept="application/json" style="display:none;" onchange="handleRestoreFileSelected(this)">' +
+            '<button type="button" class="cat-add-toggle" onclick="exportTransactionsCsv()">📄 ייצוא תנועות ל-CSV</button>' +
+            '</div>' +
+            '<div id="restore-preview-area"></div>' +
+            '<div class="settings-danger-zone">' +
+            '<button type="button" class="settings-danger-btn" onclick="startResetAllData()">🗑️ איפוס כל הנתונים</button>' +
+            '<div id="reset-confirm-area"></div>' +
+            '</div>';
+    }
+
+    // ----- Experimental (clean infrastructure, empty registry — no fake toggles) -----------
+
+    function buildExperimentalSectionHtml() {
+        return '<div class="settings-hint">אין כרגע אפשרויות ניסיוניות פעילות.</div>';
+    }
+
+    // ----- About -----------------------------------------------------------------------------
+
+    function buildAboutSectionHtml() {
+        var whatsNew = [
+            'דפי קטגוריות',
+            'אריחי בית משופרים',
+            'ימי כניסה וירידה',
+            'עריכת תנועה בלחיצה',
+            'ארכוב אוטומטי להתחייבויות שהסתיימו',
+            'הפרדת קטגוריות והגדרות'
+        ];
+        var html = '<div class="settings-row"><div class="settings-row-label">גרסה</div><div>' + escapeHtml(APP_VERSION) + '</div></div>';
+        html += '<div class="settings-row-label" style="margin-top:10px;">מה חדש</div><ul class="whats-new-list">';
+        for (var i = 0; i < whatsNew.length; i++) { html += '<li>' + escapeHtml(whatsNew[i]) + '</li>'; }
+        html += '</ul>';
+        html += '<div class="settings-hint" style="margin-top:10px;">FamilyFinance PRO — אפליקציה מקומית לניהול תקציב משפחתי. כל הנתונים נשמרים במכשיר בלבד.</div>';
+        return html;
+    }
+
+    // ----- Activity log ------------------------------------------------------------------------
+
+    function getActivityActionLabel(action) {
+        var labels = {
+            category_created: 'קטגוריה נוצרה',
+            category_renamed: 'שם קטגוריה שונה',
+            category_deleted: 'קטגוריה נמחקה',
+            default_day_changed: 'יום ברירת מחדל שונה',
+            auto_archive: 'ארכוב אוטומטי',
+            manual_archive: 'ארכוב ידני',
+            restore: 'שחזור מארכיון',
+            backup: 'גיבוי נתונים',
+            data_restore: 'שחזור נתונים מגיבוי'
+        };
+        return labels[action] || action;
+    }
+
+    // Newest-first; the stored log itself is already capped at ACTIVITY_LOG_MAX, so no further
+    // slicing is needed for display.
+    function buildActivityLogSectionHtml() {
+        if (!activityLog.length) { return '<div class="settings-hint">אין עדיין רשומות ביומן הפעילות.</div>'; }
+        var html = '<div class="activity-log-list">';
+        for (var i = activityLog.length - 1; i >= 0; i--) {
+            var entry = activityLog[i];
+            html += '<div class="activity-log-row">' +
+                '<div class="activity-log-action">' + escapeHtml(getActivityActionLabel(entry.action)) + '</div>' +
+                (entry.detail ? '<div class="activity-log-detail">' + escapeHtml(entry.detail) + '</div>' : '') +
+                '<div class="activity-log-ts">' + escapeHtml(entry.ts) + '</div>' +
+            '</div>';
+        }
+        html += '</div>';
+        return html;
+    }
+
+    // ----- Master render -----------------------------------------------------------------------
+
+    function renderSettingsScreenFromRealData() {
+        var el = document.getElementById('settings-screen-body');
+        if (!el) { return; }
+        var html = '';
+        html += '<div class="settings-section"><div class="settings-section-title">🔒 אבטחה</div>' + buildSettingsPinSectionHtml() + buildAutoLockSectionHtml() + '</div>';
+        html += '<div class="settings-section"><div class="settings-section-title">🎨 מראה</div>' + buildAppearanceSectionHtml() + '</div>';
+        html += '<div class="settings-section"><div class="settings-section-title">🔔 התראות</div>' + buildNotificationsSectionHtml() + '</div>';
+        html += '<div class="settings-section"><div class="settings-section-title">💾 נתונים</div>' + buildDataSectionHtml() + '</div>';
+        html += '<div class="settings-section"><div class="settings-section-title">🧪 אפשרויות ניסיוניות</div>' + buildExperimentalSectionHtml() + '</div>';
+        html += '<div class="settings-section"><div class="settings-section-title">ℹ️ אודות</div>' + buildAboutSectionHtml() + '</div>';
+        html += '<div class="settings-section"><div class="settings-section-title">🕒 יומן פעילות</div>' + buildActivityLogSectionHtml() + '</div>';
+        el.innerHTML = html;
+
+        // buildDataSectionHtml() above always emits an empty #restore-preview-area/#reset-confirm-
+        // area — repopulate them from state so a pending restore-preview or reset-confirmation
+        // survives a re-render triggered by an unrelated action (same convention previewEditingId
+        // already relies on elsewhere in this file).
+        renderRestorePreview();
+        renderResetConfirmArea();
+    }
+
+    // Runs once at the very end of the script, after every screen has already rendered — a PIN
+    // being set only gates the overlay's own visibility, never what's underneath it.
+    if (shouldShowLockScreenOnLoad()) { lockApp(); } else { unlockApp(); }
 </script>
 
 </body>
