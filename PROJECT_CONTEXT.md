@@ -10,7 +10,8 @@
 
 ## מבנה המערכת
 - **קובץ יחיד ומרכזי**: [index.html](index.html) — מכיל HTML + CSS (בתוך `<style>`) + JavaScript (בתוך `<script>`), הכל inline. זהו הקובץ שרץ בפועל בדפדפן.
-- **עדכון 31/07/2026 — Cutover הושלם (Version 1.0)**: `index.html` הוא כעת ארכיטקטורת ה-**Cockpit** (4 מסכים: בית/תנועות/תובנות/הגדרות + ניווט תחתון + FAB Quick Actions — ראו סעיף "המסכים והמודולים" למטה), עם מפתחות ה-localStorage המקוריים (`family_finance_data`/`family_finance_cat_config`). זהו תוצר Cutover מ-`index-preview-v2.html` (commit `c63a43e`). מבנה הנתונים (`items`/`categoryConfig`) ולוגיקת החישוב הבסיסית **לא השתנו** — רק העטיפה/הממשק. ה-`index.html` ה"ישן" (טרום-Cockpit, המבנה המתואר בעבר בסעיף זה) נשמר אך ורק דרך Git — Tag מקומי `pre-preview-v2-cutover` → commit `72a315a`.
+- **עדכון 31/07/2026 — Cutover הושלם (Version 1.0)**: `index.html` הוא כעת ארכיטקטורת ה-**Cockpit** (בעת הסגירה: 4 מסכים — בית/תנועות/תובנות/הגדרות + ניווט תחתון + FAB Quick Actions), עם מפתחות ה-localStorage המקוריים (`family_finance_data`/`family_finance_cat_config`). זהו תוצר Cutover מ-`index-preview-v2.html` (commit `c63a43e`). מבנה הנתונים (`items`/`categoryConfig`) ולוגיקת החישוב הבסיסית **לא השתנו** — רק העטיפה/הממשק. ה-`index.html` ה"ישן" (טרום-Cockpit) נשמר אך ורק דרך Git — Tag מקומי `pre-preview-v2-cutover` → commit `72a315a`.
+- **עדכון 03/08/2026 — Version 1.1 בתהליך**: לאחר Version 1.0, הפיתוח ממשיך ישירות על `index.html` (ראו CURRENT_STATUS.md/CHANGELOG.md, סעיף "Version 1.1"). המסך "הגדרות" הישן שינה שם ל-**"קטגוריות"**, ונוסף מסך **"הגדרות"** חדש ונפרד — סה"כ **5 מסכים כעת** (ראו "המסכים והמודולים" למטה, מעודכן). `APP_VERSION` בקוד: `'1.1.0 Preview'`.
 - **[index-preview-v2.html](index-preview-v2.html)** ("Preview v2" / "Cockpit", tracked): הגרסה שממנה בוצע ה-Cutover — עדיין קיימת בריפו במקביל, עם מפתחות localStorage **נפרדים** (`family_finance_preview_v2_*`), לצורכי השוואה/רגרסיה. **לא נמחקת עדיין** (הוחלט בשלב 4.6) — ניקוי יהיה שלב עתידי נפרד, רק לאחר תקופת אימות חי.
 - **קבצים נפרדים קיימים אך לא מקושרים בפועל**: [app.js](app.js) ו-[styles.css](styles.css) מכילים עותק **ישן ושגוי** של הלוגיקה/ה-CSS (נמצא ב-diff ישיר שאינם תואמים ל-`index.html` העדכני — אסור לשמש כמקור העתקה). `index.html` אינו מכיל תגית `<link>` או `<script src>` שמפנה אליהם. **לא נמחקים עדיין** (הוחלט בשלב 4.6) — ניקוי עתידי נפרד. ראו CURRENT_STATUS.md לפרטים.
 - **[index-preview.html](index-preview.html)** ("Preview v1", untracked): ניסיון עיצוב ראשון מוקדם יותר — התברר כמתיחת-פנים על המבנה הישן, נזנח לטובת Preview v2. ראו CURRENT_STATUS.md.
@@ -28,41 +29,53 @@
 ## הטכנולוגיות
 - HTML5, CSS3 (בסגנון inline `<style>`), JavaScript ES5-style (var, function declarations — לא משתמשים ב-class/let/const/arrow functions/מודולים)
 - ללא framework, ללא bundler, ללא package.json, ללא node_modules
-- אחסון נתונים: `localStorage` בדפדפן בלבד (מפתחות: `family_finance_data`, `family_finance_cat_config`)
+- אחסון נתונים: `localStorage` בדפדפן בלבד. **6 מפתחות נכון ל-03/08/2026**: `family_finance_data`, `family_finance_cat_config` (מקוריים); `family_finance_category_tile_order` (סדר אריחי בית, Version 1.1); `family_finance_loan_balance_view` (תצוגת קרן/סה"כ, Version 1.1); `family_finance_settings`, `family_finance_activity_log` (מסך הגדרות, שלב 4.0.3) — כולם עם קידומת `family_finance_`, נכללים באופן גורף בגיבוי/שחזור JSON.
 - RTL ועברית כברירת מחדל (`<html lang="he" dir="rtl">`)
 - גרפים: SVG בנוי ידנית (לא ספריית גרפים חיצונית)
 
-## המסכים והמודולים (ארכיטקטורת Cockpit הפעילה, מ-31/07/2026)
-מעטפת אפליקציה קבועה (כותרת עליונה + ניווט תחתון עם 4 טאבים + כפתור הוספה צף/FAB) ו-4 מסכים:
-1. **בית (Cockpit)** — מד ראשי ("כמה פנוי לי להוציא" + סטטוס+נרטיב), Snapshot חודשי (הכנסות/הוצאות/יתרה), "מה דורש תשומת לב" (חיוב קרוב גדול + אזהרת תחזית, עד 2 כרטיסים, ריק כשאין), "פעילות אחרונה".
-2. **תנועות** — רשימה כרונולוגית מאוחדת (id יורד), מסנן פעיל/ארכיון פונקציונלי, אזור הוספה ייעודי (Quick Actions: הכנסה/הוצאה קבועה/משתנה/מתוארכת/הלוואה), תפריט ⋮ לכל שורה (עריכה inline, ארכוב/שחזור, מחיקה סופית עם `confirm()`).
+## המסכים והמודולים (ארכיטקטורת Cockpit, מעודכן ל-03/08/2026 — Version 1.1, שלב 4.0.3)
+מעטפת אפליקציה קבועה (כותרת עליונה + ניווט תחתון עם **5 טאבים** + כפתור הוספה צף/FAB, הקשרי) ו-5 מסכים:
+1. **בית (Cockpit)** — מד ראשי ("כמה פנוי לי להוציא"), Snapshot חודשי מצומצם (הכנסות/הוצאות — היתרה כבר במד הראשי), **התראות בתוך האפליקציה** (3 סוגים, ראו "הגדרות" למטה), "מה דורש תשומת לב" (חיוב קרוב גדול + אזהרת תחזית, עד 2 כרטיסים, ריק כשאין), רשת **אריחי קטגוריה** (ניתנים לסינון-בלחיצה וסידור-מחדש בגרירה, סדר נשמר ב-`family_finance_category_tile_order`) + 2 **אריחי-סטטיסטיקה** קבועים ("יתרת תשלומים שונים", "יתרת הלוואות" עם toggle קרן/סה"כ נשמר ב-`family_finance_loan_balance_view`), "פעילות אחרונה".
+2. **תנועות** — רשימה כרונולוגית מאוחדת (id יורד), מסנן פעיל/ארכיון + **סינון-לפי-קטגוריה אופציונלי** (מגיע מלחיצה על אריח/כותרת קטגוריה — "עמוד קטגוריה"; כותרת המסך משתנה בהתאם), אזור הוספה ייעודי (Quick Actions: הכנסה/הוצאה קבועה/משתנה/מתוארכת/הלוואה; בעמוד קטגוריה ה-FAB פותח טופס ישיר לאותה קטגוריה), **לחיצה על כל שורה פעילה פותחת עריכה inline** (לא דרך תפריט), תפריט ⋮ לכל שורה (ארכוב/שחזור, מחיקה סופית עם `confirm()`). **ארכוב אוטומטי**: הלוואות/תשלומים שונים שכל תשלומיהם הסתיימו עוברים לארכיון בטעינת הדף (טוסט לא-חוסם, לא `alert()`).
 3. **תובנות (Insights)** — כרטיסי תובנה מבוססי-נתונים (חיובי כרטיס אשראי, יתרת הלוואות, אזהרת תחזית) + Forecast מלא: גרף SVG + טבלה, תחזית 6 חודשים קדימה, מבוסס `computeForecast()`.
-4. **הגדרות** — ניהול קטגוריות מלא: הוספה/שינוי שם/מחיקה (נחסמת אם יש תנועות, כולל בארכיון — ללא מחיקה אוטומטית של תנועות), טפסים inline בתוך הממשק (ללא `prompt()` ילידי).
+4. **קטגוריות** (שינה שם מ-"הגדרות" ב-03/08/2026, ללא שינוי לוגי) — ניהול קטגוריות מלא: הוספה/שינוי שם/מחיקה (נחסמת אם יש תנועות, כולל בארכיון), **יום כניסה/ירידה ברירת מחדל אופציונלי** (`defaultDayOfMonth`, מוסתר לקטגוריות `dated`), טפסים inline בתוך הממשק (ללא `prompt()` ילידי).
+5. **הגדרות** (חדש, 03/08/2026) — 7 תת-מערכות: אבטחה (PIN אופציונלי + hash בלבד + Auto-lock; **ללא ביומטריה בכל צורה**), מראה (ערכת נושא + צבע ראשי מפלטה קבועה של 6 + גודל גופן), התראות (בתוך האפליקציה בלבד, 3 סוגים), נתונים (גיבוי/שחזור JSON מלא + ייצוא CSV + איפוס עם מסך אישור ייעודי), אפשרויות ניסיוניות (תשתית ריקה כרגע), אודות (`APP_VERSION`, "מה חדש"), יומן פעילות (עד 200 רשומות, 9 סוגי פעולה).
 
-**Quick Actions (FAB)**: לחיצה פותחת 3 כפתורים (הכנסה/הוצאה/הלוואה); "הוצאה" עוברת דרך בורר סוג (קבוע/משתנה/מתוארך). כל פעולת כתיבה (הוספה/עריכה/ארכוב/שחזור/מחיקה/ניהול קטגוריות) פעילה במלואה ושומרת ל-`family_finance_data`/`family_finance_cat_config`.
+**Quick Actions (FAB)**: לחיצה פותחת 3 כפתורים (הכנסה/הוצאה/הלוואה) — מוסתר לגמרי במסך הבית, מוצג רק בעמוד קטגוריה/תנועות. "הוצאה" עוברת דרך בורר סוג (קבוע/משתנה/מתוארך). כל פעולת כתיבה (הוספה/עריכה/ארכוב/שחזור/מחיקה/ניהול קטגוריות) פעילה במלואה ושומרת ל-`family_finance_data`/`family_finance_cat_config`.
 
 ## מבנה הנתונים
 
 ### `categoryConfig` (נשמר תחת `family_finance_cat_config`)
-אובייקט שממופה מפתח קטגוריה → `{ label: string, baseType: string }`.
+אובייקט שממופה מפתח קטגוריה → `{ label: string, baseType: string, defaultDayOfMonth?: number }`.
 קטגוריות מובנות: `income`, `fixed`, `variable`, `loan`.
 קטגוריות מותאמות אישית: מפתח בפורמט `custom_<timestamp>`.
 `baseType` אפשרי: `income` | `fixed` | `variable` | `loan` | `dated`.
+`defaultDayOfMonth` (**חדש, Version 1.1 שלב 4.0.2**): מספר 1–31, אופציונלי — נשמר רק כשתקין; לא רלוונטי לקטגוריות `dated`. משמש כברירת מחדל ל-`item.day` דרך `resolveEffectiveDay()` כשהפריט עצמו לא הגדיר יום.
 
 ### `items` (נשמר תחת `family_finance_data`)
 מערך אובייקטים, כל אחד עם `id` (timestamp), `type` (=baseType), `displayCategory` (מפתח הקטגוריה), `isArchived` (bool), ושדות ספציפיים לפי סוג:
-- **income**: `title`, `amount`
-- **fixed**: `title`, `amount`, `where`, `period` (חודשי/שנתי), `notes`
-- **variable**: `title`, `originalAmount`, `amount` (חודשי), `total` (מס' תשלומים), `start` (תאריך)
-- **loan**: `title`, `originalAmount`, `amount`, `where`, `interest`, `day` (יום חיוב בחודש), `total`, `start`
+- **income**: `title`, `amount`, `day` (**חדש, Version 1.1** — "יום כניסה", אופציונלי)
+- **fixed**: `title`, `amount`, `where`, `period` (חודשי/שנתי), `notes`, `cardLast4`, `day` (**חדש, Version 1.1**, אופציונלי)
+- **variable**: `title`, `originalAmount`, `amount` (חודשי), `total` (מס' תשלומים), `start` (תאריך), `day` (**חדש, Version 1.1**, אופציונלי)
+- **loan**: `title`, `originalAmount`, `amount`, `where`, `interest`, `day` (יום חיוב בחודש — קיים מקודם, לא חדש), `total`, `start`
 - **dated**: `title`, `amount`, `start` (תאריך חיוב)
+- **משותף לכולם (`archiveReason`/`archivedAt`, חדש, Version 1.1 שלב 4.0.2.2)**: `archiveReason` (`'completed'` — ארכוב אוטומטי, או `'manual'` — ארכוב ידני, מוגדר גם לפריטים לא-loan/variable מאז השלב הזה) ו-`archivedAt` (תאריך YYYY-MM-DD). שני השדות נמחקים בשחזור מהארכיון. **ללא migration** — פריטים בארכיון מלפני השלב הזה נשארים בלי השדות; פריטים ללא `item.day` נופלים לשרשרת `resolveEffectiveDay()` (`item.day → categoryConfig[key].defaultDayOfMonth → 1`) בזמן קריאה/רינדור בלבד, לא נכתבים מחדש.
+
+### `appSettings` (נשמר תחת `family_finance_settings`, חדש — Version 1.1 שלב 4.0.3)
+`{ theme, primaryColor, fontSize, pinHash, pinEnabled, autoLockMinutes, notifications: {upcomingPayment, upcomingIncome, completedObligation}, experimentalFlags: {} }`. `pinHash` הוא SHA-256 hex בלבד (`crypto.subtle.digest`) — ה-PIN הגולמי לעולם לא נשמר.
+
+### `activityLog` (נשמר תחת `family_finance_activity_log`, חדש — Version 1.1 שלב 4.0.3)
+מערך `{ts, action, detail}`, מוגבל ל-200 רשומות אחרונות (`ACTIVITY_LOG_MAX`). `action` אחד מ-9 ערכים קבועים: `category_created`/`category_renamed`/`category_deleted`/`default_day_changed`/`auto_archive`/`manual_archive`/`restore`/`backup`/`data_restore`. לעולם לא כולל PIN/hash/סודות.
 
 ## לוגיקה עסקית חשובה
 - **יתרה פנויה חודשית** = סכום כל ה-`income` פחות כל ההוצאות הפעילות לחודש הנוכחי (לא כולל תנועות בארכיון).
 - **תשלומים/הלוואות**: חישוב "כמה תשלומים נותרו" ו"תאריך סיום" מבוסס על פונקציות `getBillingRange` + `parseDatesAndGetLeft`, שמחשבות את חודש החיוב הראשון בפועל (תלוי אם יום ההתחלה >= יום החיוב), ואז סופרות חודשים שעברו ביחס להיום.
 - **הוצאה קבועה שנתית**: מחולקת ל-12 בחישוב החודשי (`amount / 12`).
 - **תחזית 6 חודשים**: `computeForecast()` מדמה לכל אחד מ-6 החודשים הקרובים אילו תנועות "פעילות" באותו חודש (fixed תמיד, variable/loan לפי טווח חיוב, dated לפי חודש ושנה מדויקים) ומחשבת נטו.
-- **מחיקת קטגוריה מותאמת אישית** מוחקת גם את כל התנועות המשויכות אליה (עם אישור מהמשתמש).
+- **`getClampedBillingDate()`** (Version 1.1, שלב 4.0.2): `getBillingRange()` "קולט" יום חיוב לא-תקין לחודש נתון (למשל 31 בפברואר) ליום האחרון בפועל של אותו חודש, במקום לתת ל-`Date` לגלוש לחודש הבא — תיקון רטרואקטיבי לכל חישובי טווח חיוב.
+- **`resolveEffectiveDay(item)`** (Version 1.1, שלב 4.0.2): שרשרת נפילה מרכזית ליום החיוב/כניסה האפקטיבי — `item.day` תקין → אחרת `categoryConfig[item.displayCategory].defaultDayOfMonth` → אחרת `1`.
+- **ארכוב אוטומטי** (Version 1.1, שלב 4.0.2.2): בכל טעינת דף, הלוואות/תשלומים-שונים פעילים שכל תשלומיהם כבר חויבו (`parseDatesAndGetLeft().left === 0`) והתאריך היום אחרי תאריך החיוב האחרון בפועל — עוברים אוטומטית לארכיון (`archiveReason:'completed'`), עם טוסט לא-חוסם (לא `alert()`).
+- **מחיקת קטגוריה מותאמת אישית** — **בארכיטקטורת Cockpit הנוכחית, נחסמת** אם יש לה תנועות (כולל בארכיון); לעולם לא מוחקת תנועות אוטומטית (החלטת מוצר מפורשת, שונה מהתנהגות `index.html` הטרום-Cockpit הישן).
 - **XSS protection**: כל טקסט המוזן ע"י המשתמש עובר `escapeHtml()` לפני הזרקה ל-innerHTML.
 
 ## החלטות ארכיטקטורה קיימות
