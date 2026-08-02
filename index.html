@@ -972,7 +972,7 @@
             } else if (item.type === 'fixed') {
                 totals[cKey] += (item.period === 'שנתי') ? (item.amount / 12) : item.amount;
             } else if (item.type === 'variable') {
-                var dtVar = parseDatesAndGetLeft(item.start, item.total, 1);
+                var dtVar = parseDatesAndGetLeft(item.start, item.total, resolveEffectiveDay(item));
                 if (dtVar.left > 0) { totals[cKey] += item.amount; }
             } else if (item.type === 'loan') {
                 var dtLoan = parseDatesAndGetLeft(item.start, item.total, item.day);
@@ -1075,7 +1075,7 @@
         for (var i = 0; i < items.length; i++) {
             var it = items[i];
             if (it.type === 'variable' && !it.isArchived) {
-                var dt = parseDatesAndGetLeft(it.start, it.total, 1);
+                var dt = parseDatesAndGetLeft(it.start, it.total, resolveEffectiveDay(it));
                 total += it.amount * dt.left;
             }
         }
@@ -1339,6 +1339,22 @@
     // ===== added in D.6), unmodified. Not wired to mockItems or localStorage.                =====
     // =====================================================================================
 
+    // Version 1.1, Stage 4.0.2: single central helper for "day-of-month → actual Date" conversion.
+    // A day of 29/30/31 that doesn't exist in the target month (e.g. 31 in February) lands on that
+    // month's last real day instead — the stored day value itself is never altered, only the Date
+    // object built from it here. `monthIndex` is passed through `new Date(year, monthIndex, 1)`
+    // first so any out-of-range month (e.g. 12, or a negative index) normalizes to the correct
+    // year/month exactly the way plain `new Date(year, monthIndex, day)` already would, before the
+    // day itself is clamped against that normalized month's real length.
+    function getClampedBillingDate(year, monthIndex, day) {
+        var normalized = new Date(year, monthIndex, 1);
+        var y = normalized.getFullYear();
+        var m = normalized.getMonth();
+        var lastDayOfMonth = new Date(y, m + 1, 0).getDate();
+        var clampedDay = Math.min(day, lastDayOfMonth);
+        return new Date(y, m, clampedDay);
+    }
+
     // --- ⚖️ לוגיקת חישוב מועדים ותשלומים שנותרו מעודכנת ומסונכרנת לחלוטין ---
     function getBillingRange(startDateStr, totalPayments, billingDay) {
         if (!startDateStr || !totalPayments) return null;
@@ -1356,10 +1372,10 @@
         if (startDay >= bDay) {
             firstBillingMonth += 1;
         }
-        var firstBillingDate = new Date(startYear, firstBillingMonth, bDay);
+        var firstBillingDate = getClampedBillingDate(startYear, firstBillingMonth, bDay);
 
         // קביעת תאריך חיוב אחרון (הוספת סך תשלומים פחות 1)
-        var lastBillingDate = new Date(firstBillingDate.getFullYear(), firstBillingDate.getMonth() + (total - 1), bDay);
+        var lastBillingDate = getClampedBillingDate(firstBillingDate.getFullYear(), firstBillingDate.getMonth() + (total - 1), bDay);
 
         return { first: firstBillingDate, last: lastBillingDate, bDay: bDay, total: total };
     }
@@ -1392,6 +1408,30 @@
         if (left > range.total) left = range.total;
 
         return { left: left, endStr: endStr };
+    }
+
+    // Version 1.1, Stage 4.0.2: single central helper resolving the "effective" day-of-month for
+    // one item — item.day itself when it's already a valid 1–31 value, otherwise
+    // categoryConfig[<item's category>].defaultDayOfMonth when that's valid, otherwise 1. Never
+    // mutates `item` or `categoryConfig` — read-only, used both to fill a new item's day field with
+    // its category's default and to feed billing-day calculations (getCategoryMonthlyTotals's/
+    // getVariableRemainingBalance's variable branch) without a hardcoded day. Existing items saved
+    // before this stage (no `day` field at all) are unaffected on disk — this only computes what to
+    // use *this time*, exactly the "lazy fallback, no migration" decision requires. Category lookup
+    // mirrors the existing displayCategory-then-type fallback already used elsewhere in this file
+    // (e.g. getCategoryMonthlyTotals's own `cKey` resolution) so a stale/mismatched displayCategory
+    // degrades the same way it already does everywhere else, not differently here.
+    function resolveEffectiveDay(item) {
+        var ownDay = parseInt(item && item.day, 10);
+        if (isFinite(ownDay) && ownDay >= 1 && ownDay <= 31) { return ownDay; }
+
+        var cKey = (item && item.displayCategory) || (item && item.type);
+        var cfg = categoryConfig[cKey];
+        if (!cfg && item) { cfg = categoryConfig[item.type]; }
+        var defaultDay = cfg ? parseInt(cfg.defaultDayOfMonth, 10) : NaN;
+        if (isFinite(defaultDay) && defaultDay >= 1 && defaultDay <= 31) { return defaultDay; }
+
+        return 1;
     }
 
     // Copied verbatim from index.html — used only by computeForecast() below, for the loan branch.
@@ -2341,8 +2381,21 @@
         }
 
         if (previewEditingCategoryKey === key) {
+            // Version 1.1, Stage 4.0.2: the optional defaultDayOfMonth field, worded per this
+            // category's own (fixed, unchangeable-here) baseType — omitted entirely for 'dated'.
+            // Pre-filled with the currently stored value only when it's already a valid 1–31
+            // number; otherwise left blank (blank reads back as "no default", not as 1 — the
+            // field only ever shows a value the category actually has stored).
+            var dayFieldHtml = '';
+            var dayLabel = getCategoryDefaultDayFieldLabel(cfg.baseType);
+            if (dayLabel !== null) {
+                var storedDay = cfg.defaultDayOfMonth;
+                var dayValueAttr = (typeof storedDay === 'number' && storedDay >= 1 && storedDay <= 31) ? storedDay : '';
+                dayFieldHtml = '<div class="tx-edit-group"><label>' + escapeHtml(dayLabel) + ' (אופציונלי)</label><input type="number" id="cat-edit-day-' + key + '" min="1" max="31" value="' + dayValueAttr + '"></div>';
+            }
             el.innerHTML = '<div class="tx-edit-form">' +
                 '<div class="tx-edit-group"><label>שם קטגוריה</label><input type="text" id="cat-edit-label-' + key + '" value="' + escapeHtml(label) + '"></div>' +
+                dayFieldHtml +
                 '<div class="tx-edit-actions">' +
                 '<button type="button" class="tx-edit-save" onclick="submitPreviewEditCategory(\'' + key + '\')">💾 שמור שינויים</button>' +
                 '<button type="button" class="tx-edit-cancel" onclick="cancelPreviewEditCategory()">ביטול</button>' +
@@ -2664,6 +2717,7 @@
         if (item.type === 'fixed') {
             var isCreditFixed = (item.where === 'credit');
             html += '<div class="tx-edit-group"><label>סכום</label><input type="number" id="edit-amount-' + id + '" value="' + item.amount + '"></div>' +
+                '<div class="tx-edit-group"><label>יום ירידה</label><input type="number" id="edit-day-' + id + '" min="1" max="31" value="' + resolveEffectiveDay(item) + '"></div>' +
                 '<div class="tx-edit-group"><label>איפה יורד</label><select id="edit-where-' + id + '" onchange="togglePreviewCardLast4Field(\'edit-card-last4-group-' + id + '\', this.value)">' +
                     '<option value="bank"' + (!isCreditFixed ? ' selected' : '') + '>חשבון בנק</option>' +
                     '<option value="credit"' + (isCreditFixed ? ' selected' : '') + '>כרטיס אשראי</option>' +
@@ -2677,6 +2731,7 @@
         } else if (item.type === 'variable') {
             html += '<div class="tx-edit-group"><label>סכום מקור</label><input type="number" id="edit-original-' + id + '" value="' + (item.originalAmount || '') + '"></div>' +
                 '<div class="tx-edit-group"><label>עלות חודשית</label><input type="number" id="edit-amount-' + id + '" value="' + item.amount + '"></div>' +
+                '<div class="tx-edit-group"><label>יום ירידה</label><input type="number" id="edit-day-' + id + '" min="1" max="31" value="' + resolveEffectiveDay(item) + '"></div>' +
                 '<div class="tx-edit-group"><label>סך תשלומים</label><input type="number" id="edit-total-' + id + '" value="' + (item.total || '') + '"></div>' +
                 '<div class="tx-edit-group"><label>תאריך התחלה</label><input type="date" id="edit-start-' + id + '" value="' + (item.start || '') + '"></div>';
         } else if (item.type === 'loan') {
@@ -2684,11 +2739,12 @@
                 '<div class="tx-edit-group"><label>החזר חודשי</label><input type="number" id="edit-amount-' + id + '" value="' + item.amount + '"></div>' +
                 '<div class="tx-edit-group"><label>היכן יורד</label><input type="text" id="edit-where-' + id + '" value="' + escapeHtml(item.where || '') + '"></div>' +
                 '<div class="tx-edit-group"><label>ריבית (%)</label><input type="number" step="0.01" id="edit-interest-' + id + '" value="' + (item.interest || '') + '"></div>' +
-                '<div class="tx-edit-group"><label>יום בחודש</label><input type="number" id="edit-day-' + id + '" value="' + (item.day || '1') + '"></div>' +
+                '<div class="tx-edit-group"><label>יום בחודש</label><input type="number" id="edit-day-' + id + '" min="1" max="31" value="' + resolveEffectiveDay(item) + '"></div>' +
                 '<div class="tx-edit-group"><label>סך תשלומים</label><input type="number" id="edit-total-' + id + '" value="' + (item.total || '') + '"></div>' +
                 '<div class="tx-edit-group"><label>תאריך מתחיל</label><input type="date" id="edit-start-' + id + '" value="' + (item.start || '') + '"></div>';
         } else {
-            html += '<div class="tx-edit-group"><label>סכום</label><input type="number" id="edit-amount-' + id + '" value="' + item.amount + '"></div>';
+            html += '<div class="tx-edit-group"><label>סכום</label><input type="number" id="edit-amount-' + id + '" value="' + item.amount + '"></div>' +
+                '<div class="tx-edit-group"><label>יום כניסה</label><input type="number" id="edit-day-' + id + '" min="1" max="31" value="' + resolveEffectiveDay(item) + '"></div>';
         }
 
         html += '<div class="tx-edit-actions">' +
@@ -2792,11 +2848,13 @@
             } else {
                 item.cardLast4 = '';
             }
+            item.day = document.getElementById('edit-day-' + id).value;
             item.where = newWhere;
             item.period = document.getElementById('edit-period-' + id).value;
             item.notes = document.getElementById('edit-notes-' + id).value;
         } else if (item.type === 'variable') {
             item.originalAmount = parseFloat(document.getElementById('edit-original-' + id).value) || 0;
+            item.day = document.getElementById('edit-day-' + id).value;
             item.total = document.getElementById('edit-total-' + id).value;
             item.start = document.getElementById('edit-start-' + id).value;
         } else if (item.type === 'loan') {
@@ -2806,6 +2864,8 @@
             item.day = document.getElementById('edit-day-' + id).value;
             item.total = document.getElementById('edit-total-' + id).value;
             item.start = document.getElementById('edit-start-' + id).value;
+        } else {
+            item.day = document.getElementById('edit-day-' + id).value;
         }
 
         previewEditingId = null;
@@ -2969,16 +3029,23 @@
 
         var html = '<div class="tx-edit-form">';
 
+        // Version 1.1, Stage 4.0.2: each add-form's day-of-month field is pre-filled via
+        // resolveEffectiveDay() against a not-yet-saved pseudo-item ({ displayCategory:
+        // previewAddCategoryKey }, no `day` of its own yet) — resolves to that category's
+        // defaultDayOfMonth when set, otherwise 1 — and stays fully editable before saving.
+        var addDefaultDay = resolveEffectiveDay({ displayCategory: previewAddCategoryKey });
+
         if (previewAddMode === 'income') {
             html += '<div class="tx-edit-group"><label>שם / תיאור</label><input type="text" id="add-inc-title" placeholder="משכורת, בונוס"></div>' +
-                '<div class="tx-edit-group"><label>סכום</label><input type="number" id="add-inc-amount" placeholder="₪"></div>';
+                '<div class="tx-edit-group"><label>סכום</label><input type="number" id="add-inc-amount" placeholder="₪"></div>' +
+                '<div class="tx-edit-group"><label>יום כניסה</label><input type="number" id="add-inc-day" min="1" max="31" value="' + addDefaultDay + '"></div>';
         } else if (previewAddMode === 'loan') {
             html += '<div class="tx-edit-group"><label>שם ההלוואה</label><input type="text" id="add-loan-title"></div>' +
                 '<div class="tx-edit-group"><label>סכום מקור (סך ההלוואה המקורית)</label><input type="number" id="add-loan-original" placeholder="₪"></div>' +
                 '<div class="tx-edit-group"><label>החזר חודשי</label><input type="number" id="add-loan-amount" placeholder="₪"></div>' +
                 '<div class="tx-edit-group"><label>היכן יורד</label><input type="text" id="add-loan-where"></div>' +
                 '<div class="tx-edit-group"><label>ריבית (%)</label><input type="number" id="add-loan-interest" step="0.01"></div>' +
-                '<div class="tx-edit-group"><label>מתי יורד (יום בחודש)</label><input type="number" id="add-loan-day" min="1" max="31" value="1"></div>' +
+                '<div class="tx-edit-group"><label>מתי יורד (יום בחודש)</label><input type="number" id="add-loan-day" min="1" max="31" value="' + addDefaultDay + '"></div>' +
                 '<div class="tx-edit-group"><label>כמה תשלומים (סך הכל)</label><input type="number" id="add-loan-total"></div>' +
                 '<div class="tx-edit-group"><label>תאריך לקיחה / פתיחה</label><input type="date" id="add-loan-start"></div>';
         } else if (previewAddMode === 'variable') {
@@ -2986,12 +3053,14 @@
                 '<div class="tx-edit-group"><label>שם התשלום</label><input type="text" id="add-var-title"></div>' +
                 '<div class="tx-edit-group"><label>סכום מקור (סך כל העסקה המקורית)</label><input type="number" id="add-var-original" placeholder="₪"></div>' +
                 '<div class="tx-edit-group"><label>עלות חודשית</label><input type="number" id="add-var-amount" placeholder="₪"></div>' +
+                '<div class="tx-edit-group"><label>יום ירידה</label><input type="number" id="add-var-day" min="1" max="31" value="' + addDefaultDay + '"></div>' +
                 '<div class="tx-edit-group"><label>כמה תשלומים (סך הכל)</label><input type="number" id="add-var-total"></div>' +
                 '<div class="tx-edit-group"><label>תאריך התחלה</label><input type="date" id="add-var-start"></div>';
         } else if (previewAddMode === 'fixed') {
             html += categoryPickerHtml +
                 '<div class="tx-edit-group"><label>שם ההוצאה</label><input type="text" id="add-fix-title"></div>' +
                 '<div class="tx-edit-group"><label>סכום</label><input type="number" id="add-fix-amount" placeholder="₪"></div>' +
+                '<div class="tx-edit-group"><label>יום ירידה</label><input type="number" id="add-fix-day" min="1" max="31" value="' + addDefaultDay + '"></div>' +
                 '<div class="tx-edit-group"><label>איפה יורד</label><select id="add-fix-where" onchange="togglePreviewCardLast4Field(\'add-fix-card-last4-group\', this.value)"><option value="bank">חשבון בנק</option><option value="credit">כרטיס אשראי</option></select></div>' +
                 '<div class="tx-edit-group" id="add-fix-card-last4-group" style="display:none;"><label>4 ספרות אחרונות של הכרטיס</label><input type="text" id="add-fix-card-last4" maxlength="4" inputmode="numeric" placeholder="לדוגמה: 5646"></div>' +
                 '<div class="tx-edit-group"><label>חודשי או שנתי</label><select id="add-fix-period"><option value="חודשי">חודשי</option><option value="שנתי">שנתי</option></select></div>' +
@@ -3040,6 +3109,7 @@
         if (baseType === 'income') {
             obj.title = document.getElementById('add-inc-title').value.trim();
             obj.amount = parseFloat(document.getElementById('add-inc-amount').value);
+            obj.day = document.getElementById('add-inc-day').value;
             if (!obj.title || isNaN(obj.amount)) { alert('מלא שם וסכום'); return; }
         } else if (baseType === 'loan') {
             obj.title = document.getElementById('add-loan-title').value.trim();
@@ -3055,12 +3125,14 @@
             obj.title = document.getElementById('add-var-title').value.trim();
             obj.originalAmount = parseFloat(document.getElementById('add-var-original').value) || 0;
             obj.amount = parseFloat(document.getElementById('add-var-amount').value);
+            obj.day = document.getElementById('add-var-day').value;
             obj.total = document.getElementById('add-var-total').value;
             obj.start = document.getElementById('add-var-start').value;
             if (!obj.title || isNaN(obj.amount)) { alert('מלא שם ועלות חודשית'); return; }
         } else if (baseType === 'fixed') {
             obj.title = document.getElementById('add-fix-title').value.trim();
             obj.amount = parseFloat(document.getElementById('add-fix-amount').value);
+            obj.day = document.getElementById('add-fix-day').value;
             obj.where = document.getElementById('add-fix-where').value;
             obj.period = document.getElementById('add-fix-period').value;
             obj.notes = document.getElementById('add-fix-notes').value;
@@ -3182,6 +3254,18 @@
         return PREVIEW_CUSTOM_CATEGORY_TYPE_OPTIONS.map(function (opt) { return opt.value; });
     }
 
+    // Version 1.1, Stage 4.0.2: label text for a category's optional defaultDayOfMonth field,
+    // worded per baseType per the approved decision — income gets "entry day" wording (money coming
+    // in), fixed/variable/loan get "billing day" wording (money going out). Returns null for
+    // 'dated', meaning the field must not be shown at all for that baseType — dated items are
+    // one-time charges fully described by their own `start` date, so a recurring default day would
+    // be a meaningless duplicate concept, not a second way to express the same thing.
+    function getCategoryDefaultDayFieldLabel(baseType) {
+        if (baseType === 'dated') { return null; }
+        if (baseType === 'income') { return 'יום כניסה ברירת מחדל'; }
+        return 'יום ירידה ברירת מחדל';
+    }
+
     // Mirrors index.html's own addCustomCategory() — same key format ('custom_' + Date.now()),
     // same emoji-prefixed label construction, same alert() on an empty title (matching this
     // file's existing alert()-based validation convention for item add/edit, e.g. addPreviewItem
@@ -3205,7 +3289,13 @@
     //
     // Returns the new key on success, null on any validation failure, so a future caller can react
     // (e.g. select the new category) without this function touching the DOM itself.
-    function addPreviewCategory(title, baseType) {
+    // Version 1.1, Stage 4.0.2: added a 3rd, optional `defaultDayOfMonth` parameter — every
+    // existing caller that only passes (title, baseType) is unaffected (defaultDayOfMonth is
+    // undefined, the property is simply not set, byte-identical to before). Only a valid 1–31
+    // number is ever stored; anything else (undefined, null, out of range, non-numeric) is silently
+    // ignored rather than written as a bad value, mirroring this file's existing quiet-ignore
+    // convention for optional fields with no dedicated alert() of their own.
+    function addPreviewCategory(title, baseType, defaultDayOfMonth) {
         var trimmedTitle = (title == null ? '' : String(title)).trim();
         if (!trimmedTitle) { alert('נא להזין שם לקטגוריה'); return null; }
         if (getAllowedPreviewCustomCategoryBaseTypes().indexOf(baseType) === -1) { return null; }
@@ -3220,6 +3310,9 @@
 
         var emoji = pickEmojiForCategory(trimmedTitle, baseType);
         categoryConfig[newKey] = { label: emoji + ' ' + trimmedTitle, baseType: baseType };
+        if (typeof defaultDayOfMonth === 'number' && defaultDayOfMonth >= 1 && defaultDayOfMonth <= 31) {
+            categoryConfig[newKey].defaultDayOfMonth = defaultDayOfMonth;
+        }
         savePreviewCategoryConfig();
         renderAllPreviewScreens();
         return newKey;
@@ -3294,12 +3387,34 @@
     // convention as addPreviewItem()/savePreviewInlineEdit() elsewhere in this file. On success,
     // addPreviewCategory() has already saved+re-rendered internally (with the form still marked
     // open at that point); this only needs to close the form and render once more.
+    // Version 1.1, Stage 4.0.2: reads the optional day field (hidden entirely when the selected
+    // type is 'dated', per getCategoryDefaultDayFieldLabel()'s null return — updatePreviewCategoryAddDayField()
+    // below keeps the group's visibility in sync with the type <select>). An out-of-range or
+    // non-numeric value the user typed anyway (e.g. by re-selecting a non-dated type after typing
+    // something odd) blocks submission with an alert, same convention as every other validated
+    // field in this file; an empty value is a legitimate "no default" and is simply passed through
+    // as null.
     function submitPreviewAddCategory() {
         var titleInput = document.getElementById('cat-add-title');
         var typeSelect = document.getElementById('cat-add-basetype');
+        var dayInput = document.getElementById('cat-add-day');
         var title = titleInput ? titleInput.value : '';
         var baseType = typeSelect ? typeSelect.value : '';
-        var newKey = addPreviewCategory(title, baseType);
+
+        var defaultDayOfMonth = null;
+        if (baseType !== 'dated' && dayInput) {
+            var dayRaw = dayInput.value.trim();
+            if (dayRaw !== '') {
+                var dayNum = parseInt(dayRaw, 10);
+                if (!isFinite(dayNum) || dayNum < 1 || dayNum > 31) {
+                    alert('נא להזין יום בין 1 ל-31, או להשאיר את השדה ריק');
+                    return;
+                }
+                defaultDayOfMonth = dayNum;
+            }
+        }
+
+        var newKey = addPreviewCategory(title, baseType, defaultDayOfMonth);
         if (newKey === null) { return; }
         previewCategoryAddOpen = false;
         renderSettingsScreenFromRealData();
@@ -3331,11 +3446,49 @@
     // success, renamePreviewCategory() has already saved+re-rendered everything (list/total/Home
     // tile/chip label) internally via renderAllPreviewScreens() — this only needs to close the form
     // and render the chip once more to drop out of the rename state.
+    // Version 1.1, Stage 4.0.2: in addition to the rename this already did, also reads the optional
+    // day field (present only for non-'dated' categories — see renderCategoryFilterIndicator()) and
+    // updates categoryConfig[key].defaultDayOfMonth accordingly: a blank value clears any existing
+    // default (falls back to 1, per the "no default → 1" rule), an out-of-range/non-numeric value
+    // blocks saving with an alert (matching this file's existing validation convention), and a
+    // valid 1–31 value is stored. Per the approved decision, changing this default never touches
+    // any already-saved item's own `item.day` — only categoryConfig[key] is written here, and every
+    // existing item keeps whatever `day` (or lack of one) it already had.
+    //
+    // The day input's value is read and validated BEFORE calling renamePreviewCategory(), not
+    // after: renamePreviewCategory() saves+re-renders internally (via renderAllPreviewScreens()),
+    // which rebuilds this entire edit form from scratch (previewEditingCategoryKey is still `key`
+    // at that point) — including a fresh #cat-edit-day-<key> element reset to categoryConfig's
+    // still-unchanged value. Reading the DOM for the day field only after that render would silently
+    // discard whatever the user had just typed. Capturing it first avoids that entirely.
     function submitPreviewEditCategory(key) {
         var input = document.getElementById('cat-edit-label-' + key);
         var newLabel = input ? input.value : '';
+
+        var dayInputEl = document.getElementById('cat-edit-day-' + key);
+        var dayRaw = dayInputEl ? dayInputEl.value.trim() : null;
+        var dayNum = null;
+        if (dayInputEl && dayRaw !== '') {
+            dayNum = parseInt(dayRaw, 10);
+            if (!isFinite(dayNum) || dayNum < 1 || dayNum > 31) {
+                alert('נא להזין יום בין 1 ל-31, או להשאיר את השדה ריק');
+                return;
+            }
+        }
+
         var ok = renamePreviewCategory(key, newLabel);
         if (!ok) { alert('נא להזין שם לקטגוריה'); return; }
+
+        if (dayInputEl && categoryConfig[key]) {
+            if (dayRaw === '') {
+                delete categoryConfig[key].defaultDayOfMonth;
+            } else {
+                categoryConfig[key].defaultDayOfMonth = dayNum;
+            }
+            savePreviewCategoryConfig();
+            renderAllPreviewScreens();
+        }
+
         previewEditingCategoryKey = null;
         renderCategoryFilterIndicator();
     }
@@ -3400,13 +3553,37 @@
     // Builds the markup for the add-category area: a single toggle button when closed, or the
     // inline form when open. Reuses .tx-edit-form/.tx-edit-group/.tx-edit-actions/.tx-edit-save/
     // .tx-edit-cancel as-is (same reasoning as the add-transaction form, Stage G.5).
+    // Version 1.1, Stage 4.0.2: called via the type <select>'s onchange to keep the optional
+    // day-field's label/visibility in sync with whichever baseType is currently chosen — hidden
+    // entirely for 'dated' (getCategoryDefaultDayFieldLabel() returns null), relabeled otherwise.
+    // Purely a display toggle; never touches any stored value.
+    function updatePreviewCategoryAddDayField(baseType) {
+        var group = document.getElementById('cat-add-day-group');
+        var labelEl = document.getElementById('cat-add-day-label');
+        if (!group || !labelEl) { return; }
+        var label = getCategoryDefaultDayFieldLabel(baseType);
+        if (label === null) {
+            group.style.display = 'none';
+        } else {
+            labelEl.textContent = label + ' (אופציונלי)';
+            group.style.display = 'block';
+        }
+    }
+
     function buildPreviewCategoryAddAreaHtml() {
         if (!previewCategoryAddOpen) {
             return '<button type="button" class="cat-add-toggle" onclick="startPreviewAddCategory()">+ הוסף קטגוריה</button>';
         }
+        // The type <select>'s first <option> (from PREVIEW_CUSTOM_CATEGORY_TYPE_OPTIONS) is always
+        // the browser's initial selection, so the day field's initial label/visibility must match
+        // that same option, not a hardcoded assumption — kept in sync via
+        // getCategoryDefaultDayFieldLabel(), the same function the onchange handler uses.
+        var initialBaseType = PREVIEW_CUSTOM_CATEGORY_TYPE_OPTIONS[0].value;
+        var initialDayLabel = getCategoryDefaultDayFieldLabel(initialBaseType);
         return '<div class="tx-edit-form">' +
             '<div class="tx-edit-group"><label>שם הקטגוריה</label><input type="text" id="cat-add-title"></div>' +
-            '<div class="tx-edit-group"><label>סוג</label><select id="cat-add-basetype">' + buildPreviewCategoryTypeOptionsHtml() + '</select></div>' +
+            '<div class="tx-edit-group"><label>סוג</label><select id="cat-add-basetype" onchange="updatePreviewCategoryAddDayField(this.value)">' + buildPreviewCategoryTypeOptionsHtml() + '</select></div>' +
+            '<div class="tx-edit-group" id="cat-add-day-group" style="display:' + (initialDayLabel ? 'block' : 'none') + ';"><label id="cat-add-day-label">' + escapeHtml(initialDayLabel || '') + ' (אופציונלי)</label><input type="number" id="cat-add-day" min="1" max="31"></div>' +
             '<div class="tx-edit-actions">' +
             '<button type="button" class="tx-edit-save" onclick="submitPreviewAddCategory()">הוסף קטגוריה +</button>' +
             '<button type="button" class="tx-edit-cancel" onclick="cancelPreviewAddCategory()">ביטול</button>' +
