@@ -506,6 +506,25 @@
     .settings-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; gap: 10px; }
     .settings-row-label { font-size: 13.5px; }
     .settings-hint { font-size: 12px; color: var(--color-text-muted); margin: 4px 0 10px; line-height: 1.5; }
+
+    /* Version 1.2, Stage C: settings topics menu (screen-settings) + detail screen header
+       (screen-settings-detail). .settings-topic-row deliberately mirrors .category-row (surface,
+       radius, padding, shadow, pointer cursor) for visual consistency with the rest of the app's
+       "tap a row to drill in" pattern (category rows, the "כל התנועות" row). */
+    .settings-topic-row {
+        display: flex; justify-content: space-between; align-items: center;
+        background: var(--color-surface); border-radius: 12px; padding: 12px 14px;
+        margin-bottom: 8px; box-shadow: var(--shadow); cursor: pointer;
+    }
+    .settings-topic-label { font-size: 14px; font-weight: 600; }
+    .settings-topic-desc { font-size: 12px; color: var(--color-text-muted); margin-top: 2px; }
+    .settings-topic-chevron { font-size: 18px; color: var(--color-text-muted); flex-shrink: 0; padding-inline-start: 8px; }
+    .settings-detail-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+    .settings-back-btn {
+        font-size: 13px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--color-border);
+        background: var(--color-bg); color: var(--color-text); cursor: pointer; font-family: inherit;
+        flex-shrink: 0;
+    }
     .settings-hint.settings-error { color: var(--color-danger); }
     .settings-choice-row { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
     .settings-choice-btn {
@@ -660,13 +679,43 @@
          נשאר בו ללא שינוי. הגדרות המערכת עברו למסך נפרד למטה. -->
     <div class="screen" id="screen-categories">
         <div class="section-title" style="margin-top:4px;">ניהול קטגוריות</div>
+        <!-- Version 1.2, Stage B: the "תנועות" bottom-nav tab was removed — every transaction now
+             belongs to a category, and this system row is the only entry point left to the
+             unfiltered, all-categories transaction list. Static markup (not re-rendered by
+             renderCategoriesScreenFromRealData(), unlike the rows below it) since it never depends
+             on category data. Reuses .category-row/.cat-label as-is for visual consistency with the
+             category rows beneath it, and filterTransactionsByCategory(null) as-is — that function
+             already accepts null (no categoryConfig lookup/validation happens on the key), so this
+             is a zero-new-logic reuse of the exact mechanism a category row below already uses. -->
+        <div class="category-row" onclick="filterTransactionsByCategory(null)">
+            <div class="cat-label">📋 כל התנועות</div>
+        </div>
         <div id="category-list"></div>
     </div>
 
     <!-- ===== מסך 5: הגדרות ===== -->
+    <!-- Version 1.2, Stage C: this is now a thin topics MENU only — renderSettingsScreenFromRealData()
+         (unchanged name/call-sites) fills #settings-screen-body with one row per topic (icon, label,
+         short description, chevron). Each topic's actual controls live in the new screen-settings-
+         detail below; none of the 8 existing section-builder functions changed internally. -->
     <div class="screen" id="screen-settings">
         <div class="section-title" style="margin-top:4px;">הגדרות</div>
         <div id="settings-screen-body"></div>
+    </div>
+
+    <!-- ===== מסך 5ב: פרטי נושא הגדרות ===== -->
+    <!-- Version 1.2, Stage C: generic single container reused for whichever settings topic is
+         currently open (currentSettingsTopicKey) — reached only from screen-settings, never from the
+         bottom-nav directly (no nav-settings-detail button; SCREEN_NAV_ALIAS from Stage A keeps
+         "הגדרות" highlighted while this screen is active). "← חזרה" always returns to the topics
+         menu (closeSettingsDetail() -> showScreen('settings')), per the approved product decision to
+         not rely on the bottom-nav tab alone for exiting a settings sub-screen. -->
+    <div class="screen" id="screen-settings-detail">
+        <div class="settings-detail-header">
+            <button type="button" class="settings-back-btn" onclick="closeSettingsDetail()">← חזרה</button>
+            <div class="section-title" id="settings-detail-title" style="margin:0;"></div>
+        </div>
+        <div id="settings-detail-body"></div>
     </div>
 
 </div>
@@ -675,9 +724,6 @@
 <div class="bottom-nav">
     <button type="button" class="nav-btn active" id="nav-home" onclick="showScreen('home')">
         <span class="nav-icon">🏠</span><span>בית</span>
-    </button>
-    <button type="button" class="nav-btn" id="nav-transactions" onclick="showScreen('transactions')">
-        <span class="nav-icon">📋</span><span>תנועות</span>
     </button>
     <button type="button" class="nav-btn" id="nav-insights" onclick="showScreen('insights')">
         <span class="nav-icon">💡</span><span>תובנות</span>
@@ -751,7 +797,7 @@
     var SETTINGS_KEY = 'family_finance_settings';
     var ACTIVITY_LOG_KEY = 'family_finance_activity_log';
     var ACTIVITY_LOG_MAX = 200;
-    var APP_VERSION = '1.1.0 Preview';
+    var APP_VERSION = '1.2.0 Preview';
 
     var PRIMARY_COLOR_OPTIONS = [
         { key: 'green', label: 'ירוק' },
@@ -772,6 +818,26 @@
         { key: 'large', label: 'גדול' }
     ];
     var FONT_SIZE_ZOOM = { small: 0.9, medium: 1, large: 1.12 };
+
+    // Version 1.2, Stage C: ordered topic list for the settings menu. Each `build` is one (or, for
+    // "אבטחה", two — the exact concatenation the old flat settings screen used before this stage) of
+    // the 8 existing section-builder functions, called verbatim — none of their internals changed.
+    // `desc` is the short subtitle shown under the label in the topics menu (approved product
+    // decision). Order matches the approved list exactly. Declared here (not lower, next to where
+    // it's used) because the initial boot-time render of the settings menu happens far earlier in
+    // file-execution order than that — referencing buildAppearanceSectionHtml etc. from up here is
+    // still safe because function declarations (unlike this var) are fully hoisted to the top of the
+    // script, so every buildXSectionHtml function is already callable at this point regardless of
+    // where its own `function ...() {}` line physically sits further down the file.
+    var SETTINGS_TOPICS = [
+        { key: 'security', icon: '🔒', label: 'אבטחה', desc: 'PIN, נעילה אוטומטית', build: function () { return buildSettingsPinSectionHtml() + buildAutoLockSectionHtml(); } },
+        { key: 'appearance', icon: '🎨', label: 'מראה', desc: 'ערכת נושא, צבעים וגודל גופן', build: function () { return buildAppearanceSectionHtml(); } },
+        { key: 'notifications', icon: '🔔', label: 'התראות', desc: 'התראות בתוך האפליקציה', build: function () { return buildNotificationsSectionHtml(); } },
+        { key: 'data', icon: '💾', label: 'נתונים', desc: 'גיבוי, שחזור וייצוא', build: function () { return buildDataSectionHtml(); } },
+        { key: 'activityLog', icon: '🕒', label: 'יומן פעילות', desc: 'היסטוריית פעולות', build: function () { return buildActivityLogSectionHtml(); } },
+        { key: 'experimental', icon: '🧪', label: 'אפשרויות ניסיוניות', desc: 'פיצ\'רים עתידיים', build: function () { return buildExperimentalSectionHtml(); } },
+        { key: 'about', icon: 'ℹ️', label: 'אודות', desc: 'גרסה ומה חדש', build: function () { return buildAboutSectionHtml(); } }
+    ];
 
     var DEFAULT_CATEGORY_CONFIG_JSON = JSON.stringify({
         income: { label: "💰 הכנסות", baseType: "income" },
@@ -971,6 +1037,14 @@
     }
 
     // ===== Screen navigation (UI state only) =====
+    // Version 1.2, Stage A: some screens are reachable without their own bottom-nav button (e.g.
+    // 'transactions' as a category page, 'settings-detail' for a settings sub-topic) — SCREEN_NAV_ALIAS
+    // says which existing nav button should stay highlighted instead. The primary lookup
+    // (document.getElementById('nav-' + name)) is tried first and unchanged for every screen that
+    // still has its own nav button, so this is a pure addition with no behavior change for any
+    // screen name that was already working before this stage.
+    var SCREEN_NAV_ALIAS = { transactions: 'categories', 'settings-detail': 'settings' };
+
     function showScreen(name) {
         var screens = document.querySelectorAll('.screen');
         for (var i = 0; i < screens.length; i++) { screens[i].classList.remove('active'); }
@@ -978,7 +1052,8 @@
 
         var navBtns = document.querySelectorAll('.nav-btn');
         for (var j = 0; j < navBtns.length; j++) { navBtns[j].classList.remove('active'); }
-        document.getElementById('nav-' + name).classList.add('active');
+        var navBtn = document.getElementById('nav-' + name) || document.getElementById('nav-' + (SCREEN_NAV_ALIAS[name] || name));
+        if (navBtn) { navBtn.classList.add('active'); }
 
         updateFabVisibility();
     }
@@ -4147,19 +4222,19 @@
         appSettings.theme = theme;
         saveAppSettings();
         applySettingsToDom();
-        renderSettingsScreenFromRealData();
+        refreshSettingsUI();
     }
     function setPrimaryColorSetting(colorKey) {
         appSettings.primaryColor = colorKey;
         saveAppSettings();
         applySettingsToDom();
-        renderSettingsScreenFromRealData();
+        refreshSettingsUI();
     }
     function setFontSizeSetting(size) {
         appSettings.fontSize = size;
         saveAppSettings();
         applySettingsToDom();
-        renderSettingsScreenFromRealData();
+        refreshSettingsUI();
     }
 
     function buildAppearanceSectionHtml() {
@@ -4192,7 +4267,7 @@
         if (!appSettings.notifications) { appSettings.notifications = {}; }
         appSettings.notifications[key] = !appSettings.notifications[key];
         saveAppSettings();
-        renderSettingsScreenFromRealData();
+        refreshSettingsUI();
         renderHomeNotificationsFromRealData();
     }
 
@@ -4218,11 +4293,11 @@
 
     function openPinForm(mode) {
         settingsPinFormMode = mode;
-        renderSettingsScreenFromRealData();
+        refreshSettingsUI();
     }
     function closePinForm() {
         settingsPinFormMode = null;
-        renderSettingsScreenFromRealData();
+        refreshSettingsUI();
     }
 
     async function submitSetPin() {
@@ -4237,7 +4312,7 @@
         appSettings.pinEnabled = true;
         saveAppSettings();
         settingsPinFormMode = null;
-        renderSettingsScreenFromRealData();
+        refreshSettingsUI();
     }
 
     async function submitChangePin() {
@@ -4254,7 +4329,7 @@
         appSettings.pinHash = await hashPin(v1);
         saveAppSettings();
         settingsPinFormMode = null;
-        renderSettingsScreenFromRealData();
+        refreshSettingsUI();
     }
 
     async function submitRemovePin() {
@@ -4266,7 +4341,7 @@
         appSettings.pinEnabled = false;
         saveAppSettings();
         settingsPinFormMode = null;
-        renderSettingsScreenFromRealData();
+        refreshSettingsUI();
     }
 
     // "שכחתי PIN": no current-PIN verification (that is the entire point) — requires typing the
@@ -4280,7 +4355,7 @@
         appSettings.pinEnabled = false;
         saveAppSettings();
         settingsPinFormMode = null;
-        renderSettingsScreenFromRealData();
+        refreshSettingsUI();
     }
 
     function handleAutoLockChange(value) {
@@ -4450,7 +4525,7 @@
         var backup = collectAppLocalStorageBackup();
         downloadTextFile('familyfinance-backup-' + todayStr() + '.json', JSON.stringify(backup, null, 2), 'application/json');
         appendActivityLog('backup', 'גיבוי הורד (' + Object.keys(backup.data).length + ' מפתחות)');
-        renderSettingsScreenFromRealData();
+        refreshSettingsUI();
     }
 
     // Validates shape + every value's own JSON.parse-ability before anything is trusted — a
@@ -4693,25 +4768,91 @@
 
     // ----- Master render -----------------------------------------------------------------------
 
+    // Version 1.2, Stage C: SETTINGS_TOPICS itself is declared much earlier in this file (near
+    // THEME_OPTIONS/PRIMARY_COLOR_OPTIONS) — the initial boot-time call to
+    // renderSettingsScreenFromRealData() below happens long before this point in file order, and a
+    // `var` (unlike a `function` declaration) is only hoisted as a name, not its assigned value, so
+    // SETTINGS_TOPICS must already be assigned by the time that first call runs. See the comment at
+    // its declaration for why referencing the buildXSectionHtml functions from up there is still
+    // safe despite them being declared below it (function declarations ARE fully hoisted).
+    var currentSettingsTopicKey = null;
+
+    function findSettingsTopic(key) {
+        for (var i = 0; i < SETTINGS_TOPICS.length; i++) { if (SETTINGS_TOPICS[i].key === key) { return SETTINGS_TOPICS[i]; } }
+        return null;
+    }
+
+    // Renders the topics menu only (screen-settings). Kept under its pre-Stage-C name/signature so
+    // every existing call site (initial boot render, renderAllPreviewScreens()) needs no change —
+    // both of those already only ever ran while screen-settings-detail cannot be the active screen
+    // (they fire from the initial page load or from Transactions/Categories actions), so always
+    // resetting this element to the menu is exactly the pre-Stage-C behavior for those call sites.
     function renderSettingsScreenFromRealData() {
         var el = document.getElementById('settings-screen-body');
         if (!el) { return; }
         var html = '';
-        html += '<div class="settings-section"><div class="settings-section-title">🔒 אבטחה</div>' + buildSettingsPinSectionHtml() + buildAutoLockSectionHtml() + '</div>';
-        html += '<div class="settings-section"><div class="settings-section-title">🎨 מראה</div>' + buildAppearanceSectionHtml() + '</div>';
-        html += '<div class="settings-section"><div class="settings-section-title">🔔 התראות</div>' + buildNotificationsSectionHtml() + '</div>';
-        html += '<div class="settings-section"><div class="settings-section-title">💾 נתונים</div>' + buildDataSectionHtml() + '</div>';
-        html += '<div class="settings-section"><div class="settings-section-title">🧪 אפשרויות ניסיוניות</div>' + buildExperimentalSectionHtml() + '</div>';
-        html += '<div class="settings-section"><div class="settings-section-title">ℹ️ אודות</div>' + buildAboutSectionHtml() + '</div>';
-        html += '<div class="settings-section"><div class="settings-section-title">🕒 יומן פעילות</div>' + buildActivityLogSectionHtml() + '</div>';
+        for (var i = 0; i < SETTINGS_TOPICS.length; i++) {
+            var t = SETTINGS_TOPICS[i];
+            html += '<div class="settings-topic-row" onclick="openSettingsTopic(\'' + t.key + '\')">' +
+                '<div>' +
+                '<div class="settings-topic-label">' + t.icon + ' ' + escapeHtml(t.label) + '</div>' +
+                '<div class="settings-topic-desc">' + escapeHtml(t.desc) + '</div>' +
+                '</div>' +
+                '<div class="settings-topic-chevron">‹</div>' +
+                '</div>';
+        }
         el.innerHTML = html;
+    }
 
-        // buildDataSectionHtml() above always emits an empty #restore-preview-area/#reset-confirm-
-        // area — repopulate them from state so a pending restore-preview or reset-confirmation
-        // survives a re-render triggered by an unrelated action (same convention previewEditingId
-        // already relies on elsewhere in this file).
-        renderRestorePreview();
-        renderResetConfirmArea();
+    // Opens one topic's sub-screen (tapped from the topics menu).
+    function openSettingsTopic(key) {
+        currentSettingsTopicKey = key;
+        showScreen('settings-detail');
+        renderSettingsDetailScreen();
+    }
+
+    // "← חזרה" — always returns to the topics menu, never anywhere else (approved product decision:
+    // do not rely on the bottom-nav tab alone for exiting a settings sub-screen).
+    function closeSettingsDetail() {
+        currentSettingsTopicKey = null;
+        showScreen('settings');
+    }
+
+    // Renders whichever topic is currently open into screen-settings-detail. A missing/invalid topic
+    // key (defensive only — every call site sets a real key) falls back to closing the detail screen
+    // rather than showing a blank one.
+    function renderSettingsDetailScreen() {
+        var topic = findSettingsTopic(currentSettingsTopicKey);
+        if (!topic) { closeSettingsDetail(); return; }
+        var titleEl = document.getElementById('settings-detail-title');
+        if (titleEl) { titleEl.textContent = topic.icon + ' ' + topic.label; }
+        var el = document.getElementById('settings-detail-body');
+        if (!el) { return; }
+        el.innerHTML = topic.build();
+        if (topic.key === 'data') {
+            // buildDataSectionHtml() above always emits an empty #restore-preview-area/#reset-
+            // confirm-area — repopulate them from state so a pending restore-preview or reset-
+            // confirmation survives a re-render triggered by an unrelated action (same convention
+            // previewEditingId already relies on elsewhere in this file). Both functions already
+            // no-op safely if their target element isn't present (unchanged from before Stage C).
+            renderRestorePreview();
+            renderResetConfirmArea();
+        }
+    }
+
+    // Version 1.2, Stage C: every action that previously refreshed the single flat settings screen
+    // now calls this instead — it re-renders whichever of the two settings screens is actually
+    // relevant to the state that just changed (the open topic's detail screen, or the topics menu if
+    // none is open). All such actions (theme/color/font, notification toggles, PIN forms, auto-lock,
+    // backup export) only ever fire from inside an already-open topic, so in practice this always
+    // re-renders the detail screen in place — the same "re-render everything from current state"
+    // behavior those call sites relied on before this stage, just correctly scoped to one topic.
+    function refreshSettingsUI() {
+        if (currentSettingsTopicKey !== null && findSettingsTopic(currentSettingsTopicKey)) {
+            renderSettingsDetailScreen();
+        } else {
+            renderSettingsScreenFromRealData();
+        }
     }
 
     // Runs once at the very end of the script, after every screen has already rendered — a PIN
