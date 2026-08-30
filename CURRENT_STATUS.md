@@ -536,6 +536,8 @@
 
 **אין שינוי בסכימת הנתונים**: `items`/`categoryConfig`/6 מפתחות ה-localStorage הקיימים — ללא שינוי. אין מפתח חדש. `app.js`/`styles.css`/`index-preview-v2.html` — לא נגעו.
 
-**Git**: כל 4 השלבים בוצעו על גבי `index.html` בלבד ב-branch `feature/cockpit-preview-v2`. **טרם בוצע commit** (ממתין לאישור מפורש, לפי נוהל העבודה הקבוע — עצירה לפני Commit/Push).
+**Git**: כל 4 השלבים בוצעו על גבי `index.html` בלבד ב-branch `feature/cockpit-preview-v2`, ונשמרו יחד ב-commit `3f232c787fde75f40b630e9fcac8756c9066f471` ("feat: remove transactions tab and split settings into topic menu"). **תיקון תיעודי (31/08/2026)**: הניסוח הקודם כאן תיאר את השלב כ"טרם בוצע commit" — בפועל התיעוד הזה עצמו נכלל באותו commit; הניסוח לא עודכן אז בטעות (אותה תופעה בדיוק כבר קרתה ותוקנה בעבר לגבי שלב ז׳.4, ראו CHANGELOG.md).
 
-**המשך**: לאחר אישור/Commit — להחליט על השלב הבא (מיזוג ל-`main`/Vercel Production, או המשך פיתוח נוסף).
+**אימות ידני שבוצע**: Version 1.2 עברה בדיקת דפדפן אמיתית ב-Desktop וב-Mobile ואושרה במפורש ע"י המשתמש.
+
+**המשך**: Version 1.2 סגורה ומאושרת. לפי מפת הדרכים המאושרת — Version 1.2.1 (תיקוני תיעוד, ראו למטה) ← Version 1.3 ← Production Release. טרם בוצע merge ל-`main`/Vercel Production.

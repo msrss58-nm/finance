@@ -353,7 +353,7 @@
 - **בדיקות**: 45/45 VM/Node + 58/58 Edge/CDP Desktop + 9/9 Edge/CDP Mobile + רגרסיה מלאה של שלבי 4.0.2/4.0.2.1/4.0.2.2 (Desktop+Mobile) — כולן עברו. תיקוני הרנס-בדיקות בלבד בדרך (fetch→curl, auto-accept ל-`alert()`); שני selectors ישנים עודכנו מ-`showScreen('settings')` ל-`showScreen('categories')` בעקבות שינוי הניווט המאושר — לא רגרסיה באפליקציה.
 - **Git**: נשמר ב-commit `251b3e3`, נדחף ל-`feature/cockpit-preview-v2`. לא בוצע merge/deploy ידני.
 
-## 03/08/2026 — Version 1.2 — UI/UX Refinement: ניווט ותפריטי הגדרות (טרם נשמר ב-commit)
+## 03/08/2026 — Version 1.2 — UI/UX Refinement: ניווט ותפריטי הגדרות (נשמר ב-commit `3f232c7`)
 לפי אישור מפורש (כולל מיפוי Truth/Blueprint/Gaps/Rank/Pushback/Reuse/Risks/Build-plan/Tests מלא ללא קוד לפני תחילת הבנייה, ו-3 החלטות מוצר נוספות שאושרו בנפרד): שתי החלטות מוצר — (1) ביטול טאב "תנועות" מהניווט התחתון, כל תנועה שייכת לקטגוריה; (2) פיצול מסך ההגדרות מרשימה שטוחה לתפריט-נושאים + מסכי-משנה. `APP_VERSION` עודכן `'1.1.0 Preview'` → `'1.2.0 Preview'`. כל הבנייה בתוך `index.html` בלבד, ב-4 שלבים:
 
 - **שלב A — `showScreen()` + `SCREEN_NAV_ALIAS`**: מיפוי fallback (`transactions→categories`, `settings-detail→settings`) שמדליק את כפתור הניווט הנכון כשאין כפתור תואם-שם — פועל **רק** כש-`getElementById('nav-'+name)` מחזיר `null`, כך שהתנהגות כל מסך שעדיין יש לו כפתור נשארת זהה-ביט למה שהייתה. אפס שינוי UX בשלב זה עצמו. 6/6 בדיקות VM/Node.
@@ -362,4 +362,4 @@
 - **שלב D — רגרסיה משולבת**: תרחיש רציף המשלב את שתי ההחלטות: הוספה→עריכה→ארכוב→שחזור→מחיקה סופית דרך "כל התנועות" הלא-מסונן, חזרה לקטגוריות, תובנות/Forecast ללא פגיעה, מעבר על כל 7 נושאי הגדרות, הגדרת PIN ונעילה **ממסך שרירותי** (לא הגדרות) עם פתיחה מוצלחת. 14/14 בדיקות.
 - **סה"כ 99 בדיקות VM/Node** (6+22+57+14), כולן על ה-`<script>` **האמיתי** מהקובץ (לא עותק). אין חבילת בדיקות אוטומטית קבועה בפרויקט — סקריפטים חד-פעמיים ב-scratchpad, לא נכנסו לריפו.
 - **אין שינוי בסכימת נתונים**: `items`/`categoryConfig`/6 מפתחות ה-localStorage הקיימים ללא שינוי, אין מפתח חדש. `app.js`/`styles.css`/`index-preview-v2.html` לא נגעו.
-- **Git**: `index.html` בלבד שונה, בענף `feature/cockpit-preview-v2`. **טרם נשמר ב-commit** — ממתין לאישור מפורש (נוהל עבודה: עצירה לפני Commit/Push).
+- **Git**: `index.html` בלבד שונה, בענף `feature/cockpit-preview-v2`, נשמר ב-commit `3f232c787fde75f40b630e9fcac8756c9066f471` ("feat: remove transactions tab and split settings into topic menu"). **תיקון תיעודי (31/08/2026)**: הניסוח המקורי כאן תיאר שגוי את השלב כ"טרם נשמר ב-commit" — התיעוד הזה עצמו נכלל באותו commit ולא עודכן בזמנו (אותה תופעה בדיוק שכבר תוקנה בעבר עבור שלב ז׳.4, ראו למעלה). **Version 1.2 עברה בדיקת דפדפן אמיתית ב-Desktop וב-Mobile ואושרה במפורש ע"י המשתמש.**
