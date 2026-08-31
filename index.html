@@ -14,6 +14,9 @@
         --color-danger: #c0392b;
         --color-warning: #b45309;
         --color-warning-bg: #fef3e2;
+        /* Version 1.3, Phase 2C: approved danger token, mirrors --color-warning-bg's role for
+           a per-card "this number is negative" tone (cash-flow insight cards only). */
+        --color-danger-bg: #fdecea;
         --radius: 14px;
         --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
     }
@@ -40,6 +43,7 @@
         --color-danger: #e5695c;
         --color-warning: #e0a84f;
         --color-warning-bg: #3a2f18;
+        --color-danger-bg: #3a1f1c;
     }
     :root[data-theme="dark"][data-color="green"] { --color-primary-text: #3ddc84; }
     :root[data-theme="dark"][data-color="blue"] { --color-primary-text: #6fa8f5; }
@@ -349,6 +353,7 @@
         margin-bottom: 12px; box-shadow: var(--shadow); border-right: 4px solid var(--color-primary);
     }
     .insight-card.warning { background: var(--color-warning-bg); border-right-color: var(--color-warning); }
+    .insight-card.danger { background: var(--color-danger-bg); border-right-color: var(--color-danger); }
     .insight-icon {
         width: 38px; height: 38px; border-radius: 50%; background: var(--color-surface);
         display: flex; align-items: center; justify-content: center; font-size: 18px;
@@ -360,6 +365,7 @@
        — the forecast-warning insight card's value can be negative. Display-only, value unchanged. */
     .insight-value { font-size: 21px; font-weight: 800; margin-top: 5px; letter-spacing: -.2px; direction: ltr; unicode-bidi: isolate; }
     .insight-card.warning .insight-value { color: var(--color-warning); }
+    .insight-card.danger .insight-value { color: var(--color-danger); }
     .insight-note { font-size: 12.5px; color: var(--color-text); margin-top: 6px; line-height: 1.55; opacity: .82; }
 
     /* ===== Forecast (Stage 3ב.4): chart/table box, adapted from index.html's .forecast-box for   =====
@@ -655,9 +661,49 @@
     <div class="screen" id="screen-insights">
         <div class="section-title" style="margin-top:4px;">תובנות</div>
 
+        <!-- Version 1.3, Phase 2C: cash-flow hero ("מצב להיום") + inline currentBalance editor.
+             Sole source of truth for every number on this block is buildCashflowSummary() — no
+             calculation is duplicated here, only display/formatting. -->
+        <div class="hero-gauge">
+            <div class="hero-label">מצב להיום</div>
+            <div class="hero-amount" id="cashflow-today-balance"></div>
+            <div class="insight-note" id="cashflow-balance-subnote" style="text-align:center;"></div>
+            <div class="tx-edit-group" style="margin-top:12px;">
+                <label for="cashflow-balance-input">עדכון יתרת החשבון נכון לעכשיו</label>
+                <input type="number" id="cashflow-balance-input" placeholder="הזן סכום" inputmode="decimal" step="0.01">
+            </div>
+            <div class="tx-edit-actions">
+                <button type="button" class="tx-edit-save" onclick="submitCurrentBalanceUpdate()">💾 שמור יתרה</button>
+            </div>
+        </div>
+
+        <!-- Version 1.3, Phase 2C: האירוע הבא / ההכנסה הבאה / צפוי לרדת עד ההכנסה / נקודת השפל /
+             תחזית סוף חודש — all built from the SAME buildCashflowSummary() call, one card each,
+             reusing the existing .insight-card markup/classes verbatim. -->
+        <div id="cashflow-summary-feed"></div>
+
+        <!-- Version 1.3, Phase 2C: expandable cash-flow timeline. Collapsed by default (only the
+             next few events shown); "הצג הכל" reveals the full 6-month event list inside a
+             scrollable .activity-log-list (existing pattern, reused as-is). Natural RTL order
+             (soonest first, reading right-to-left like the rest of this screen). Events are
+             grouped by calendar date and only ever include tomorrow-onward events — the exact
+             same set the numerical forecast itself uses (summary.timelineEvents) — so nothing
+             here can ever imply a today-dated item is pending/processed; today's own events are
+             simply not shown, never labeled either way. -->
+        <div class="preview-forecast-box">
+            <div class="section-title" style="margin:0 0 10px;">📅 ציר תזרים קרוב</div>
+            <div id="cashflow-timeline-preview"></div>
+            <div class="preview-forecast-toggle-row">
+                <button type="button" class="preview-forecast-toggle-btn" id="cashflow-timeline-toggle-btn" onclick="toggleCashflowTimeline()">הצג הכל</button>
+            </div>
+            <div class="activity-log-list" id="cashflow-timeline-full" style="display:none;"></div>
+        </div>
+
         <!-- Stage 3ב.4: forecast chart/table, adapted from index.html's .forecast-box. Always
              visible on this dedicated Insights screen (no collapse header, unlike index.html's
-             dashboard placement) — data/logic from computeForecast(), unchanged. -->
+             dashboard placement). Version 1.3, Phase 2C: values now sourced from
+             buildCashflowSummary() (see renderForecast() below) instead of computeForecast() —
+             same chart/table markup and geometry, unchanged. -->
         <div class="preview-forecast-box">
             <div class="section-title" style="margin:0 0 10px;">📈 תחזית יתרה פנויה — 6 חודשים קדימה</div>
             <div class="preview-forecast-toggle-row">
@@ -797,7 +843,7 @@
     var SETTINGS_KEY = 'family_finance_settings';
     var ACTIVITY_LOG_KEY = 'family_finance_activity_log';
     var ACTIVITY_LOG_MAX = 200;
-    var APP_VERSION = '1.2.0 Preview';
+    var APP_VERSION = '1.3.0 Preview';
 
     var PRIMARY_COLOR_OPTIONS = [
         { key: 'green', label: 'ירוק' },
@@ -1842,6 +1888,248 @@
     }
 
     // =====================================================================================
+    // ===== Version 1.3, Phase 2B: unified cash-flow engine. Single source of truth for    =====
+    // ===== cash-flow events, cumulative balances and every derived Insights metric below.  =====
+    // ===== Reuses resolveEffectiveDay/getClampedBillingDate/getBillingRange/               =====
+    // ===== parseDatesAndGetLeft/isBillingActiveInMonth verbatim from above — no new date    =====
+    // ===== arithmetic is invented here. Does NOT replace getMonthSnapshot/                  =====
+    // ===== getCategoryMonthlyTotals/computeForecast (those keep serving the screens that    =====
+    // ===== already consume them, unmodified, per the approved "no rewrite" scope) — this    =====
+    // ===== is new, additive code that the Phase 2C Insights UI will consume instead.        =====
+    // =====================================================================================
+
+    // EVENT CONTRACT: { date: Date, amount: signed number, itemId, type, title }.
+    // Positive amount = money in (income). Negative amount = money out (fixed/loan/dated).
+    // 'variable' ("תשלומים שונים") items NEVER generate an event here — approved Phase 2A
+    // decision: their real cash effect may already be captured by a separate fixed/credit
+    // item, and the current schema has no field that can safely tell the two cases apart.
+    // They remain tracking-only (existing category-tile / remaining-balance displays only).
+
+    var CASHFLOW_HORIZON_MONTHS = 6;
+
+    // Deterministic same-day ordering for TIMELINE/DISPLAY PURPOSES ONLY (Phase 2C). Every
+    // balance number below (today/lowest/end-of-month) is computed from a per-CALENDAR-DAY
+    // sum of that day's events, not from a running total after each individual event — so
+    // this order can never change any balance figure, only the order same-day rows are
+    // listed in a future timeline UI. Income is listed before expenses on a shared day so a
+    // day that nets positive never *appears* to dip first; expense types are then ordered
+    // fixed → loan → dated (arbitrary but fixed), with itemId as the final tiebreak.
+    var CASHFLOW_TYPE_ORDER = { income: 0, fixed: 1, loan: 2, dated: 3 };
+    function compareCashflowEvents(a, b) {
+        var dCompare = a.date.getTime() - b.date.getTime();
+        if (dCompare !== 0) { return dCompare; }
+        var ta = (CASHFLOW_TYPE_ORDER[a.type] !== undefined) ? CASHFLOW_TYPE_ORDER[a.type] : 99;
+        var tb = (CASHFLOW_TYPE_ORDER[b.type] !== undefined) ? CASHFLOW_TYPE_ORDER[b.type] : 99;
+        if (ta !== tb) { return ta - tb; }
+        return (a.itemId || 0) - (b.itemId || 0);
+    }
+
+    function cashflowDateOnly(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+    function cashflowDateKey(d) {
+        var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+        return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    }
+
+    // Parses a stored 'YYYY-MM-DD' string as a LOCAL calendar date (year, month-1, day),
+    // matching getBillingRange's own startDateStr parsing above — unlike the older
+    // getMonthSnapshot/getCategoryMonthlyTotals/computeForecast 'dated' branches, which parse
+    // the same string via `new Date(string)` (spec'd as UTC midnight). This avoids the
+    // timezone edge case flagged in the Phase 2A risk review without touching those existing
+    // (unmodified, still-in-use) functions.
+    function parseLocalDateStr(str) {
+        var parts = (str || '').split('-');
+        var y = parseInt(parts[0], 10), m = parseInt(parts[1], 10) - 1, d = parts[2] ? parseInt(parts[2], 10) : 1;
+        if (!isFinite(y) || !isFinite(m) || !isFinite(d)) { return null; }
+        return new Date(y, m, d);
+    }
+
+    // The manually-entered "real account balance as of today" (approved Phase 2A contract,
+    // decision 1) — NOT a historical opening balance, NOT derived from summing items. Stored
+    // as appSettings.currentBalance (default null = "never entered"). isSet lets a future UI
+    // distinguish "user's balance really is ₪0" from "user hasn't entered one yet"; every
+    // number below still safely defaults to 0 either way, per the approved storage contract.
+    function resolveCurrentBalance() {
+        var raw = appSettings && appSettings.currentBalance;
+        if (typeof raw === 'number' && isFinite(raw)) { return { value: raw, isSet: true }; }
+        return { value: 0, isSet: false };
+    }
+
+    // Persists a new currentBalance. Pure plumbing for the Phase 2C settings/Insights UI to
+    // call later — no input field is wired to this in Phase 2B.
+    function setCurrentBalance(value) {
+        var num = parseFloat(value);
+        appSettings.currentBalance = isFinite(num) ? num : null;
+        saveAppSettings();
+    }
+
+    // Generates every cash-flow event across [current month, current month + horizonMonths)
+    // for non-archived income/fixed/loan/dated items, unfiltered by today (that filtering
+    // happens in buildCashflowSummary, only for the current month — see contract). One event
+    // per monthly occurrence for income/fixed; one event per active billing month for loans
+    // (per-month range test, not the left>0 gate); at most one event for dated items.
+    function generateCashflowEvents(items, horizonMonths) {
+        var months = (typeof horizonMonths === 'number') ? horizonMonths : CASHFLOW_HORIZON_MONTHS;
+        var now = new Date();
+        var horizonStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        var horizonEnd = new Date(now.getFullYear(), now.getMonth() + months, 0);
+        var events = [];
+
+        for (var i = 0; i < items.length; i++) {
+            var item = items[i];
+            if (item.isArchived) { continue; }
+
+            if (item.type === 'income') {
+                for (var mi = 0; mi < months; mi++) {
+                    var di = getClampedBillingDate(now.getFullYear(), now.getMonth() + mi, resolveEffectiveDay(item));
+                    events.push({ date: di, amount: item.amount, itemId: item.id, type: 'income', title: item.title });
+                }
+            } else if (item.type === 'fixed') {
+                var mAmount = (item.period === 'שנתי') ? (item.amount / 12) : item.amount;
+                for (var mf = 0; mf < months; mf++) {
+                    var df = getClampedBillingDate(now.getFullYear(), now.getMonth() + mf, resolveEffectiveDay(item));
+                    events.push({ date: df, amount: -mAmount, itemId: item.id, type: 'fixed', title: item.title });
+                }
+            } else if (item.type === 'loan') {
+                var range = getBillingRange(item.start, item.total, resolveEffectiveDay(item));
+                if (range) {
+                    for (var ml = 0; ml < months; ml++) {
+                        var probe = new Date(now.getFullYear(), now.getMonth() + ml, 1);
+                        if (isBillingActiveInMonth(range, probe.getFullYear(), probe.getMonth())) {
+                            var dl = getClampedBillingDate(probe.getFullYear(), probe.getMonth(), range.bDay);
+                            events.push({ date: dl, amount: -item.amount, itemId: item.id, type: 'loan', title: item.title });
+                        }
+                    }
+                }
+            } else if (item.type === 'dated') {
+                var dd = item.start ? parseLocalDateStr(item.start) : null;
+                if (dd && dd >= horizonStart && dd <= horizonEnd) {
+                    events.push({ date: dd, amount: -item.amount, itemId: item.id, type: 'dated', title: item.title });
+                }
+            }
+            // 'variable' and any unrecognized type: no event (see contract comment above).
+        }
+
+        events.sort(compareCashflowEvents);
+        return events;
+    }
+
+    // Builds every derived metric the approved contract asks for, from currentBalance plus
+    // generateCashflowEvents(). One walk per month: balance points are END-OF-CALENDAR-DAY
+    // sums only (never a mid-day running total), so same-day event order can never change a
+    // reported balance — see compareCashflowEvents' comment.
+    //
+    // TODAY-BOUNDARY RULE (final, approved correction): currentBalance is defined as the real
+    // account balance at the moment the user entered it — the schema has no execution/
+    // completion status, no transaction ledger and no event timestamp, so there is no way to
+    // prove whether a scheduled event dated exactly TODAY has already happened or not. To avoid
+    // ever silently double-counting it, month 0 (the current month) starts from currentBalance
+    // and the numerical walk considers only events dated STRICTLY AFTER today (tomorrow onward)
+    // — an event dated today is excluded from every numerical projection (lowest/endOfMonth/
+    // nextEvent/nextIncome/amountBeforeNextIncome alike), never assumed pending, never assumed
+    // already processed. It may still be surfaced later as an informational "scheduled today"
+    // UI item, but must not move any number here. Each later month starts from the previous
+    // month's end-of-month balance and counts its own events in full (they are entirely in the
+    // future already, so this ambiguity does not apply to them).
+    function buildCashflowSummary(itemsOverride, horizonMonthsOverride) {
+        var sourceItems = Array.isArray(itemsOverride) ? itemsOverride : items;
+        var months = (typeof horizonMonthsOverride === 'number') ? horizonMonthsOverride : CASHFLOW_HORIZON_MONTHS;
+        var now = new Date();
+        var todayZero = cashflowDateOnly(now);
+        var balanceInfo = resolveCurrentBalance();
+        var allEvents = generateCashflowEvents(sourceItems, months);
+
+        var monthResults = [];
+        var runningStart = balanceInfo.value;
+
+        for (var m = 0; m < months; m++) {
+            var monthDate = new Date(now.getFullYear(), now.getMonth() + m, 1);
+            var y = monthDate.getFullYear(), mo = monthDate.getMonth();
+            var monthEvents = [];
+            for (var i = 0; i < allEvents.length; i++) {
+                var e = allEvents[i];
+                if (e.date.getFullYear() === y && e.date.getMonth() === mo) { monthEvents.push(e); }
+            }
+            if (m === 0) {
+                // Strictly after today only — see the TODAY-BOUNDARY RULE comment above.
+                var filtered = [];
+                for (var j = 0; j < monthEvents.length; j++) {
+                    if (cashflowDateOnly(monthEvents[j].date) > todayZero) { filtered.push(monthEvents[j]); }
+                }
+                monthEvents = filtered;
+            }
+
+            var byDate = {};
+            var dateKeys = [];
+            for (var k = 0; k < monthEvents.length; k++) {
+                var key = cashflowDateKey(monthEvents[k].date);
+                if (!(key in byDate)) { byDate[key] = 0; dateKeys.push(key); }
+                byDate[key] += monthEvents[k].amount;
+            }
+            dateKeys.sort();
+
+            var running = runningStart;
+            var lowest = runningStart;
+            for (var d = 0; d < dateKeys.length; d++) {
+                running += byDate[dateKeys[d]];
+                if (running < lowest) { lowest = running; }
+            }
+
+            monthResults.push({
+                year: y,
+                month: mo,
+                label: monthDate.toLocaleDateString('he-IL', { month: 'short', year: 'numeric' }),
+                startingBalance: runningStart,
+                lowest: lowest,
+                endOfMonth: running,
+                eventCount: monthEvents.length
+            });
+
+            runningStart = running;
+        }
+
+        // nextEvent/nextIncome/amountBeforeNextIncome must not treat a today-dated event as
+        // "future" either — same unprovable-completion-status reasoning as the month-0 filter
+        // above, so this also starts strictly after today (tomorrow onward).
+        var futureEvents = [];
+        for (var fi = 0; fi < allEvents.length; fi++) {
+            if (cashflowDateOnly(allEvents[fi].date) > todayZero) { futureEvents.push(allEvents[fi]); }
+        }
+        futureEvents.sort(compareCashflowEvents);
+
+        var nextEvent = futureEvents.length ? futureEvents[0] : null;
+        var nextIncome = null;
+        for (var ni = 0; ni < futureEvents.length; ni++) {
+            if (futureEvents[ni].type === 'income') { nextIncome = futureEvents[ni]; break; }
+        }
+
+        var amountBeforeNextIncome = null;
+        if (nextIncome) {
+            var sum = 0;
+            for (var bi = 0; bi < futureEvents.length; bi++) {
+                var ev = futureEvents[bi];
+                if (ev.amount < 0 && ev.date.getTime() < nextIncome.date.getTime()) { sum += -ev.amount; }
+            }
+            amountBeforeNextIncome = sum;
+        }
+
+        var currentMonth = monthResults[0];
+        return {
+            todayBalance: balanceInfo.value,
+            currentBalanceIsSet: balanceInfo.isSet,
+            months: monthResults,
+            currentMonth: currentMonth,
+            nextEvent: nextEvent,
+            nextIncome: nextIncome,
+            amountBeforeNextIncome: amountBeforeNextIncome,
+            isNegative: (currentMonth.lowest < 0) || (balanceInfo.value < 0),
+            // Version 1.3, Phase 2C: the same futureEvents list nextEvent/nextIncome are already
+            // derived from, exposed as-is for the Insights timeline UI — no new calculation,
+            // just reusing what was already computed above.
+            timelineEvents: futureEvents,
+            horizonMonths: months
+        };
+    }
+    // =====================================================================================
     // ===== Stage 3ב.4: forecast chart/table UI for the Insights screen. niceRoundUp/       =====
     // ===== barPath/attachForecastHandlers/renderForecast/toggleForecastView are copied      =====
     // ===== verbatim from index.html's own functions of the same name (geometry, scaling and =====
@@ -1917,7 +2205,18 @@
         var tableWrap = document.getElementById('preview-forecast-table-wrap');
         if (!svg) return;
 
-        var months = computeForecast(items);
+        // Version 1.3, Phase 2C: sourced from buildCashflowSummary() instead of computeForecast()
+        // — each bar's "net" is that month's endOfMonth minus its startingBalance, i.e. exactly
+        // the net flow the unified engine itself applied for that month (for the current month,
+        // this is tomorrow-onward only, per the approved today-boundary rule; for every later
+        // month it is the full month, unchanged in spirit from the old computeForecast() bars).
+        // Geometry/drawing code below this line is untouched.
+        var cashflowSummaryForChart = buildCashflowSummary(items);
+        var months = [];
+        for (var smi = 0; smi < cashflowSummaryForChart.months.length; smi++) {
+            var smm = cashflowSummaryForChart.months[smi];
+            months.push({ label: smm.label, net: smm.endOfMonth - smm.startingBalance });
+        }
         var maxAbs = 1;
         for (var k = 0; k < months.length; k++) { maxAbs = Math.max(maxAbs, Math.abs(months[k].net)); }
         var niceMax = niceRoundUp(maxAbs);
@@ -2023,6 +2322,10 @@
             pinHash: null,
             pinEnabled: false,
             autoLockMinutes: null,
+            // Version 1.3, Phase 2B: manual "real account balance as of today" (approved
+            // financial contract, decision 1) — null means "never entered", never a guessed
+            // number. See resolveCurrentBalance() near computeForecast() for the read side.
+            currentBalance: null,
             notifications: { upcomingPayment: true, upcomingIncome: true, completedObligation: true },
             experimentalFlags: {}
         };
@@ -2389,30 +2692,234 @@
     // ===== broader "upcoming charges" logic is explicitly deferred to a future stage.         =====
     // =====================================================================================
 
+    // =====================================================================================
+    // ===== Version 1.3, Phase 2C: UI-only helpers for the cash-flow Insights block. Every    =====
+    // ===== number these read comes from ONE buildCashflowSummary() call — no financial        =====
+    // ===== calculation is duplicated here, only formatting/display and a pure display-only    =====
+    // ===== scan over its already-computed months[] (findFirstNegativeCashflowMonth), which     =====
+    // ===== does not change buildCashflowSummary()'s own isNegative (that stays scoped to the   =====
+    // ===== current month only, per the approved Phase 2C decision — see report).              =====
+    // =====================================================================================
+
+    // Broader, display-only "is anything negative in the next 6 months" signal — approved
+    // Phase 2C choice (option B): derived here from summary.months rather than widening
+    // buildCashflowSummary()'s own isNegative field, so the engine's contract (isNegative =
+    // current-month-only) does not change. Returns the FIRST (soonest) month whose lowest
+    // projected balance goes negative, or null if none of the 6 projected months does.
+    function findFirstNegativeCashflowMonth(summary) {
+        for (var i = 0; i < summary.months.length; i++) {
+            if (summary.months[i].lowest < 0) { return summary.months[i]; }
+        }
+        return null;
+    }
+
+    // Same '₪'+rounded+locale convention as formatHomeCurrency(), with an explicit leading
+    // sign — used only for cash-flow EVENT amounts (income vs. expense), where showing the
+    // direction of money movement is the point (formatHomeCurrency() alone already reads as
+    // negative-for-expenses via its own '-₪' prefix, but a plain positive income event would
+    // otherwise show no sign at all next to a signed expense in the same list).
+    function formatSignedCurrency(n) {
+        var rounded = Math.round(n);
+        return (rounded < 0 ? '-₪' : '+₪') + Math.abs(rounded).toLocaleString();
+    }
+
+    // Renders the entire Version 1.3 cash-flow Insights block added in Phase 2C: the "מצב
+    // להיום" hero (+ its inline currentBalance editor's displayed state), the 5 summary
+    // cards (האירוע הבא/ההכנסה הבאה/צפוי לרדת/נקודת השפל/תחזית סוף חודש), and the
+    // expandable timeline. Everything is sourced from ONE buildCashflowSummary() call. The
+    // timeline shows ONLY summary.timelineEvents (tomorrow-onward, exactly what the numerical
+    // forecast itself uses) — today's own events are never shown here, so nothing on this
+    // screen can ever be misread as "pending" or "already processed" (execution status is
+    // unknowable per the approved today-boundary contract).
+    function renderCashflowInsightsFromRealData() {
+        var summary = buildCashflowSummary();
+
+        var balanceEl = document.getElementById('cashflow-today-balance');
+        var subnoteEl = document.getElementById('cashflow-balance-subnote');
+        var inputEl = document.getElementById('cashflow-balance-input');
+        if (balanceEl && subnoteEl) {
+            if (summary.currentBalanceIsSet) {
+                balanceEl.textContent = formatHomeCurrency(summary.todayBalance);
+                subnoteEl.textContent = 'יתרת החשבון נכון לעכשיו, כפי שהוזנה על ידך (לא יתרת פתיחת חודש היסטורית).';
+            } else {
+                balanceEl.textContent = 'לא הוזנה יתרה';
+                subnoteEl.textContent = 'הזן את יתרת החשבון נכון לעכשיו כדי לראות תחזית תזרים אמינה.';
+            }
+        }
+        if (inputEl && document.activeElement !== inputEl) {
+            inputEl.value = summary.currentBalanceIsSet ? summary.todayBalance : '';
+        }
+
+        var cards = [];
+
+        if (summary.nextEvent) {
+            cards.push({
+                title: 'האירוע הכספי הבא',
+                value: formatSignedCurrency(summary.nextEvent.amount),
+                note: (summary.nextEvent.title || '') + ' · ' + summary.nextEvent.date.toLocaleDateString('he-IL'),
+                tone: 'normal'
+            });
+        } else {
+            cards.push({ title: 'האירוע הכספי הבא', value: 'אין אירועים עתידיים', note: 'לא נמצאו אירועים ב-6 החודשים הקרובים', tone: 'normal' });
+        }
+
+        if (summary.nextIncome) {
+            cards.push({
+                title: 'ההכנסה הבאה',
+                value: formatHomeCurrency(summary.nextIncome.amount),
+                note: (summary.nextIncome.title || '') + ' · ' + summary.nextIncome.date.toLocaleDateString('he-IL'),
+                tone: 'normal'
+            });
+        } else {
+            cards.push({ title: 'ההכנסה הבאה', value: 'אין הכנסה עתידית מוגדרת', note: 'לא נמצא פריט הכנסה עתידי ב-6 החודשים הקרובים', tone: 'normal' });
+        }
+
+        if (summary.nextIncome && summary.amountBeforeNextIncome !== null) {
+            cards.push({
+                title: 'צפוי לרדת עד ההכנסה הבאה',
+                value: formatHomeCurrency(summary.amountBeforeNextIncome),
+                note: 'סך ההוצאות הצפויות עד ' + summary.nextIncome.date.toLocaleDateString('he-IL'),
+                tone: 'normal'
+            });
+        } else {
+            cards.push({ title: 'צפוי לרדת עד ההכנסה הבאה', value: 'לא ידוע', note: 'אין הכנסה עתידית מוגדרת שממנה ניתן לחשב', tone: 'normal' });
+        }
+
+        var lowestNegative = summary.currentMonth.lowest < 0;
+        cards.push({
+            title: 'נקודת השפל (מהיום עד סוף החודש)',
+            value: formatHomeCurrency(summary.currentMonth.lowest),
+            note: 'הנקודה הנמוכה ביותר הצפויה מהיום/מחר ועד תום החודש הנוכחי — לא נקודת השפל ההיסטורית של החודש.',
+            tone: lowestNegative ? 'danger' : 'normal'
+        });
+
+        var eomNegative = summary.currentMonth.endOfMonth < 0;
+        cards.push({
+            title: 'תחזית סוף חודש',
+            value: formatHomeCurrency(summary.currentMonth.endOfMonth),
+            note: 'היתרה הצפויה בסוף ' + summary.currentMonth.label,
+            tone: eomNegative ? 'danger' : 'normal'
+        });
+
+        var feedHtml = '';
+        for (var i = 0; i < cards.length; i++) {
+            var c = cards[i];
+            var toneClass = (c.tone === 'danger') ? ' danger' : ((c.tone === 'warning') ? ' warning' : '');
+            var toneIcon = (c.tone === 'danger' || c.tone === 'warning') ? '⚠️' : '📊';
+            feedHtml += '<div class="insight-card' + toneClass + '">' +
+                '<div class="insight-icon">' + toneIcon + '</div>' +
+                '<div class="insight-body">' +
+                    '<div class="insight-title">' + escapeHtml(c.title) + '</div>' +
+                    '<div class="insight-value">' + escapeHtml(c.value) + '</div>' +
+                    '<div class="insight-note">' + escapeHtml(c.note) + '</div>' +
+                '</div>' +
+            '</div>';
+        }
+        var feedEl = document.getElementById('cashflow-summary-feed');
+        if (feedEl) { feedEl.innerHTML = feedHtml; }
+
+        var events = summary.timelineEvents || [];
+        function buildTimelineRowHtml(ev) {
+            return '<div class="attention-item">' +
+                '<div>' +
+                    '<div class="attention-title">' + escapeHtml(ev.title || '') + '</div>' +
+                    '<div class="attention-detail">' + escapeHtml(ev.date.toLocaleDateString('he-IL')) + '</div>' +
+                '</div>' +
+                '<div class="attention-amount">' + escapeHtml(formatSignedCurrency(ev.amount)) + '</div>' +
+            '</div>';
+        }
+        var previewEl = document.getElementById('cashflow-timeline-preview');
+        var fullEl = document.getElementById('cashflow-timeline-full');
+        if (previewEl) {
+            if (events.length === 0) {
+                previewEl.innerHTML = '<div class="insight-note">אין אירועים עתידיים להצגה בציר הזמן.</div>';
+            } else {
+                var previewHtml = '';
+                for (var p = 0; p < Math.min(3, events.length); p++) { previewHtml += buildTimelineRowHtml(events[p]); }
+                previewEl.innerHTML = previewHtml;
+            }
+        }
+        if (fullEl) {
+            var fullHtml = '';
+            for (var f = 0; f < events.length; f++) { fullHtml += buildTimelineRowHtml(events[f]); }
+            fullEl.innerHTML = fullHtml;
+        }
+        var toggleBtn = document.getElementById('cashflow-timeline-toggle-btn');
+        if (toggleBtn) { toggleBtn.style.display = (events.length > 3) ? '' : 'none'; }
+    }
+
+    // Show/hide the full scrollable timeline list vs. the 3-item preview. Pure display toggle,
+    // no re-fetch/recompute (renderCashflowInsightsFromRealData() already populated both).
+    function toggleCashflowTimeline() {
+        var fullEl = document.getElementById('cashflow-timeline-full');
+        var previewEl = document.getElementById('cashflow-timeline-preview');
+        var btn = document.getElementById('cashflow-timeline-toggle-btn');
+        if (!fullEl || !btn) { return; }
+        var expanded = fullEl.style.display !== 'none';
+        fullEl.style.display = expanded ? 'none' : 'block';
+        if (previewEl) { previewEl.style.display = expanded ? 'block' : 'none'; }
+        btn.textContent = expanded ? 'הצג הכל' : 'הצג פחות';
+    }
+
+    // Reads the inline currentBalance input, validates it's a real number (distinguishing an
+    // empty submission — rejected, no change — from a deliberately entered 0, which IS a valid
+    // value per the approved contract), persists via the existing setCurrentBalance(), and
+    // re-renders every screen that reads the cash-flow engine so the new value is reflected
+    // everywhere immediately (no page reload needed).
+    function submitCurrentBalanceUpdate() {
+        var inputEl = document.getElementById('cashflow-balance-input');
+        if (!inputEl) { return; }
+        var raw = inputEl.value;
+        if (raw === '' || raw === null) { alert('נא להזין סכום תקין'); return; }
+        var num = parseFloat(raw);
+        if (!isFinite(num)) { alert('נא להזין סכום תקין'); return; }
+        setCurrentBalance(num);
+        renderCashflowInsightsFromRealData();
+        renderForecast();
+    }
+
     // charge.month/warning.month are the same short month labels (e.g. "אוג׳") computeForecast()
     // already returns — no day-level date arithmetic is invented here. Amounts reuse
     // formatHomeCurrency() (Stage D.5, unchanged) for the same '₪'+rounded+locale convention
     // used everywhere else on this screen.
+    //
+    // Version 1.3, Phase 2C: both cards below are now sourced from buildCashflowSummary()
+    // instead of getBiggestUpcomingCharge()/getForecastWarning() (both computeForecast-derived).
+    // getBiggestUpcomingCharge() picked the single BIGGEST loan/dated charge in 6 months — a
+    // different concept from "the next event of any kind", which is what a user reading "מה
+    // דורש תשומת לב" actually expects here; per the approved Phase 2C decision, this card now
+    // shows the new engine's own coherent nextEvent instead of keeping two different answers to
+    // the same question on screen. Both old functions remain defined (still called from
+    // buildNarrative(), whose relevant output fields are already unused/dead — see the Phase 2B
+    // consumer-mapping report) — deliberately not deleted, per the "no unrelated cleanup" scope
+    // rule for this phase.
     function renderAttentionListFromRealData() {
         var cards = [];
+        var cashflowSummaryForAttention = buildCashflowSummary(items);
 
-        var charge = getBiggestUpcomingCharge(items);
-        if (charge) {
+        if (cashflowSummaryForAttention.nextEvent) {
             cards.push({
-                title: charge.label,
-                detail: 'צפוי ב-' + charge.month,
-                amount: formatHomeCurrency(charge.amount)
+                title: cashflowSummaryForAttention.nextEvent.title || 'אירוע כספי קרוב',
+                detail: 'צפוי ב-' + cashflowSummaryForAttention.nextEvent.date.toLocaleDateString('he-IL'),
+                amount: formatHomeCurrency(Math.abs(cashflowSummaryForAttention.nextEvent.amount))
             });
         }
 
-        var warning = getForecastWarning(items);
-        if (warning) {
-            cards.push({
-                title: 'אזהרת תחזית',
-                detail: warning.message,
-                amount: formatHomeCurrency(Math.abs(warning.balance))
-            });
-        }
+        // Phase 2C final semantic-consistency gate: the old forward "אזהרת תחזית" card (whether
+        // sourced from getForecastWarning()/computeForecast(), tried briefly in an earlier pass
+        // of this same gate, or from the new engine, tried before that) is intentionally REMOVED
+        // from Home entirely, not just re-sourced. Home's hero-amount is a monthly-snapshot metric
+        // (this calendar month's income minus expense, not anchored to a real balance, per the
+        // approved "different product concept" decision) — it already directly shows a negative
+        // number with the app's existing negative-value styling if this month itself is unhealthy,
+        // so a separate same-month warning card would be redundant. And a warning scanning FUTURE
+        // months (which is what getForecastWarning's 6-month computeForecast scan actually does)
+        // is exactly the authoritative forward cash-flow forecast that the Insights screen now
+        // owns exclusively (see its own "אזהרת תחזית" card, sourced from
+        // findFirstNegativeCashflowMonth(buildCashflowSummary(...))) — keeping any version of this
+        // card on Home, under any engine, would mean two differently-computed "forecast warning"
+        // values could disagree for the same real-world month. Home keeps only the "next event"
+        // card above (informational, not an evaluative claim) and its unchanged monthly snapshot.
 
         // Empty state: when neither signal fires (0 cards), attention-list is simply left empty
         // (innerHTML = '') rather than showing invented "everything's fine" copy — the same
@@ -2469,12 +2976,17 @@
         // inventing new "everything's fine" wording is explicitly out of scope — so this card is
         // simply omitted (not rendered) rather than shown with invented text. See the Stage D.6
         // report for this judgment call.
-        var warning = getForecastWarning(items);
-        if (warning) {
+        // Version 1.3, Phase 2C: sourced from buildCashflowSummary() instead of the old
+        // getForecastWarning()/computeForecast() — same "first negative month" concept as the
+        // attention-list card, now computed once by the unified engine instead of by two
+        // different, potentially-disagreeing ones.
+        var cashflowSummaryForWarningCard = buildCashflowSummary(items);
+        var negMonthForInsightsCard = findFirstNegativeCashflowMonth(cashflowSummaryForWarningCard);
+        if (negMonthForInsightsCard) {
             cards.push({
                 title: 'אזהרת תחזית',
-                value: formatHomeCurrency(warning.balance),
-                note: narrativeResult.forecastWarning,
+                value: formatHomeCurrency(negMonthForInsightsCard.lowest),
+                note: 'ב-' + negMonthForInsightsCard.label + ' צפויה נקודת שפל שלילית.',
                 tone: 'warning'
             });
         }
@@ -2503,6 +3015,10 @@
     // Called once, after items/categoryConfig and the Home render above — same ordering
     // guarantee, no code moved.
     renderInsightsScreenFromRealData();
+
+    // Version 1.3, Phase 2C: renders the new cash-flow hero/summary-cards/timeline block, same
+    // ordering guarantee (items/categoryConfig/appSettings already loaded).
+    renderCashflowInsightsFromRealData();
 
     // Stage 3ב.4: draws the forecast chart/table on the Insights screen. Called once at load,
     // same ordering guarantee as the render call directly above (items/categoryConfig already
@@ -3049,6 +3565,7 @@
         renderHomeScreenFromRealData();
         renderAttentionListFromRealData();
         renderInsightsScreenFromRealData();
+        renderCashflowInsightsFromRealData();
         renderForecast();
         renderCategoriesScreenFromRealData();
         renderSettingsScreenFromRealData();
