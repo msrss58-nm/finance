@@ -661,19 +661,26 @@
     <div class="screen" id="screen-insights">
         <div class="section-title" style="margin-top:4px;">תובנות</div>
 
-        <!-- Version 1.3, Phase 2C: cash-flow hero ("מצב להיום") + inline currentBalance editor.
-             Sole source of truth for every number on this block is buildCashflowSummary() — no
-             calculation is duplicated here, only display/formatting. -->
+        <!-- Version 1.3, Phase 2E: BALANCE ANCHOR hero. Before setup: "הגדר יתרת בסיס" +
+             the entry form shown directly. After setup: "יתרה משוערת להיום" (calculated forward
+             from the anchor, never re-entered daily) + the anchor/as-of date shown unobtrusively
+             + a collapsed-by-default "עדכן יתרה בפועל" reconciliation action. Sole source of truth for
+             every number here is buildCashflowSummary() — no calculation is duplicated. -->
         <div class="hero-gauge">
-            <div class="hero-label">מצב להיום</div>
+            <div class="hero-label" id="cashflow-hero-label">מצב להיום</div>
             <div class="hero-amount" id="cashflow-today-balance"></div>
             <div class="insight-note" id="cashflow-balance-subnote" style="text-align:center;"></div>
-            <div class="tx-edit-group" style="margin-top:12px;">
-                <label for="cashflow-balance-input">עדכון יתרת החשבון נכון לעכשיו</label>
-                <input type="number" id="cashflow-balance-input" placeholder="הזן סכום" inputmode="decimal" step="0.01">
+            <div class="tx-edit-actions" id="cashflow-anchor-toggle-row" style="justify-content:center; display:none;">
+                <button type="button" class="preview-forecast-toggle-btn" id="cashflow-anchor-toggle-btn" onclick="toggleBalanceAnchorForm()">עדכן יתרה בפועל</button>
             </div>
-            <div class="tx-edit-actions">
-                <button type="button" class="tx-edit-save" onclick="submitCurrentBalanceUpdate()">💾 שמור יתרה</button>
+            <div id="cashflow-anchor-form">
+                <div class="tx-edit-group" style="margin-top:12px;">
+                    <label for="cashflow-balance-input" id="cashflow-balance-input-label">יתרת חשבון נכון להיום</label>
+                    <input type="number" id="cashflow-balance-input" placeholder="הזן סכום" inputmode="decimal" step="0.01">
+                </div>
+                <div class="tx-edit-actions">
+                    <button type="button" class="tx-edit-save" onclick="submitCurrentBalanceUpdate()">💾 שמור</button>
+                </div>
             </div>
         </div>
 
@@ -1888,14 +1895,14 @@
     }
 
     // =====================================================================================
-    // ===== Version 1.3, Phase 2B: unified cash-flow engine. Single source of truth for    =====
+    // ===== Version 1.3, Phase 2B/2E: unified cash-flow engine. Single source of truth for  =====
     // ===== cash-flow events, cumulative balances and every derived Insights metric below.  =====
     // ===== Reuses resolveEffectiveDay/getClampedBillingDate/getBillingRange/               =====
     // ===== parseDatesAndGetLeft/isBillingActiveInMonth verbatim from above — no new date    =====
     // ===== arithmetic is invented here. Does NOT replace getMonthSnapshot/                  =====
     // ===== getCategoryMonthlyTotals/computeForecast (those keep serving the screens that    =====
     // ===== already consume them, unmodified, per the approved "no rewrite" scope) — this    =====
-    // ===== is new, additive code that the Phase 2C Insights UI will consume instead.        =====
+    // ===== is new, additive code that the Phase 2C+ Insights UI consumes instead.           =====
     // =====================================================================================
 
     // EVENT CONTRACT: { date: Date, amount: signed number, itemId, type, title }.
@@ -1907,13 +1914,13 @@
 
     var CASHFLOW_HORIZON_MONTHS = 6;
 
-    // Deterministic same-day ordering for TIMELINE/DISPLAY PURPOSES ONLY (Phase 2C). Every
-    // balance number below (today/lowest/end-of-month) is computed from a per-CALENDAR-DAY
-    // sum of that day's events, not from a running total after each individual event — so
-    // this order can never change any balance figure, only the order same-day rows are
-    // listed in a future timeline UI. Income is listed before expenses on a shared day so a
-    // day that nets positive never *appears* to dip first; expense types are then ordered
-    // fixed → loan → dated (arbitrary but fixed), with itemId as the final tiebreak.
+    // Deterministic same-day ordering for TIMELINE/DISPLAY PURPOSES ONLY. Every balance number
+    // below (estimated-today/lowest/end-of-month) is computed from a per-CALENDAR-DAY sum of
+    // that day's events, not from a running total after each individual event — so this order
+    // can never change any balance figure, only the order same-day rows are listed in the
+    // timeline UI. Income is listed before expenses on a shared day so a day that nets
+    // positive never *appears* to dip first; expense types are then ordered fixed → loan →
+    // dated (arbitrary but fixed), with itemId as the final tiebreak.
     var CASHFLOW_TYPE_ORDER = { income: 0, fixed: 1, loan: 2, dated: 3 };
     function compareCashflowEvents(a, b) {
         var dCompare = a.date.getTime() - b.date.getTime();
@@ -1930,12 +1937,11 @@
         return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
     }
 
-    // Parses a stored 'YYYY-MM-DD' string as a LOCAL calendar date (year, month-1, day),
-    // matching getBillingRange's own startDateStr parsing above — unlike the older
-    // getMonthSnapshot/getCategoryMonthlyTotals/computeForecast 'dated' branches, which parse
-    // the same string via `new Date(string)` (spec'd as UTC midnight). This avoids the
-    // timezone edge case flagged in the Phase 2A risk review without touching those existing
-    // (unmodified, still-in-use) functions.
+    // Parses a stored 'YYYY-MM-DD' string as a LOCAL calendar date (year, month-1, day) —
+    // unlike the older getMonthSnapshot/getCategoryMonthlyTotals/computeForecast 'dated'
+    // branches, which parse the same string via `new Date(string)` (spec'd as UTC midnight).
+    // Used consistently for anchorDate parsing too, per the approved "avoid UTC date-shift
+    // errors, local calendar semantics" requirement.
     function parseLocalDateStr(str) {
         var parts = (str || '').split('-');
         var y = parseInt(parts[0], 10), m = parseInt(parts[1], 10) - 1, d = parts[2] ? parseInt(parts[2], 10) : 1;
@@ -1943,35 +1949,72 @@
         return new Date(y, m, d);
     }
 
-    // The manually-entered "real account balance as of today" (approved Phase 2A contract,
-    // decision 1) — NOT a historical opening balance, NOT derived from summing items. Stored
-    // as appSettings.currentBalance (default null = "never entered"). isSet lets a future UI
-    // distinguish "user's balance really is ₪0" from "user hasn't entered one yet"; every
-    // number below still safely defaults to 0 either way, per the approved storage contract.
-    function resolveCurrentBalance() {
-        var raw = appSettings && appSettings.currentBalance;
-        if (typeof raw === 'number' && isFinite(raw)) { return { value: raw, isSet: true }; }
-        return { value: 0, isSet: false };
+    // ===== Version 1.3, Phase 2E: BALANCE ANCHOR model. Replaces the old "enter a fresh      =====
+    // ===== currentBalance every time" model — the user enters their real balance ONCE, as   =====
+    // ===== of a specific date (the anchor), not a value re-entered on demand. "יתרה         =====
+    // ===== משוערת להיום" is CALCULATED forward from that anchor using the same event stream =====
+    // ===== as everything else. "עדכן יתרה בפועל" (reconciliation) simply records a fresh    =====
+    // ===== anchor = {entered amount, today} — calibration, not mandatory daily entry.        =====
+
+    // Reads the persisted anchor. Priority: real anchorBalance/anchorDate fields if both are
+    // present and valid; otherwise, if only the legacy (pre-anchor-model) `currentBalance`
+    // field is set, treat it as a legacy anchor dated TODAY — never a fabricated historical
+    // date, since the app never recorded when the legacy value was actually entered. This is a
+    // pure, lazy, READ-TIME fallback (same "lazy fallback, no migration" convention as
+    // resolveEffectiveDay() above) — nothing is written back to localStorage just by reading
+    // it, so legacy `currentBalance` never becomes a second competing source of truth: once
+    // the user sets a real anchor (initial setup or reconciliation), anchorBalance/anchorDate
+    // take over and the legacy field is simply never consulted again. Net effect for an
+    // existing Preview user who already saved a currentBalance: their number keeps showing
+    // exactly as before (no forward drift), because a same-day anchor produces an empty
+    // catch-up window — until they explicitly reconcile once, at which point real anchor
+    // semantics take over.
+    function resolveBalanceAnchor() {
+        var ab = appSettings && appSettings.anchorBalance;
+        var ad = appSettings && appSettings.anchorDate;
+        if (typeof ab === 'number' && isFinite(ab) && typeof ad === 'string' && ad) {
+            return { balance: ab, date: ad, isSet: true, isLegacyFallback: false };
+        }
+        var legacy = appSettings && appSettings.currentBalance;
+        if (typeof legacy === 'number' && isFinite(legacy)) {
+            return { balance: legacy, date: todayStr(), isSet: true, isLegacyFallback: true };
+        }
+        return { balance: 0, date: null, isSet: false, isLegacyFallback: false };
     }
 
-    // Persists a new currentBalance. Pure plumbing for the Phase 2C settings/Insights UI to
-    // call later — no input field is wired to this in Phase 2B.
-    function setCurrentBalance(value) {
+    // Persists a new anchor: the entered amount becomes anchorBalance, `dateStr` (always
+    // today's local date in practice — both initial setup and "עדכן יתרה בפועל"
+    // reconciliation call this identically) becomes anchorDate. One function serves both
+    // flows since they are semantically identical: "the real balance right now is X."
+    // Explicit 0 is a fully valid anchor amount (isFinite(0) === true). Does not touch/clear
+    // the legacy `currentBalance` field — leaving it in place is harmless once anchorBalance/
+    // anchorDate exist, since resolveBalanceAnchor() above always prefers them.
+    function setBalanceAnchor(value, dateStr) {
         var num = parseFloat(value);
-        appSettings.currentBalance = isFinite(num) ? num : null;
+        if (isFinite(num)) {
+            appSettings.anchorBalance = num;
+            appSettings.anchorDate = dateStr || todayStr();
+        } else {
+            appSettings.anchorBalance = null;
+            appSettings.anchorDate = null;
+        }
         saveAppSettings();
     }
 
-    // Generates every cash-flow event across [current month, current month + horizonMonths)
-    // for non-archived income/fixed/loan/dated items, unfiltered by today (that filtering
-    // happens in buildCashflowSummary, only for the current month — see contract). One event
-    // per monthly occurrence for income/fixed; one event per active billing month for loans
-    // (per-month range test, not the left>0 gate); at most one event for dated items.
-    function generateCashflowEvents(items, horizonMonths) {
-        var months = (typeof horizonMonths === 'number') ? horizonMonths : CASHFLOW_HORIZON_MONTHS;
-        var now = new Date();
-        var horizonStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        var horizonEnd = new Date(now.getFullYear(), now.getMonth() + months, 0);
+    // Generates every cash-flow event across `monthsCount` consecutive calendar months
+    // starting at `rangeStartMonth` (a Date already normalized to the 1st of its month) for
+    // non-archived income/fixed/loan/dated items — unfiltered by any "today"/anchor boundary
+    // (that filtering happens in buildCashflowSummary). One event per monthly occurrence for
+    // income/fixed; one event per active billing month for loans (per-month range test, not
+    // the left>0 gate); at most one event for dated items. `rangeStartMonth` may be in the
+    // past relative to the current month (needed to catch up from an old anchor date) or in
+    // the current month (the common case when the anchor is today) — this function is unaware
+    // of "today"/"the anchor" at all, it just fills in the requested window once.
+    function generateCashflowEvents(items, rangeStartMonth, monthsCount) {
+        var months = (typeof monthsCount === 'number') ? monthsCount : CASHFLOW_HORIZON_MONTHS;
+        var rangeStart = (rangeStartMonth instanceof Date) ? rangeStartMonth : new Date();
+        var horizonStart = new Date(rangeStart.getFullYear(), rangeStart.getMonth(), 1);
+        var horizonEnd = new Date(rangeStart.getFullYear(), rangeStart.getMonth() + months, 0);
         var events = [];
 
         for (var i = 0; i < items.length; i++) {
@@ -1980,20 +2023,20 @@
 
             if (item.type === 'income') {
                 for (var mi = 0; mi < months; mi++) {
-                    var di = getClampedBillingDate(now.getFullYear(), now.getMonth() + mi, resolveEffectiveDay(item));
+                    var di = getClampedBillingDate(horizonStart.getFullYear(), horizonStart.getMonth() + mi, resolveEffectiveDay(item));
                     events.push({ date: di, amount: item.amount, itemId: item.id, type: 'income', title: item.title });
                 }
             } else if (item.type === 'fixed') {
                 var mAmount = (item.period === 'שנתי') ? (item.amount / 12) : item.amount;
                 for (var mf = 0; mf < months; mf++) {
-                    var df = getClampedBillingDate(now.getFullYear(), now.getMonth() + mf, resolveEffectiveDay(item));
+                    var df = getClampedBillingDate(horizonStart.getFullYear(), horizonStart.getMonth() + mf, resolveEffectiveDay(item));
                     events.push({ date: df, amount: -mAmount, itemId: item.id, type: 'fixed', title: item.title });
                 }
             } else if (item.type === 'loan') {
                 var range = getBillingRange(item.start, item.total, resolveEffectiveDay(item));
                 if (range) {
                     for (var ml = 0; ml < months; ml++) {
-                        var probe = new Date(now.getFullYear(), now.getMonth() + ml, 1);
+                        var probe = new Date(horizonStart.getFullYear(), horizonStart.getMonth() + ml, 1);
                         if (isBillingActiveInMonth(range, probe.getFullYear(), probe.getMonth())) {
                             var dl = getClampedBillingDate(probe.getFullYear(), probe.getMonth(), range.bDay);
                             events.push({ date: dl, amount: -item.amount, itemId: item.id, type: 'loan', title: item.title });
@@ -2013,35 +2056,80 @@
         return events;
     }
 
-    // Builds every derived metric the approved contract asks for, from currentBalance plus
-    // generateCashflowEvents(). One walk per month: balance points are END-OF-CALENDAR-DAY
-    // sums only (never a mid-day running total), so same-day event order can never change a
-    // reported balance — see compareCashflowEvents' comment.
+    // Sums a set of events onto a single running total, grouped by calendar day first (never
+    // a mid-day running total) — same day-atomic convention as the per-month walk below. Used
+    // only for the anchor→today catch-up, where a single final number is needed, not a
+    // lowest-point series.
+    function sumEventsOntoBalance(startBalance, events) {
+        var byDate = {};
+        var dateKeys = [];
+        for (var i = 0; i < events.length; i++) {
+            var key = cashflowDateKey(events[i].date);
+            if (!(key in byDate)) { byDate[key] = 0; dateKeys.push(key); }
+            byDate[key] += events[i].amount;
+        }
+        dateKeys.sort();
+        var running = startBalance;
+        for (var d = 0; d < dateKeys.length; d++) { running += byDate[dateKeys[d]]; }
+        return running;
+    }
+
+    // Builds every derived metric the approved contract asks for, from the BALANCE ANCHOR
+    // plus generateCashflowEvents(). Two stages, ONE shared event stream (generated once, over
+    // the full [anchor month .. current month + horizonMonths - 1] window — no event is ever
+    // generated twice, so no event can ever be double-counted between the two stages):
     //
-    // TODAY-BOUNDARY RULE (final, approved correction): currentBalance is defined as the real
-    // account balance at the moment the user entered it — the schema has no execution/
-    // completion status, no transaction ledger and no event timestamp, so there is no way to
-    // prove whether a scheduled event dated exactly TODAY has already happened or not. To avoid
-    // ever silently double-counting it, month 0 (the current month) starts from currentBalance
-    // and the numerical walk considers only events dated STRICTLY AFTER today (tomorrow onward)
-    // — an event dated today is excluded from every numerical projection (lowest/endOfMonth/
-    // nextEvent/nextIncome/amountBeforeNextIncome alike), never assumed pending, never assumed
-    // already processed. It may still be surfaced later as an informational "scheduled today"
-    // UI item, but must not move any number here. Each later month starts from the previous
-    // month's end-of-month balance and counts its own events in full (they are entirely in the
-    // future already, so this ambiguity does not apply to them).
+    //   1. CATCH-UP (anchor → today): starting from anchorBalance, applies every event dated
+    //      STRICTLY AFTER anchorDate through TODAY (inclusive) — events on the anchor date
+    //      itself, and anything before it, are NEVER applied (already reflected in the anchor
+    //      amount by definition). Produces estimatedTodayBalance, a single number — no
+    //      lowest-point tracking here; only the current month's own walk below exposes
+    //      lowest/endOfMonth. When anchorDate === today (the common case right after setup/
+    //      reconciliation), this stage is a no-op by construction (no date can be "after
+    //      today, through today").
+    //
+    //   2. FORWARD FORECAST (tomorrow → horizon end): starting from estimatedTodayBalance,
+    //      walks one calendar month at a time exactly as the original model did — month 0
+    //      (current month) counts only events strictly after today (no execution/completion
+    //      status exists anywhere in the schema, so a today-dated event can never be assumed
+    //      pending or already processed); later months count their own events in full.
+    //
+    // Balance points are always END-OF-CALENDAR-DAY sums — same-day event order can never
+    // change a reported balance.
     function buildCashflowSummary(itemsOverride, horizonMonthsOverride) {
         var sourceItems = Array.isArray(itemsOverride) ? itemsOverride : items;
-        var months = (typeof horizonMonthsOverride === 'number') ? horizonMonthsOverride : CASHFLOW_HORIZON_MONTHS;
+        var horizonMonths = (typeof horizonMonthsOverride === 'number') ? horizonMonthsOverride : CASHFLOW_HORIZON_MONTHS;
         var now = new Date();
         var todayZero = cashflowDateOnly(now);
-        var balanceInfo = resolveCurrentBalance();
-        var allEvents = generateCashflowEvents(sourceItems, months);
+        var anchor = resolveBalanceAnchor();
 
+        var anchorDateObj = anchor.isSet ? parseLocalDateStr(anchor.date) : null;
+        if (!anchorDateObj || anchorDateObj > todayZero) { anchorDateObj = todayZero; }
+
+        var currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        var anchorMonthStart = new Date(anchorDateObj.getFullYear(), anchorDateObj.getMonth(), 1);
+        // Months strictly before the current month that must be generated to catch up from the
+        // anchor (0 when the anchor is in the current month — the overwhelmingly common case).
+        var monthsBeforeCurrent = (currentMonthStart.getFullYear() - anchorMonthStart.getFullYear()) * 12
+            + (currentMonthStart.getMonth() - anchorMonthStart.getMonth());
+        if (monthsBeforeCurrent < 0) { monthsBeforeCurrent = 0; }
+        var totalMonthsToGenerate = monthsBeforeCurrent + horizonMonths;
+
+        var allEvents = generateCashflowEvents(sourceItems, anchorMonthStart, totalMonthsToGenerate);
+
+        // ----- Stage 1: catch-up from the anchor to today -----
+        var catchupEvents = [];
+        for (var ci = 0; ci < allEvents.length; ci++) {
+            var cd = cashflowDateOnly(allEvents[ci].date);
+            if (cd > anchorDateObj && cd <= todayZero) { catchupEvents.push(allEvents[ci]); }
+        }
+        var estimatedTodayBalance = sumEventsOntoBalance(anchor.balance, catchupEvents);
+
+        // ----- Stage 2: forward forecast from today, one month at a time -----
         var monthResults = [];
-        var runningStart = balanceInfo.value;
+        var runningStart = estimatedTodayBalance;
 
-        for (var m = 0; m < months; m++) {
+        for (var m = 0; m < horizonMonths; m++) {
             var monthDate = new Date(now.getFullYear(), now.getMonth() + m, 1);
             var y = monthDate.getFullYear(), mo = monthDate.getMonth();
             var monthEvents = [];
@@ -2050,7 +2138,7 @@
                 if (e.date.getFullYear() === y && e.date.getMonth() === mo) { monthEvents.push(e); }
             }
             if (m === 0) {
-                // Strictly after today only — see the TODAY-BOUNDARY RULE comment above.
+                // Strictly after today only — see the forward-forecast reasoning above.
                 var filtered = [];
                 for (var j = 0; j < monthEvents.length; j++) {
                     if (cashflowDateOnly(monthEvents[j].date) > todayZero) { filtered.push(monthEvents[j]); }
@@ -2088,8 +2176,8 @@
         }
 
         // nextEvent/nextIncome/amountBeforeNextIncome must not treat a today-dated event as
-        // "future" either — same unprovable-completion-status reasoning as the month-0 filter
-        // above, so this also starts strictly after today (tomorrow onward).
+        // "future" either — same reasoning as the month-0 filter above, so this also starts
+        // strictly after today (tomorrow onward).
         var futureEvents = [];
         for (var fi = 0; fi < allEvents.length; fi++) {
             if (cashflowDateOnly(allEvents[fi].date) > todayZero) { futureEvents.push(allEvents[fi]); }
@@ -2114,19 +2202,22 @@
 
         var currentMonth = monthResults[0];
         return {
-            todayBalance: balanceInfo.value,
-            currentBalanceIsSet: balanceInfo.isSet,
+            estimatedTodayBalance: estimatedTodayBalance,
+            anchorBalance: anchor.balance,
+            anchorDate: anchor.isSet ? anchor.date : null,
+            anchorIsSet: anchor.isSet,
+            anchorIsLegacyFallback: !!anchor.isLegacyFallback,
             months: monthResults,
             currentMonth: currentMonth,
             nextEvent: nextEvent,
             nextIncome: nextIncome,
             amountBeforeNextIncome: amountBeforeNextIncome,
-            isNegative: (currentMonth.lowest < 0) || (balanceInfo.value < 0),
-            // Version 1.3, Phase 2C: the same futureEvents list nextEvent/nextIncome are already
-            // derived from, exposed as-is for the Insights timeline UI — no new calculation,
-            // just reusing what was already computed above.
+            isNegative: (currentMonth.lowest < 0) || (estimatedTodayBalance < 0),
+            // The same futureEvents list nextEvent/nextIncome are already derived from, exposed
+            // as-is for the Insights timeline UI — no new calculation, just reusing what was
+            // already computed above.
             timelineEvents: futureEvents,
-            horizonMonths: months
+            horizonMonths: horizonMonths
         };
     }
     // =====================================================================================
@@ -2322,10 +2413,17 @@
             pinHash: null,
             pinEnabled: false,
             autoLockMinutes: null,
-            // Version 1.3, Phase 2B: manual "real account balance as of today" (approved
-            // financial contract, decision 1) — null means "never entered", never a guessed
-            // number. See resolveCurrentBalance() near computeForecast() for the read side.
+            // Version 1.3, Phase 2B (legacy field, kept for backward compatibility only —
+            // superseded by anchorBalance/anchorDate below, Phase 2E). No longer written by
+            // any live UI; still read as a fallback by resolveBalanceAnchor() for Preview
+            // users who saved a balance before the anchor model existed.
             currentBalance: null,
+            // Version 1.3, Phase 2E: BALANCE ANCHOR — "at anchorDate, the real account
+            // balance was anchorBalance." Replaces the old "re-enter a fresh balance every
+            // time" model with a one-time-normally baseline the engine projects forward from.
+            // null/null means "never set" (never guessed); explicit 0 is a valid anchor.
+            anchorBalance: null,
+            anchorDate: null,
             notifications: { upcomingPayment: true, upcomingIncome: true, completedObligation: true },
             experimentalFlags: {}
         };
@@ -2731,23 +2829,47 @@
     // forecast itself uses) — today's own events are never shown here, so nothing on this
     // screen can ever be misread as "pending" or "already processed" (execution status is
     // unknowable per the approved today-boundary contract).
+    // Explicit UI-only state for whether the reconciliation form is manually expanded right
+    // now. Not inferred from the DOM's style.display string (that was the source of a real
+    // bug: the default, never-touched style.display is also '' — the same value
+    // toggleBalanceAnchorForm() uses for "open" — so a render right after a fresh page load
+    // could not tell "never touched" apart from "user just opened it" and failed to
+    // auto-collapse an already-set anchor's form after reload). This flag is the single
+    // source of truth for that one piece of UI state instead.
+    var balanceAnchorFormExpanded = false;
+
     function renderCashflowInsightsFromRealData() {
         var summary = buildCashflowSummary();
 
         var balanceEl = document.getElementById('cashflow-today-balance');
         var subnoteEl = document.getElementById('cashflow-balance-subnote');
+        var labelEl = document.getElementById('cashflow-hero-label');
         var inputEl = document.getElementById('cashflow-balance-input');
-        if (balanceEl && subnoteEl) {
-            if (summary.currentBalanceIsSet) {
-                balanceEl.textContent = formatHomeCurrency(summary.todayBalance);
-                subnoteEl.textContent = 'יתרת החשבון נכון לעכשיו, כפי שהוזנה על ידך (לא יתרת פתיחת חודש היסטורית).';
-            } else {
-                balanceEl.textContent = 'לא הוזנה יתרה';
-                subnoteEl.textContent = 'הזן את יתרת החשבון נכון לעכשיו כדי לראות תחזית תזרים אמינה.';
+        var inputLabelEl = document.getElementById('cashflow-balance-input-label');
+        var toggleRowEl = document.getElementById('cashflow-anchor-toggle-row');
+        var formEl = document.getElementById('cashflow-anchor-form');
+        if (summary.anchorIsSet) {
+            if (labelEl) { labelEl.textContent = 'יתרה משוערת להיום'; }
+            if (balanceEl) { balanceEl.textContent = formatHomeCurrency(summary.estimatedTodayBalance); }
+            if (subnoteEl) {
+                var anchorDateObjForDisplay = summary.anchorDate ? parseLocalDateStr(summary.anchorDate) : null;
+                var anchorDateDisplay = anchorDateObjForDisplay ? anchorDateObjForDisplay.toLocaleDateString('he-IL') : '';
+                subnoteEl.textContent = 'מבוסס על יתרה שהוזנה ב-' + anchorDateDisplay + ' — מחושבת קדימה אוטומטית, לא נדרש עדכון יומי.';
             }
+            if (inputLabelEl) { inputLabelEl.textContent = 'יתרת חשבון בפועל כרגע'; }
+            if (toggleRowEl) { toggleRowEl.style.display = ''; }
+            if (formEl) { formEl.style.display = balanceAnchorFormExpanded ? '' : 'none'; }
+        } else {
+            if (labelEl) { labelEl.textContent = 'הגדר יתרת בסיס'; }
+            if (balanceEl) { balanceEl.textContent = '—'; }
+            if (subnoteEl) { subnoteEl.textContent = 'הזן את היתרה האמיתית בחשבון שלך היום — פעם אחת בלבד. התחזית תתעדכן אוטומטית קדימה מכאן ואילך, לא תצטרך להזין אותה מידי יום.'; }
+            if (inputLabelEl) { inputLabelEl.textContent = 'יתרת חשבון נכון להיום'; }
+            if (toggleRowEl) { toggleRowEl.style.display = 'none'; }
+            if (formEl) { formEl.style.display = ''; }
+            balanceAnchorFormExpanded = false;
         }
         if (inputEl && document.activeElement !== inputEl) {
-            inputEl.value = summary.currentBalanceIsSet ? summary.todayBalance : '';
+            inputEl.value = summary.anchorIsSet ? summary.estimatedTodayBalance : '';
         }
 
         var cards = [];
@@ -2861,11 +2983,26 @@
         btn.textContent = expanded ? 'הצג הכל' : 'הצג פחות';
     }
 
-    // Reads the inline currentBalance input, validates it's a real number (distinguishing an
-    // empty submission — rejected, no change — from a deliberately entered 0, which IS a valid
-    // value per the approved contract), persists via the existing setCurrentBalance(), and
-    // re-renders every screen that reads the cash-flow engine so the new value is reflected
-    // everywhere immediately (no page reload needed).
+    // Show/hide the reconciliation entry form under the hero. Only relevant once an anchor
+    // is already set (before setup, the form is always shown directly — see
+    // renderCashflowInsightsFromRealData()). Pure display toggle, no recompute.
+    function toggleBalanceAnchorForm() {
+        var formEl = document.getElementById('cashflow-anchor-form');
+        var btn = document.getElementById('cashflow-anchor-toggle-btn');
+        if (!formEl || !btn) { return; }
+        balanceAnchorFormExpanded = !balanceAnchorFormExpanded;
+        formEl.style.display = balanceAnchorFormExpanded ? '' : 'none';
+        btn.textContent = balanceAnchorFormExpanded ? 'סגור' : 'עדכן יתרה בפועל';
+    }
+
+    // Reads the inline balance input, validates it's a real number (distinguishing an empty
+    // submission — rejected, no change — from a deliberately entered 0, which IS a valid
+    // anchor amount), persists it as a fresh BALANCE ANCHOR (amount + today's local date)
+    // via setBalanceAnchor(), collapses the reconciliation form back down (it only matters
+    // for the "already set" case — harmless no-op before setup, since the form has no
+    // toggle row to collapse into yet), and re-renders every screen that reads the engine.
+    // Serves BOTH the initial "הגדר יתרת בסיס" setup and the later "עדכן יתרה בפועל"
+    // reconciliation — both are the exact same operation: "the real balance right now is X."
     function submitCurrentBalanceUpdate() {
         var inputEl = document.getElementById('cashflow-balance-input');
         if (!inputEl) { return; }
@@ -2873,7 +3010,8 @@
         if (raw === '' || raw === null) { alert('נא להזין סכום תקין'); return; }
         var num = parseFloat(raw);
         if (!isFinite(num)) { alert('נא להזין סכום תקין'); return; }
-        setCurrentBalance(num);
+        setBalanceAnchor(num, todayStr());
+        balanceAnchorFormExpanded = false;
         renderCashflowInsightsFromRealData();
         renderForecast();
     }
