@@ -464,6 +464,13 @@
         position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
         overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
     }
+    /* Android fallback restore path ("הדבק גיבוי"): the pasted content is raw JSON, so it reads
+       best left-to-right in a monospace face even inside this RTL app; sized tall enough to work
+       with a full backup pasted on a small phone screen without page-level horizontal overflow. */
+    .tx-edit-group textarea.restore-paste-textarea {
+        min-height: 140px; font-family: 'SFMono-Regular', Consolas, Menlo, monospace;
+        font-size: 12.5px; direction: ltr; text-align: left; word-break: break-all;
+    }
 
     /* ===== Bottom navigation ===== */
     .bottom-nav {
@@ -2594,6 +2601,7 @@
     var settingsPinFormMode = null;
     var pendingRestoreBackup = null;
     var resetConfirmMode = false;
+    var restorePasteMode = false;
 
     applySettingsToDom();
 
@@ -5337,6 +5345,23 @@
         return true;
     }
 
+    // Shared by BOTH restore entry points — the file picker (handleRestoreFileSelected) and the
+    // Android fallback "הדבק גיבוי" paste path (checkPastedRestoreBackup) — so there is exactly one
+    // parse/validate/preview pipeline for a backup regardless of how its raw text reached the app.
+    // Deliberately does not know or care whether the text came from a File or a <textarea>.
+    function processRestoreText(rawText) {
+        var parsed = null;
+        try { parsed = JSON.parse(rawText); } catch (e) { parsed = null; }
+        if (!parsed || !isValidBackupShape(parsed)) {
+            pendingRestoreBackup = null;
+            var el = document.getElementById('restore-preview-area');
+            if (el) { el.innerHTML = '<div class="settings-hint settings-error">קובץ הגיבוי אינו תקין — לא בוצע שינוי.</div>'; }
+            return;
+        }
+        pendingRestoreBackup = parsed;
+        renderRestorePreview();
+    }
+
     // Data-restore fix (Android/mobile): a native file-picker cancel does not fire `change` in
     // this app's supported browsers, so reaching this function with no file is not the normal
     // cancel path — it was previously a silent no-op, which is indistinguishable from "restore is
@@ -5345,6 +5370,7 @@
     // neutral .settings-hint style (not .settings-error) since the underlying cause here is
     // genuinely ambiguous — deliberately not phrased as an error/failure.
     function handleRestoreFileSelected(inputEl) {
+        closeRestorePastePanel();
         var file = inputEl && inputEl.files && inputEl.files[0];
         if (!file) {
             var noFileEl = document.getElementById('restore-preview-area');
@@ -5352,18 +5378,7 @@
             return;
         }
         var reader = new FileReader();
-        reader.onload = function () {
-            var parsed = null;
-            try { parsed = JSON.parse(reader.result); } catch (e) { parsed = null; }
-            if (!parsed || !isValidBackupShape(parsed)) {
-                pendingRestoreBackup = null;
-                var el = document.getElementById('restore-preview-area');
-                if (el) { el.innerHTML = '<div class="settings-hint settings-error">קובץ הגיבוי אינו תקין — לא בוצע שינוי.</div>'; }
-                return;
-            }
-            pendingRestoreBackup = parsed;
-            renderRestorePreview();
-        };
+        reader.onload = function () { processRestoreText(reader.result); };
         reader.readAsText(file);
     }
 
@@ -5394,6 +5409,62 @@
         pendingRestoreBackup = null;
         var el = document.getElementById('restore-preview-area');
         if (el) { el.innerHTML = ''; }
+    }
+
+    // Android fallback restore path: some native file pickers never return a usable file at all
+    // (the actual reported failure this exists for), so this lets a user open their backup file in
+    // any app, copy its full text, and paste it directly — bypassing the file picker entirely.
+    // Feeds the exact same processRestoreText()/isValidBackupShape()/renderRestorePreview()/
+    // confirmRestoreBackup() pipeline as the file path; no second restore engine.
+    function openRestorePastePanel() {
+        cancelRestoreBackup();
+        restorePasteMode = true;
+        renderRestorePasteArea();
+    }
+
+    function closeRestorePastePanel() {
+        restorePasteMode = false;
+        renderRestorePasteArea();
+        pendingRestoreBackup = null;
+        var pv = document.getElementById('restore-preview-area');
+        if (pv) { pv.innerHTML = ''; }
+    }
+
+    // Re-render entry point (also called from renderSettingsDetailScreen()) so the open/closed
+    // panel state survives a re-render triggered by an unrelated action — same convention as
+    // renderResetConfirmArea(). Pasted text itself is intentionally not kept in any JS variable
+    // (see confirmRestoreBackup()'s data-safety comment), so a re-render always opens an empty
+    // textarea; that is consistent with never persisting pasted backup content beyond the DOM.
+    function renderRestorePasteArea() {
+        var el = document.getElementById('restore-paste-area');
+        if (!el) { return; }
+        if (!restorePasteMode) { el.innerHTML = ''; return; }
+        el.innerHTML = '<div class="tx-edit-form">' +
+            '<div class="settings-hint">פתח את קובץ הגיבוי, העתק את כל תוכנו והדבק כאן.</div>' +
+            '<div class="tx-edit-group"><textarea id="restore-paste-textarea" class="restore-paste-textarea" dir="ltr" spellcheck="false" autocomplete="off"></textarea></div>' +
+            '<div class="tx-edit-actions">' +
+            '<button type="button" class="tx-edit-save" onclick="checkPastedRestoreBackup()">בדוק גיבוי</button>' +
+            '<button type="button" class="tx-edit-cancel" onclick="closeRestorePastePanel()">ביטול</button>' +
+            '</div></div>';
+    }
+
+    function checkPastedRestoreBackup() {
+        var ta = document.getElementById('restore-paste-textarea');
+        var text = ta ? ta.value : '';
+        if (!text || !text.trim()) {
+            var el = document.getElementById('restore-preview-area');
+            if (el) { el.innerHTML = '<div class="settings-hint">לא הודבק תוכן גיבוי.</div>'; }
+            return;
+        }
+        processRestoreText(text);
+        // Once parsing succeeds, the shared preview/confirm/cancel UI (renderRestorePreview()) is
+        // the single live surface for this pending restore — close the paste panel so the textarea
+        // isn't left showing alongside it. An invalid-backup result leaves pendingRestoreBackup
+        // null, so the panel deliberately stays open for the user to correct/retry.
+        if (pendingRestoreBackup) {
+            restorePasteMode = false;
+            renderRestorePasteArea();
+        }
     }
 
     // Data-restore fix: snapshots every current family_finance_* key/value BEFORE a restore
@@ -5560,8 +5631,10 @@
             '<button type="button" class="cat-add-toggle" onclick="exportBackupJson()">⬇️ גיבוי (הורדת קובץ JSON)</button>' +
             '<label for="restore-file-input" class="cat-add-toggle">⬆️ שחזור מגיבוי</label>' +
             '<input type="file" id="restore-file-input" class="restore-file-input-hidden" accept=".json,application/json" onclick="this.value=\'\'" onchange="handleRestoreFileSelected(this)">' +
+            '<button type="button" class="cat-add-toggle" onclick="openRestorePastePanel()">📋 הדבק גיבוי</button>' +
             '<button type="button" class="cat-add-toggle" onclick="exportTransactionsCsv()">📄 ייצוא תנועות ל-CSV</button>' +
             '</div>' +
+            '<div id="restore-paste-area"></div>' +
             '<div id="restore-preview-area"></div>' +
             '<div class="settings-danger-zone">' +
             '<button type="button" class="settings-danger-btn" onclick="startResetAllData()">🗑️ איפוס כל הנתונים</button>' +
@@ -5698,6 +5771,7 @@
             // previewEditingId already relies on elsewhere in this file). Both functions already
             // no-op safely if their target element isn't present (unchanged from before Stage C).
             renderRestorePreview();
+            renderRestorePasteArea();
             renderResetConfirmArea();
         }
     }
