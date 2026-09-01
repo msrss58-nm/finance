@@ -208,6 +208,18 @@
     .tx-info { flex: 1; min-width: 0; }
     .tx-title { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .tx-date { font-size: 11.5px; color: var(--color-text-muted); margin-top: 2px; }
+    /* Installment-card (Loans + Variable/"תשלומים שונים") collapsed-row summary: wraps .tx-date so
+       up to two optional .tx-installment-meta spans (payment progress, remaining balance) can sit
+       on the same row, to .tx-date's left under RTL flex order. flex-wrap lets a narrow mobile
+       width push one or both onto their own line below the date instead of truncating anything —
+       every value stays fully readable at any width. Only renderTxListWithActions() emits this
+       wrapper; renderTxList() (Home) still emits a bare .tx-date with no wrapper, so Home's row 2
+       is pixel-identical to before this change. With no installment-meta children the wrapper is
+       visually identical to the old bare .tx-date div — margin-top moves here so total spacing
+       under the title is unchanged either way. */
+    .tx-date-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; margin-top: 2px; }
+    .tx-date-row .tx-date { margin-top: 0; }
+    .tx-installment-meta { font-size: 11.5px; color: var(--color-text-muted); white-space: nowrap; }
     /* Stage F.1 fix: isolates the amount text as its own LTR run so the browser's bidi algorithm
        renders "-₪3,200" in that literal left-to-right order — without this, the leading "-"
        character (a bidi-neutral character) gets visually displaced to the far side inside the
@@ -1013,6 +1025,14 @@
             // onclick or any JS string — data-item-id is the only place it appears, as plain
             // attribute text, exactly as required.
             var safeId = escapeHtml(String(t.id));
+            // Installment-card (Loans + Variable) collapsed-row summary: t.installmentProgress/
+            // t.installmentBalance (mapItemToHomeTxRow()) are only ever truthy together, for a
+            // loan or variable item with a usable total — every other row renders the same bare
+            // .tx-date it always did, inside the same .tx-date-row wrapper (no extra children,
+            // visually identical to the old plain .tx-date div).
+            var installmentMetaHtml = t.installmentProgress ?
+                '<span class="tx-installment-meta">' + escapeHtml(t.installmentProgress) + '</span>' +
+                '<span class="tx-installment-meta">' + escapeHtml(t.installmentBalance) + '</span>' : '';
             // Version 1.1, Stage 4.0.2.1: the "✏️ עריכה" dropdown item is removed entirely — the
             // row itself is now the edit trigger (see rowOpenAttrs below). Editing is still only
             // available for active items (same "product decision 1א" restriction this dropdown
@@ -1033,7 +1053,10 @@
                 '<div class="tx-icon">' + t.icon + '</div>' +
                 '<div class="tx-info">' +
                     '<div class="tx-title">' + escapeHtml(t.title) + '</div>' +
-                    '<div class="tx-date">' + escapeHtml(t.date) + '</div>' +
+                    '<div class="tx-date-row">' +
+                        '<span class="tx-date">' + escapeHtml(t.date) + '</span>' +
+                        installmentMetaHtml +
+                    '</div>' +
                 '</div>' +
                 '<div class="tx-amount ' + t.type + '">' + escapeHtml(t.amount) + '</div>' +
                 '<button type="button" class="tx-menu-toggle" data-item-id="' + safeId + '" aria-label="' + escapeHtml('פעולות עבור ' + t.title) + '" onclick="toggleRowMenu(this)">⋮</button>' +
@@ -1099,6 +1122,17 @@
     var SCREEN_NAV_ALIAS = { transactions: 'categories', 'settings-detail': 'settings' };
 
     function showScreen(name) {
+        // Collapse-on-leave: showScreen() is the single choke point for every screen change in
+        // this app, including a category-tile click (filterTransactionsByCategory() always calls
+        // showScreen('transactions'), even when already on that screen) — so resetting
+        // previewEditingId here, unconditionally, is sufficient to guarantee no transaction/item
+        // row is ever left expanded when the user leaves a category (to Home/Insights/Settings/a
+        // different category) or returns to one. UI state only — no data, no localStorage, no
+        // calculation touched. Already a safe no-op everywhere this was implicitly true before
+        // (e.g. startPreviewAdd() already cleared previewEditingId itself before its own
+        // showScreen('transactions') call) — this just makes it hold unconditionally everywhere.
+        previewEditingId = null;
+
         var screens = document.querySelectorAll('.screen');
         for (var i = 0; i < screens.length; i++) { screens[i].classList.remove('active'); }
         document.getElementById('screen-' + name).classList.add('active');
@@ -1385,13 +1419,21 @@
     // getLoansRemainingSummary()'s own totalRemaining accumulation immediately above, just for
     // type 'variable' instead of 'loan', and reuses the same billing-day convention (1) already
     // established for variable items in getCategoryMonthlyTotals() — no new date arithmetic.
+    // Extracted from getVariableRemainingBalance()'s own inline per-item math (unchanged formula:
+    // amount × payments left, same resolveEffectiveDay() billing-day convention) so a single
+    // variable item's remaining balance can be reused elsewhere (installment-card collapsed-row
+    // summary, shared with Loans) without duplicating the calculation.
+    function getVariableItemRemainingBalance(it) {
+        var dt = parseDatesAndGetLeft(it.start, it.total, resolveEffectiveDay(it));
+        return { total: it.amount * dt.left, left: dt.left };
+    }
+
     function getVariableRemainingBalance(items) {
         var total = 0;
         for (var i = 0; i < items.length; i++) {
             var it = items[i];
             if (it.type === 'variable' && !it.isArchived) {
-                var dt = parseDatesAndGetLeft(it.start, it.total, resolveEffectiveDay(it));
-                total += it.amount * dt.left;
+                total += getVariableItemRemainingBalance(it).total;
             }
         }
         return total;
@@ -1423,34 +1465,45 @@
     // loan's own `amount × dt.left` as a hard safety net — principal can never be MORE than
     // everything left to pay, by definition — for the (still-possible, given 4 unvalidated fields)
     // case where the recorded amount/interest/total genuinely don't amortize the loan by schedule.
+    // Extracted from getLoansBalanceSummary()'s own inline per-loan math (unchanged formulas) so a
+    // single loan's remaining balance can be reused elsewhere (Loans-card collapsed-row summary)
+    // without duplicating the amortization calculation. getLoansBalanceSummary() below now simply
+    // accumulates this per-loan result across all active loans — same output as before.
+    function getLoanRemainingBalance(it) {
+        var dt = parseDatesAndGetLeft(it.start, it.total, it.day);
+        var loanTotalRemaining = it.amount * dt.left;
+
+        var n = parseInt(it.total, 10);
+        if (!n || n <= 0 || dt.left <= 0) {
+            return { principal: 0, total: loanTotalRemaining, left: dt.left };
+        }
+        var originalAmount = (typeof it.originalAmount === 'number' && !isNaN(it.originalAmount)) ? it.originalAmount : 0;
+        var elapsed = n - dt.left;
+        if (elapsed < 0) { elapsed = 0; }
+
+        var annualRatePct = parseFloat(it.interest);
+        var monthlyRate = (isFinite(annualRatePct) && annualRatePct > 0) ? (annualRatePct / 100 / 12) : 0;
+        var remainingPrincipal;
+        if (monthlyRate > 0) {
+            var growth = Math.pow(1 + monthlyRate, elapsed);
+            remainingPrincipal = originalAmount * growth - it.amount * (growth - 1) / monthlyRate;
+        } else {
+            remainingPrincipal = originalAmount - it.amount * elapsed;
+        }
+        if (remainingPrincipal < 0) { remainingPrincipal = 0; }
+        if (remainingPrincipal > loanTotalRemaining) { remainingPrincipal = loanTotalRemaining; }
+        return { principal: remainingPrincipal, total: loanTotalRemaining, left: dt.left };
+    }
+
     function getLoansBalanceSummary(items) {
         var principal = 0;
         var total = 0;
         for (var i = 0; i < items.length; i++) {
             var it = items[i];
             if (it.type !== 'loan' || it.isArchived) { continue; }
-            var dt = parseDatesAndGetLeft(it.start, it.total, it.day);
-            var loanTotalRemaining = it.amount * dt.left;
-            total += loanTotalRemaining;
-
-            var n = parseInt(it.total, 10);
-            if (!n || n <= 0 || dt.left <= 0) { continue; }
-            var originalAmount = (typeof it.originalAmount === 'number' && !isNaN(it.originalAmount)) ? it.originalAmount : 0;
-            var elapsed = n - dt.left;
-            if (elapsed < 0) { elapsed = 0; }
-
-            var annualRatePct = parseFloat(it.interest);
-            var monthlyRate = (isFinite(annualRatePct) && annualRatePct > 0) ? (annualRatePct / 100 / 12) : 0;
-            var remainingPrincipal;
-            if (monthlyRate > 0) {
-                var growth = Math.pow(1 + monthlyRate, elapsed);
-                remainingPrincipal = originalAmount * growth - it.amount * (growth - 1) / monthlyRate;
-            } else {
-                remainingPrincipal = originalAmount - it.amount * elapsed;
-            }
-            if (remainingPrincipal < 0) { remainingPrincipal = 0; }
-            if (remainingPrincipal > loanTotalRemaining) { remainingPrincipal = loanTotalRemaining; }
-            principal += remainingPrincipal;
+            var b = getLoanRemainingBalance(it);
+            principal += b.principal;
+            total += b.total;
         }
         return { principal: principal, total: total };
     }
@@ -2744,7 +2797,34 @@
         // (same values, same computation) — Home's renderTxList()/recent-activity-list simply
         // ignores these 2 extra fields, exactly as it already ignores any object properties it
         // doesn't read today.
-        return { icon: icon, title: title, date: date, amount: amount, type: cssType, id: item.id, isArchived: !!item.isArchived };
+        //
+        // Installment-card (Loans + Variable/"תשלומים שונים") collapsed-row summary: both fields
+        // are null together for every other item type (and for a loan/variable item missing a
+        // usable `total`) — renderTxListWithActions() only renders them when truthy, and
+        // renderTxList() (Home) ignores them entirely, same convention as id/isArchived above.
+        // Reuses parseDatesAndGetLeft() (payments left) plus getLoanRemainingBalance()/
+        // getVariableItemRemainingBalance() (remaining balance, per type's own existing formula —
+        // variable stays tracking-only, no cash-flow behavior touched) — no new financial
+        // calculation. Kept as two separate short strings (rather than one combined string) so the
+        // row can wrap them onto their own line on a narrow screen without ever truncating either
+        // value.
+        var installmentProgress = null;
+        var installmentBalance = null;
+        if (item.type === 'loan' || item.type === 'variable') {
+            var instTotalN = parseInt(item.total, 10);
+            if (instTotalN && instTotalN > 0) {
+                var instDay = (item.type === 'loan') ? item.day : resolveEffectiveDay(item);
+                var instDt = parseDatesAndGetLeft(item.start, item.total, instDay);
+                var instPaid = instTotalN - instDt.left;
+                if (instPaid < 0) { instPaid = 0; }
+                if (instPaid > instTotalN) { instPaid = instTotalN; }
+                var instBalanceTotal = (item.type === 'loan') ?
+                    getLoanRemainingBalance(item).total : getVariableItemRemainingBalance(item).total;
+                installmentProgress = 'תשלום ' + instPaid + '/' + instTotalN;
+                installmentBalance = 'יתרה ' + formatHomeCurrency(instBalanceTotal);
+            }
+        }
+        return { icon: icon, title: title, date: date, amount: amount, type: cssType, id: item.id, isArchived: !!item.isArchived, installmentProgress: installmentProgress, installmentBalance: installmentBalance };
     }
 
     function renderHomeScreenFromRealData() {
@@ -3499,6 +3579,9 @@
     }
 
     function clearCategoryFilter() {
+        // Collapse-on-leave: this is the one path that leaves a category's page (the ✕ on its
+        // filter chip) without going through showScreen() — see the identical reasoning there.
+        previewEditingId = null;
         currentCategoryFilterKey = null;
         renderTransactionsScreenFromRealData(getCurrentTxFilterName());
     }
