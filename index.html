@@ -3813,9 +3813,32 @@
     // Registered once on the stable grid container (not on individual tiles, which are destroyed
     // and recreated on every render) — the same delegation pattern already used elsewhere in this
     // file (e.g. the document-level 'click' listener that closes row menus).
+    //
+    // Root-cause fix (real-device Android report, "category already has an item open right after
+    // tapping its tile"): proven via a real Edge/CDP touch-event trace that this is a genuine
+    // browser-native compatibility click, not app logic. onCategoryTilePointerUp() already
+    // navigates on a plain tap (no drag) via filterTransactionsByCategory() — but a touch tap that
+    // is never preventDefault()-ed also makes the browser synthesize a trailing click shortly
+    // after touchend, targeted via elementFromPoint AT THE TIME IT FIRES — i.e. against whatever
+    // now occupies that same screen position on the NEW screen the tap just navigated to. If a
+    // transaction row happens to land there, that trailing click reaches it exactly like a real
+    // tap would and opens its inline edit form — a "same item every time" result, since it depends
+    // only on fixed page geometry, not on which item, category, or how the tap itself was handled.
+    // Traced empirically: calling preventDefault() on the synthesized pointerdown/pointerup events
+    // is NOT sufficient to suppress it (confirmed: the trailing click still fired); only
+    // preventDefault() on the underlying raw touchend event itself reliably suppresses it, so that
+    // is the only new listener added here. touch-action: pan-y on .category-tile already governs
+    // scroll independently of this — preventDefault() on touchend cannot block a scroll that (if
+    // any) already completed via touchmove beforehand, so native scrolling is unaffected. Scoped to
+    // touches that started and ended on a .category-tile (same closest()-based check used
+    // throughout this file), so it never touches any other touch/click anywhere else in the app.
     (function () {
         var gridEl = document.getElementById('category-tiles-grid');
-        if (gridEl) { gridEl.addEventListener('pointerdown', onCategoryTilePointerDown); }
+        if (!gridEl) { return; }
+        gridEl.addEventListener('pointerdown', onCategoryTilePointerDown);
+        gridEl.addEventListener('touchend', function (e) {
+            if (e.cancelable && e.target && e.target.closest && e.target.closest('.category-tile')) { e.preventDefault(); }
+        }, { passive: false });
     })();
 
     function renderAllPreviewScreens() {
