@@ -31,7 +31,7 @@
 ## הטכנולוגיות
 - HTML5, CSS3 (בסגנון inline `<style>`), JavaScript ES5-style (var, function declarations — לא משתמשים ב-class/let/const/arrow functions/מודולים)
 - ללא framework, ללא bundler, ללא package.json, ללא node_modules
-- אחסון נתונים: `localStorage` בדפדפן בלבד. **6 מפתחות נכון ל-03/08/2026**: `family_finance_data`, `family_finance_cat_config` (מקוריים); `family_finance_category_tile_order` (סדר אריחי בית, Version 1.1); `family_finance_loan_balance_view` (תצוגת קרן/סה"כ, Version 1.1); `family_finance_settings`, `family_finance_activity_log` (מסך הגדרות, שלב 4.0.3) — כולם עם קידומת `family_finance_`, נכללים באופן גורף בגיבוי/שחזור JSON.
+- אחסון נתונים: `localStorage` בדפדפן בלבד. **6 מפתחות נכון ל-03/08/2026**: `family_finance_data`, `family_finance_cat_config` (מקוריים); `family_finance_category_tile_order` (סדר אריחי בית, Version 1.1); `family_finance_loan_balance_view` (תצוגת קרן/סה"כ, Version 1.1); `family_finance_settings`, `family_finance_activity_log` (מסך הגדרות, שלב 4.0.3) — כולם עם קידומת `family_finance_`, נכללים באופן גורף בגיבוי/שחזור JSON. **עדכון (Version 1.3.1)**: `family_finance_loan_balance_view` נכתב כעת בקוד JSON תקין (`JSON.stringify`, כמו כל שאר המפתחות) — קריאה תומכת גם בצורת legacy גולמית קודמת, ללא כתיבה מחדש. שחזור גיבוי (`confirmRestoreBackup()`) הוא כעת **best-effort transactional restore עם compensating rollback**: צילום-מצב של כל מפתחות `family_finance_*` נלקח לפני כל כתיבה, ובכשל כתיבה מתבצע ניסיון שחזור מלא של המצב הקודם (לא אטומיות אמיתית — ל-localStorage אין עסקה מובנית על פני כמה מפתחות; כשל גם ב-rollback עצמו מדווח במפורש כשגיאה קריטית, לעולם לא כהצלחה כוזבת).
 - RTL ועברית כברירת מחדל (`<html lang="he" dir="rtl">`)
 - גרפים: SVG בנוי ידנית (לא ספריית גרפים חיצונית)
 

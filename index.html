@@ -862,7 +862,7 @@
     var SETTINGS_KEY = 'family_finance_settings';
     var ACTIVITY_LOG_KEY = 'family_finance_activity_log';
     var ACTIVITY_LOG_MAX = 200;
-    var APP_VERSION = '1.3.0';
+    var APP_VERSION = '1.3.1';
 
     var PRIMARY_COLOR_OPTIONS = [
         { key: 'green', label: 'ירוק' },
@@ -3428,16 +3428,29 @@
     // for a first-ever visit, matching the metric this Home screen already showed before this
     // stage via getLoansRemainingSummary — the new "principal-only" breakdown is the one the user
     // has to opt into).
+    //
+    // Data-restore fix: this key was originally written as a raw, non-JSON-encoded string
+    // ('total'/'principal', no quote characters) — every OTHER family_finance_* key is
+    // JSON-encoded, and isValidBackupShape() requires every backup value to be JSON.parse-able,
+    // so any backup containing this key was rejected outright, even one the app itself had just
+    // produced. saveLoanBalanceView() now writes JSON.stringify(view) instead. loadLoanBalanceView()
+    // reads the new JSON-encoded form first; if that fails to parse (a legacy raw value already
+    // sitting in an existing user's browser), it falls back to treating the raw string itself as
+    // the value — read-only, no rewrite-on-read, no migration write, exactly the "lazy fallback,
+    // no migration" convention already used elsewhere in this file (e.g. resolveEffectiveDay()).
     function loadLoanBalanceView() {
         try {
-            return (localStorage.getItem(LOAN_BALANCE_VIEW_KEY) === 'principal') ? 'principal' : 'total';
+            var raw = localStorage.getItem(LOAN_BALANCE_VIEW_KEY);
+            var value;
+            try { value = JSON.parse(raw); } catch (e) { value = raw; }
+            return (value === 'principal') ? 'principal' : 'total';
         } catch (e) {
             return 'total';
         }
     }
 
     function saveLoanBalanceView(view) {
-        try { localStorage.setItem(LOAN_BALANCE_VIEW_KEY, view); } catch (e) { console.log('שגיאה בשמירת מצב תצוגת יתרת הלוואות'); }
+        try { localStorage.setItem(LOAN_BALANCE_VIEW_KEY, JSON.stringify(view)); } catch (e) { console.log('שגיאה בשמירת מצב תצוגת יתרת הלוואות'); }
     }
 
     // Reconciles the persisted order against the current categoryConfig: a category present in
@@ -5269,6 +5282,14 @@
     // Validates shape + every value's own JSON.parse-ability before anything is trusted — a
     // corrupt/malformed file must never reach confirmRestoreBackup()'s write loop at all (see the
     // approved "קובץ פגום... לא יכתוב שום דבר" requirement).
+    //
+    // Data-restore fix: LOAN_BALANCE_VIEW_KEY is the ONE known key with a legacy raw (non-JSON)
+    // stored form — see loadLoanBalanceView()/saveLoanBalanceView() above. A backup containing
+    // either the new JSON-encoded "total"/"principal" OR the legacy raw total/principal must both
+    // remain restorable (an existing user's already-exported backups must not be locked out by
+    // this fix); anything else for this one key is still rejected. Every other family_finance_*
+    // key keeps the original strict "must be JSON.parse-able" rule unchanged — this is a narrow,
+    // key-specific exception, not a general relaxation of backup validation.
     function isValidBackupShape(obj) {
         if (!obj || typeof obj !== 'object') { return false; }
         if (!obj.data || typeof obj.data !== 'object' || Array.isArray(obj.data)) { return false; }
@@ -5278,6 +5299,12 @@
             var k = keys[i];
             if (k.indexOf('family_finance_') !== 0) { return false; }
             if (typeof obj.data[k] !== 'string') { return false; }
+            if (k === LOAN_BALANCE_VIEW_KEY) {
+                var lbvValue;
+                try { lbvValue = JSON.parse(obj.data[k]); } catch (e) { lbvValue = obj.data[k]; }
+                if (lbvValue !== 'total' && lbvValue !== 'principal') { return false; }
+                continue;
+            }
             try { JSON.parse(obj.data[k]); } catch (e) { return false; }
         }
         try {
@@ -5348,19 +5375,95 @@
         if (el) { el.innerHTML = ''; }
     }
 
-    // All keys are written in one tight synchronous loop only after isValidBackupShape() has
-    // already validated every value — as atomic as plain localStorage allows. The in-memory
-    // `activityLog` is re-read from the just-written key (not appended to the pre-restore array)
-    // so the 'data_restore' entry lands after the restored log, then location.reload() re-derives
-    // every other in-memory variable from the new localStorage state instead of hand-patching each
-    // one here.
+    // Data-restore fix: snapshots every current family_finance_* key/value BEFORE a restore
+    // attempts any write, so a mid-restore failure (e.g. quota exceeded) can be undone exactly —
+    // scoped strictly to family_finance_* keys, never touches anything else in localStorage.
+    function snapshotFamilyFinanceStorage() {
+        var snapshot = {};
+        for (var i = 0; i < localStorage.length; i++) {
+            var key = localStorage.key(i);
+            if (key && key.indexOf('family_finance_') === 0) { snapshot[key] = localStorage.getItem(key); }
+        }
+        return snapshot;
+    }
+
+    // Reverts to `snapshot` after a failed restore attempt — this is a best-effort *compensating*
+    // rollback, not a true atomic transaction (plain localStorage has no multi-key transaction
+    // primitive to build one on): every key that existed beforehand is force-set back to its exact
+    // prior value, regardless of which keys the failed write loop actually reached, so IF every
+    // write below succeeds the result is exactly the pre-restore state — never a guess about how
+    // far the original loop got. Only once every original key is safely back in place does it
+    // remove any key in `attemptedKeys` that did NOT exist in the snapshot (newly introduced by the
+    // failed backup) — restoring real, already-existing user data is the higher-stakes operation,
+    // so it happens first; a lingering extra key is a smaller deviation than losing original data.
+    // Original keys are themselves restored in priority order (financially-significant keys first)
+    // for the same reason, in case even this rollback can only partially complete. Returns false
+    // (instead of throwing) the moment ANY of these writes/removals itself fails — the caller must
+    // then report that full restoration of the original state cannot be guaranteed, rather than
+    // silently claiming the rollback succeeded.
+    function restoreFamilyFinanceSnapshot(snapshot, attemptedKeys) {
+        var snapshotKeys = Object.keys(snapshot);
+        var priorityOrder = [DATA_KEY, CONFIG_KEY, SETTINGS_KEY, ACTIVITY_LOG_KEY, CATEGORY_TILE_ORDER_KEY, LOAN_BALANCE_VIEW_KEY];
+        var orderedSnapshotKeys = priorityOrder.filter(function (k) { return snapshotKeys.indexOf(k) !== -1; })
+            .concat(snapshotKeys.filter(function (k) { return priorityOrder.indexOf(k) === -1; }));
+
+        for (var j = 0; j < orderedSnapshotKeys.length; j++) {
+            var sk = orderedSnapshotKeys[j];
+            try { localStorage.setItem(sk, snapshot[sk]); } catch (e) { return false; }
+        }
+        for (var i = 0; i < attemptedKeys.length; i++) {
+            var k = attemptedKeys[i];
+            if (!(k in snapshot)) {
+                try { localStorage.removeItem(k); } catch (e) { return false; }
+            }
+        }
+        return true;
+    }
+
+    // Restore is now a best-effort transactional restore with compensating rollback over
+    // family_finance_* keys — NOT a true atomic transaction (plain localStorage offers no such
+    // guarantee across multiple keys). A snapshot is taken first, every backup key is written, and
+    // if ANY write throws: restoreFamilyFinanceSnapshot() attempts to undo it. Two distinct
+    // outcomes are reported, never conflated: (1) write failed but rollback succeeded — original
+    // state is restored, and this can be stated with confidence; (2) write failed AND the rollback
+    // itself also failed — a critical-failure message says explicitly that full restoration of the
+    // original state cannot be guaranteed, since it genuinely can't be. Neither failure case ever
+    // reloads or reports success. The 'data_restore' activity-log entry
+    // is intentionally appended AFTER the transaction above has already fully succeeded, as a
+    // separate best-effort step: by that point real user data has already been correctly restored,
+    // so a failure appending one audit-log line must not retroactively undo it or be reported as a
+    // restore failure — that would both discard good data and create a contradictory audit trail
+    // (a 'data_restore' entry existing, or not, should never imply the data restore itself
+    // failed when it didn't). location.reload() then re-derives every in-memory variable from the
+    // new localStorage state instead of hand-patching each one here.
     function confirmRestoreBackup() {
         if (!pendingRestoreBackup || !isValidBackupShape(pendingRestoreBackup)) { return; }
         var data = pendingRestoreBackup.data;
         var keys = Object.keys(data);
+
+        var snapshot = snapshotFamilyFinanceStorage();
+        var writeFailed = false;
         for (var i = 0; i < keys.length; i++) {
-            try { localStorage.setItem(keys[i], data[keys[i]]); } catch (e) { }
+            try {
+                localStorage.setItem(keys[i], data[keys[i]]);
+            } catch (e) {
+                writeFailed = true;
+                break;
+            }
         }
+
+        if (writeFailed) {
+            var rolledBack = restoreFamilyFinanceSnapshot(snapshot, keys);
+            pendingRestoreBackup = null;
+            var el = document.getElementById('restore-preview-area');
+            if (el) {
+                el.innerHTML = rolledBack ?
+                    '<div class="settings-hint settings-error">שחזור נכשל — הפעולה בוטלה והנתונים הקודמים שוחזרו במלואם. לא בוצע שינוי.</div>' :
+                    '<div class="settings-hint settings-error">שגיאה קריטית בשחזור — הכתיבה נכשלה וגם ביטול הפעולה נכשל. לא ניתן להבטיח שהמצב המקורי שוחזר במלואו. אין לסמוך על הנתונים המוצגים ללא בדיקה ידנית — מומלץ לרענן ולבדוק, ובמידת הצורך לשחזר גיבוי שוב.</div>';
+            }
+            return;
+        }
+
         try {
             var freshLog = JSON.parse(localStorage.getItem(ACTIVITY_LOG_KEY) || '[]');
             if (!Array.isArray(freshLog)) { freshLog = []; }
