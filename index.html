@@ -5327,9 +5327,20 @@
         if (input) { input.value = ''; input.click(); }
     }
 
+    // Data-restore fix (Android/mobile): a native file-picker cancel does not fire `change` in
+    // this app's supported browsers, so reaching this function with no file is not the normal
+    // cancel path — it was previously a silent no-op, which is indistinguishable from "restore is
+    // broken" to a user (this was the actual reported failure on Android: some document providers
+    // return no file for reasons outside this app's control, e.g. accept-filtering). Shown with the
+    // neutral .settings-hint style (not .settings-error) since the underlying cause here is
+    // genuinely ambiguous — deliberately not phrased as an error/failure.
     function handleRestoreFileSelected(inputEl) {
         var file = inputEl && inputEl.files && inputEl.files[0];
-        if (!file) { return; }
+        if (!file) {
+            var noFileEl = document.getElementById('restore-preview-area');
+            if (noFileEl) { noFileEl.innerHTML = '<div class="settings-hint">לא זוהה קובץ שנבחר. נסה לבחור שוב קובץ גיבוי מסוג JSON.</div>'; }
+            return;
+        }
         var reader = new FileReader();
         reader.onload = function () {
             var parsed = null;
@@ -5538,7 +5549,7 @@
         return '<div class="settings-data-actions">' +
             '<button type="button" class="cat-add-toggle" onclick="exportBackupJson()">⬇️ גיבוי (הורדת קובץ JSON)</button>' +
             '<button type="button" class="cat-add-toggle" onclick="triggerRestoreFilePicker()">⬆️ שחזור מגיבוי</button>' +
-            '<input type="file" id="restore-file-input" accept="application/json" style="display:none;" onchange="handleRestoreFileSelected(this)">' +
+            '<input type="file" id="restore-file-input" accept=".json,application/json" style="display:none;" onchange="handleRestoreFileSelected(this)">' +
             '<button type="button" class="cat-add-toggle" onclick="exportTransactionsCsv()">📄 ייצוא תנועות ל-CSV</button>' +
             '</div>' +
             '<div id="restore-preview-area"></div>' +
