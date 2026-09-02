@@ -1,86 +1,752 @@
-:root {
-    --bg-color: #0f172a;
-    --card-bg: #1e293b;
-    --text-color: #f8fafc;
-    --text-muted: #94a3b8;
-    --primary: #38bdf8;
-    --success: #4ade80;
-    --danger: #f87171;
-    --warning: #fbbf24;
-}
+    :root {
+        --color-bg: #f4f5f7;
+        --color-surface: #ffffff;
+        --color-border: #e5e7eb;
+        --color-text: #16181d;
+        /* Milestone 6 correction: darkened from #6b7280 — the previous value scored below the
+           WCAG AA 4.5:1 normal-text threshold on two real light-mode backgrounds it's actually
+           used against (--color-bg for .app-header .subtitle: 4.432:1; the --color-primary-bg-
+           derived --color-insight-card-bg for .insight-title, worst case 4.116:1 on purple).
+           #616774 was chosen as the minimal darkening that clears 4.5:1 with a safe margin
+           (measured minimum 4.831:1) across --color-bg and all 6 --color-primary-bg tints, while
+           staying visually the same muted gray. Dark mode's --color-text-muted (below) already
+           passes everywhere and is unchanged. */
+        --color-text-muted: #616774;
+        --color-danger: #c0392b;
+        --color-warning: #b45309;
+        --color-warning-bg: #fef3e2;
+        /* Version 1.3, Phase 2C: approved danger token, mirrors --color-warning-bg's role for
+           a per-card "this number is negative" tone (cash-flow insight cards only). */
+        --color-danger-bg: #fdecea;
+        --radius: 14px;
+        --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+    }
 
-* { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, sans-serif; }
-body { background-color: var(--bg-color); color: var(--text-color); padding: 16px; padding-bottom: 40px; }
-.container { max-width: 500px; margin: 0 auto; }
-header h1 { font-size: 1.6rem; color: var(--primary); text-align: center; margin-bottom: 20px; }
+    /* Version 1.1, Stage 4.0.3: primary-color palette (fixed set, no free picker) — data-color is
+       set on <html> by applySettingsToDom(). --color-primary/-dark are used as backgrounds under
+       white text (hero, FAB, buttons) and stay identical in both themes; --color-primary-text is a
+       separate variable used only where the primary color is text/fill ON var(--color-surface) —
+       it needs a brighter tint in dark mode to stay readable on a near-black surface, which a
+       single shared variable can't do for every color at once. */
+    :root, :root[data-color="green"] { --color-primary: #0a7d3d; --color-primary-dark: #066b32; --color-primary-bg: #eaf7ef; --color-primary-text: #0a7d3d; }
+    :root[data-color="blue"] { --color-primary: #164b96; --color-primary-dark: #0f3a78; --color-primary-bg: #e8f0fc; --color-primary-text: #164b96; }
+    :root[data-color="purple"] { --color-primary: #5b2f96; --color-primary-dark: #46247a; --color-primary-bg: #f1eaf9; --color-primary-text: #5b2f96; }
+    :root[data-color="teal"] { --color-primary: #0d7274; --color-primary-dark: #095c5d; --color-primary-bg: #e5f6f6; --color-primary-text: #0d7274; }
+    :root[data-color="orange"] { --color-primary: #b8560f; --color-primary-dark: #95450c; --color-primary-bg: #fdece0; --color-primary-text: #b8560f; }
+    :root[data-color="graphite"] { --color-primary: #3f4650; --color-primary-dark: #2c3138; --color-primary-bg: #eceef1; --color-primary-text: #3f4650; }
 
-.dashboard { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 1px solid #334155; border-radius: 20px; padding: 16px; margin-bottom: 20px; }
-.main-balance { text-align: center; margin-bottom: 15px; }
-.main-balance span { font-size: 0.85rem; color: var(--text-muted); }
-.main-balance h2 { font-size: 2.2rem; font-weight: 700; margin-top: 5px; }
-.stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-.stat-card { background: rgba(255, 255, 255, 0.02); border: 1px solid #334155; padding: 10px; border-radius: 12px; text-align: center; }
-.stat-card p { font-size: 0.75rem; color: var(--text-muted); }
-.stat-card h3 { font-size: 1rem; margin-top: 4px; }
+    /* Milestone 3 correction: dedicated token for a tinted CARD background with default
+       (--color-text/--color-text-muted) text on top — e.g. .insight-card's untoned/"normal"
+       variant. Defaults to --color-primary-bg (byte-identical to before in light mode, and for
+       every OTHER existing consumer of --color-primary-bg, e.g. .category-filter-chip and the
+       active nav-icon pill, which keep using --color-primary-bg directly and are unaffected by
+       this change). Only dark mode overrides it below, per color theme — --color-primary-bg
+       itself deliberately stays untouched so those other consumers are not affected: fixing
+       .insight-card's dark-mode contrast this way cannot regress anything else that already
+       reads --color-primary-bg today. */
+    :root { --color-insight-card-bg: var(--color-primary-bg); }
 
-.action-row { display: flex; gap: 10px; margin-bottom: 15px; }
-.btn-action-main { flex: 1; background-color: #1e293b; border: 1px solid var(--primary); color: var(--primary); padding: 12px; border-radius: 12px; font-weight: 600; font-size: 0.95rem; cursor: pointer; text-align: center; white-space: nowrap; }
-.btn-action-main.secondary { border-color: var(--text-muted); color: var(--text-color); }
+    :root[data-theme="dark"] {
+        --color-bg: #14161a;
+        --color-surface: #1e2126;
+        --color-border: #2c2f36;
+        --color-text: #eef0f3;
+        --color-text-muted: #9aa0aa;
+        --color-danger: #e5695c;
+        --color-warning: #e0a84f;
+        --color-warning-bg: #3a2f18;
+        --color-danger-bg: #3a1f1c;
+    }
+    :root[data-theme="dark"][data-color="green"] { --color-primary-text: #3ddc84; --color-insight-card-bg: #16311f; }
+    :root[data-theme="dark"][data-color="blue"] { --color-primary-text: #6fa8f5; --color-insight-card-bg: #16233a; }
+    :root[data-theme="dark"][data-color="purple"] { --color-primary-text: #b592e8; --color-insight-card-bg: #271f38; }
+    :root[data-theme="dark"][data-color="teal"] { --color-primary-text: #4fd0d2; --color-insight-card-bg: #123030; }
+    :root[data-theme="dark"][data-color="orange"] { --color-primary-text: #f0a35f; --color-insight-card-bg: #382513; }
+    :root[data-theme="dark"][data-color="graphite"] { --color-primary-text: #b9c0cc; --color-insight-card-bg: #282b30; }
 
-.add-form, .manage-box, .edit-inside-form { background-color: var(--card-bg); border-radius: 16px; padding: 16px; margin-bottom: 20px; border: 1px solid #334155; }
-.add-form, .manage-box { display: none; }
-.edit-inside-form { margin-top: 10px; background-color: #0f172a; padding: 12px; border-radius: 10px; }
-.form-group { margin-bottom: 12px; }
-label { display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px; }
-input, select, textarea, button { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #334155; background-color: #0f172a; color: white; font-size: 0.9rem; outline: none; }
-.edit-inside-form input, .edit-inside-form select { background-color: #1e293b; }
-button.btn-submit { background-color: var(--primary); color: #0f172a; font-weight: 600; cursor: pointer; border: none; margin-top: 10px; }
-button.btn-save-edit { background-color: var(--success); color: #0f172a; font-weight: 600; border: none; margin-top: 8px; padding: 8px; font-size: 0.85rem; }
-button.btn-cancel-edit { background-color: #334155; color: white; border: none; margin-top: 4px; padding: 8px; font-size: 0.85rem; }
+    * { box-sizing: border-box; }
 
-.cat-manager-list { margin-top: 15px; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 10px; }
-.cat-manager-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #334155; }
-.cat-manager-item:last-child { border-bottom: none; }
-.cat-btn-group { display: flex; gap: 5px; width: auto; }
-.cat-mini-btn { padding: 4px 8px; font-size: 0.75rem; border-radius: 6px; cursor: pointer; border: 1px solid #334155; background: #0f172a; color: white; width: auto; }
+    body {
+        font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+        background: var(--color-bg);
+        color: var(--color-text);
+        margin: 0;
+    }
 
-tabs { display: flex; margin-bottom: 15px; gap: 8px; background: #1e293b; padding: 4px; border-radius: 12px; }
-.tab { flex: 1; padding: 10px; text-align: center; border-radius: 10px; cursor: pointer; font-size: 0.9rem; color: var(--text-muted); }
-.tab.active { background: var(--bg-color); color: var(--primary); font-weight: bold; }
+    .app-shell {
+        max-width: 560px;
+        margin: 0 auto;
+        min-height: 100vh;
+        position: relative;
+        background: var(--color-bg);
+        /* Stage F.1 fix: was 130px, which let the FAB (bottom:88px + 56px tall = its top edge
+           sits 144px above the viewport bottom) visually overlap the last content row. 176px
+           leaves a clear ~32px gap above the FAB's top edge for any screen's last row. */
+        padding-bottom: 176px;
+    }
 
-.accordion-section { margin-top: 10px; }
-.accordion-header { background-color: #1e293b; border: 1px solid #334155; padding: 14px; border-radius: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-weight: 500; }
-.accordion-content { display: none; padding: 8px 0; }
-.list-container { display: flex; flex-direction: column; gap: 8px; }
+    @media (min-width: 700px) {
+        .app-shell { box-shadow: 0 0 40px rgba(0,0,0,.06); }
+    }
 
-.item-card { background-color: var(--card-bg); border: 1px solid #334155; padding: 12px; border-radius: 12px; margin-bottom: 4px; }
-.item-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-weight: bold; }
-.item-details { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 0.8rem; color: var(--text-muted); background: rgba(0,0,0,0.1); padding: 8px; border-radius: 8px; }
-.item-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
-.btn-action { background: #0f172a; border: 1px solid #334155; color: var(--text-muted); padding: 5px 10px; border-radius: 6px; font-size: 0.75rem; cursor: pointer; width: auto; }
-.btn-edit-action { color: var(--primary); border-color: rgba(56,189,248,0.3); }
-.btn-danger-action { color: var(--danger); border-color: rgba(248,113,113,0.3); }
+    /* ===== Header ===== */
+    .app-header {
+        padding: 22px 20px 14px;
+        text-align: center;
+    }
+    .app-header h1 { font-size: 19px; margin: 0; }
+    .app-header .subtitle { font-size: 12px; color: var(--color-text-muted); margin-top: 3px; }
 
-.income-text { color: var(--success); }
-.expense-text { color: var(--danger); }
-.loan-text { color: var(--warning); }
+    /* ===== Screens ===== */
+    .screen { display: none; padding: 4px 16px 16px; }
+    .screen.active { display: block; }
 
-.forecast-box { background-color: var(--card-bg); border: 1px solid #334155; border-radius: 16px; padding: 16px; margin-bottom: 20px; }
-.forecast-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
-.forecast-header span { font-size: 0.9rem; font-weight: 600; }
-.forecast-toggle-row { display: flex; justify-content: flex-end; margin: 10px 0; }
-.forecast-toggle-btn { width: auto; padding: 6px 12px; font-size: 0.75rem; background: #0f172a; border: 1px solid #334155; border-radius: 8px; cursor: pointer; }
-.forecast-chart-wrap { position: relative; }
-.forecast-chart-wrap svg { width: 100%; height: auto; display: block; overflow: visible; }
-.forecast-bar { cursor: pointer; }
-.forecast-bar:hover, .forecast-bar:focus { filter: brightness(1.2); outline: none; }
-.forecast-bar-pos { fill: var(--success); }
-.forecast-bar-neg { fill: var(--danger); }
-.forecast-zero-line { stroke: #334155; stroke-width: 1; }
-.forecast-axis-label { font-size: 7px; fill: var(--text-muted); }
-.forecast-scale-label { font-size: 6px; fill: var(--text-muted); }
-.forecast-tooltip { position: absolute; background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 5px 9px; font-size: 0.75rem; pointer-events: none; white-space: nowrap; transform: translate(-50%, -110%); z-index: 10; display: none; }
-.forecast-tooltip strong { display: block; }
-.forecast-table-wrap table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-.forecast-table-wrap td, .forecast-table-wrap th { padding: 6px; text-align: center; border-bottom: 1px solid #334155; }
-.forecast-table-wrap th { color: var(--text-muted); font-weight: 500; font-size: 0.75rem; }
+    .section-title { font-size: 15px; font-weight: 700; margin: 22px 0 11px; letter-spacing: -.1px; }
+    .section-title:first-child { margin-top: 4px; }
+
+    /* ===== Hero gauge ===== */
+    .hero-gauge {
+        background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+        color: #fff;
+        border-radius: var(--radius);
+        padding: 26px 20px;
+        text-align: center;
+        box-shadow: var(--shadow);
+    }
+    .hero-gauge .hero-label { font-size: 13px; opacity: .85; }
+    /* Stage F.1 follow-up: same bidi isolation as .tx-amount — negative balances rendered as
+       "13,050-₪" instead of "-₪13,050" inside the surrounding RTL page. Display-only, value unchanged. */
+    .hero-gauge .hero-amount { font-size: 40px; font-weight: 700; margin: 4px 0; direction: ltr; unicode-bidi: isolate; }
+    .hero-gauge .status-pill {
+        display: inline-block; background: rgba(255,255,255,.2);
+        padding: 4px 12px; border-radius: 20px; font-size: 12px; margin-top: 4px;
+    }
+    /* Version 1.1, Stage 1: hero-narrative removed — the green hero card now shows only the
+       label, the amount, and the status pill (the two explanatory "החודש: ..." lines are gone). */
+
+    /* ===== Snapshot ===== */
+    /* Version 1.1, Stage 1: the "יתרה" card was removed (balance is already the hero-amount above);
+       only income + expenses remain, so this is now a 2-column grid. */
+    .snapshot-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 16px; }
+    .snapshot-card {
+        background: var(--color-surface); border-radius: 12px; padding: 12px 6px;
+        text-align: center; box-shadow: var(--shadow);
+    }
+    .snapshot-card .label { font-size: 10.5px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: .3px; }
+    .snapshot-card .value { font-size: 15px; font-weight: 700; margin-top: 5px; direction: ltr; unicode-bidi: isolate; }
+    .snapshot-card.income .value { color: var(--color-primary-text); }
+    .snapshot-card.expenses .value { color: var(--color-danger); }
+
+    /* ===== Version 1.1, Stage 1: automatic per-category tiles (below income/expenses) ===== */
+    .category-tiles-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
+    .category-tile {
+        background: var(--color-surface); border-radius: 12px; padding: 12px 6px;
+        text-align: center; box-shadow: var(--shadow);
+        /* min-width:0 overrides a grid item's default min-width:auto (= its min-content size),
+           which otherwise refuses to shrink below the unbroken width of .category-tile-label's
+           text (white-space:nowrap) — without this, a long label (e.g. the "יתרת תשלומים שונים"
+           stat tile below) forces its 1fr grid track wider than its fair share, pushing
+           .category-tiles-grid, and with it html/body, past the viewport width. This lets the
+           track shrink to the grid's actual column width so .category-tile-label's own
+           overflow:hidden/text-overflow:ellipsis (already defined below) can do its job instead. */
+        min-width: 0;
+        cursor: pointer; user-select: none; -webkit-user-select: none;
+        /* Lets normal vertical page scrolling start immediately on a tile; only once a genuine
+           long-press-without-movement engages drag mode does the JS lock this down to 'none'. */
+        touch-action: pan-y;
+        transition: transform .12s ease, box-shadow .12s ease;
+    }
+    .category-tile.dragging {
+        opacity: .65; transform: scale(1.05); box-shadow: 0 6px 20px rgba(0,0,0,.18);
+        position: relative; z-index: 5;
+    }
+    .category-tile-icon {
+        width: 30px; height: 30px; border-radius: 50%; background: #eef2f0;
+        display: flex; align-items: center; justify-content: center; font-size: 14px;
+        margin: 0 auto 6px;
+    }
+    .category-tile-label {
+        font-size: 10.5px; color: var(--color-text-muted);
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .category-tile-value { font-size: 13.5px; font-weight: 700; margin-top: 4px; direction: ltr; unicode-bidi: isolate; }
+
+    /* ===== Version 1.1, Stage 3.5: computed "stat" tiles (יתרת תשלומים שונים / יתרת הלוואות) — =====
+       ===== deliberately their own class, NOT .category-tile, so the Stage 1 drag-reorder      =====
+       ===== pointerdown handler's `.category-tile` matching (and its index math against          =====
+       ===== categoryTileOrder) never sees them — these tiles are not categories and are never     =====
+       ===== draggable/reorderable. A few properties are intentionally duplicated from             =====
+       ===== .category-tile rather than sharing that selector, to keep this isolation total. Their =====
+       ===== .category-tile-icon/-label/-value children reuse those existing classes as-is. */
+    .stat-tile {
+        background: var(--color-surface); border-radius: 12px; padding: 12px 6px;
+        text-align: center; box-shadow: var(--shadow);
+        /* min-width:0 — same grid-shrink fix as .category-tile above; this is the tile whose
+           label ("יתרת תשלומים שונים") is actually long enough to trigger the overflow. */
+        min-width: 0;
+        cursor: pointer; user-select: none; -webkit-user-select: none;
+    }
+    .stat-tile-toggle { display: flex; justify-content: center; gap: 4px; margin-top: 6px; }
+    .stat-tile-toggle-btn {
+        font-size: 9.5px; padding: 2px 8px; border-radius: 8px; border: 1px solid var(--color-border);
+        background: var(--color-bg); color: var(--color-text-muted); cursor: pointer; font-family: inherit;
+    }
+    .stat-tile-toggle-btn.active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+
+    /* ===== Version 1.1, Stage 1: active category-filter chip on the Transactions screen ===== */
+    .category-filter-chip {
+        display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        background: var(--color-primary-bg); color: var(--color-primary-dark);
+        border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; font-size: 12.5px; font-weight: 600;
+    }
+    .category-filter-chip button {
+        background: none; border: none; color: inherit; font-size: 14px; font-weight: 700;
+        cursor: pointer; padding: 0 2px; font-family: inherit;
+    }
+
+    /* ===== Attention list ===== */
+    .attention-item {
+        display: flex; justify-content: space-between; align-items: center;
+        background: var(--color-warning-bg); border-right: 4px solid var(--color-warning);
+        border-radius: 10px; padding: 12px 14px; margin-bottom: 8px;
+    }
+    .attention-title { font-size: 13.5px; font-weight: 600; }
+    .attention-detail { font-size: 12px; color: var(--color-text-muted); margin-top: 2px; }
+    .attention-amount { font-size: 14px; font-weight: 700; color: var(--color-warning); white-space: nowrap; }
+
+    /* ===== Transaction rows (shared: recent activity + transactions screen) ===== */
+    .tx-row {
+        display: flex; align-items: center; gap: 12px;
+        background: var(--color-surface); border-radius: 12px; padding: 11px 14px;
+        margin-bottom: 8px; box-shadow: var(--shadow);
+        /* Stage G.2.3: makes .tx-row the containing block for the future .tx-menu-dropdown
+           (position: absolute, below) — no visible effect on its own: .tx-row keeps its normal
+           place in document flow, and no z-index is set here. */
+        position: relative;
+    }
+    .tx-icon {
+        width: 34px; height: 34px; border-radius: 50%; background: #eef2f0;
+        display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0;
+    }
+    .tx-info { flex: 1; min-width: 0; }
+    .tx-title { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tx-date { font-size: 11.5px; color: var(--color-text-muted); margin-top: 2px; }
+    /* Installment-card (Loans + Variable/"תשלומים שונים") collapsed-row summary: wraps .tx-date so
+       up to two optional .tx-installment-meta spans (payment progress, remaining balance) can sit
+       on the same row, to .tx-date's left under RTL flex order. flex-wrap lets a narrow mobile
+       width push one or both onto their own line below the date instead of truncating anything —
+       every value stays fully readable at any width. Only renderTxListWithActions() emits this
+       wrapper; renderTxList() (Home) still emits a bare .tx-date with no wrapper, so Home's row 2
+       is pixel-identical to before this change. With no installment-meta children the wrapper is
+       visually identical to the old bare .tx-date div — margin-top moves here so total spacing
+       under the title is unchanged either way. */
+    .tx-date-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; margin-top: 2px; }
+    .tx-date-row .tx-date { margin-top: 0; }
+    .tx-installment-meta { font-size: 11.5px; color: var(--color-text-muted); white-space: nowrap; }
+    /* Stage F.1 fix: isolates the amount text as its own LTR run so the browser's bidi algorithm
+       renders "-₪3,200" in that literal left-to-right order — without this, the leading "-"
+       character (a bidi-neutral character) gets visually displaced to the far side inside the
+       surrounding RTL page, rendering as "₪3,200-" instead. Pure display fix — the underlying
+       string/value built by JS is unchanged. */
+    .tx-amount { font-size: 14px; font-weight: 700; white-space: nowrap; direction: ltr; unicode-bidi: isolate; }
+    .tx-amount.income { color: var(--color-primary-text); }
+    .tx-amount.expense { color: var(--color-danger); }
+
+    /* Stage G.2.3: CSS-only infrastructure for a future per-row actions menu (Stage G.2.4+).
+       None of the 3 classes below are referenced by any markup yet — renderTxList()/
+       renderTransactionsScreenFromRealData() do not emit a ⋮ button or dropdown in this stage,
+       so these rules have zero visible effect anywhere until a later stage adds matching HTML. */
+
+    /* ⋮ toggle button: intended as a 5th flex child appended after .tx-amount inside .tx-row —
+       an in-flow item (not absolutely positioned), so it takes its own place in the row's flex
+       layout rather than overlapping/hiding .tx-amount, the same way .tx-icon already occupies
+       its own place on the row's other end. Sized at 32px — under .tx-icon's 34px, which is what
+       currently sets .tx-row's height ceiling — so adding this button cannot increase the row's
+       height; .tx-row's own padding is untouched. flex-shrink:0 keeps it from being compressed
+       on a narrow row, same as .tx-icon. */
+    .tx-menu-toggle {
+        width: 32px; height: 32px; flex-shrink: 0;
+        display: flex; align-items: center; justify-content: center;
+        background: none; border: none; border-radius: 8px; padding: 0; margin: 0;
+        font-size: 18px; line-height: 1; color: var(--color-text-muted);
+        cursor: pointer; font-family: inherit;
+    }
+    .tx-menu-toggle:hover, .tx-menu-toggle:focus-visible {
+        background: var(--color-bg); color: var(--color-text); outline: none;
+    }
+
+    /* Version 1.1, Stage 4.0.2.1: applied only to active-item rows in renderTxListWithActions()
+       (never in plain renderTxList()'s Home rows, and never on an archived row — editing stays
+       exactly as restricted as before, this only changes how it's triggered). Signals the row
+       itself is now the click target for opening its edit form. */
+    .tx-row.tx-row-clickable { cursor: pointer; }
+    .tx-row.tx-row-clickable:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+
+    /* Dropdown panel: position:absolute removes it from document flow entirely, so its own
+       content height can never affect .tx-row's height or push neighboring rows — it simply
+       floats over whatever content is already there. top:100% + left:0 anchors it just below
+       .tx-row, aligned to the row's LEFT edge — under RTL's flex-direction reversal the ⋮ toggle
+       (last flex child) already renders at the row's left edge, so left:0 opens the menu directly
+       under the button that triggers it (matches this file's existing convention of physical
+       left/right rather than logical inset-inline-* properties — .fab/.bottom-nav do the same).
+       display:none by default; a future .open class (Stage G.2.4, not added here — no JS exists
+       yet in this stage to toggle it) will control visibility. z-index:10 is enough to paint
+       above sibling .tx-row elements (which set no z-index of their own) without competing with,
+       or needing to be reasoned about alongside, the page-chrome scale already established
+       elsewhere in this file (.bottom-nav:50, .fab:60, .quick-actions-overlay:70) — a per-row
+       menu is page content, not global chrome, so it intentionally stays well under those. No
+       ancestor of .tx-row (.screen, .app-shell, body) sets overflow:hidden anywhere in this
+       file, so this dropdown cannot be clipped regardless of which row it opens from — including
+       the last row, where .app-shell's existing 176px bottom padding (Stage F.1) already leaves
+       ample clearance below the last row before .bottom-nav's fixed position. min-width:150px
+       comfortably fits both action labels ("העבר לארכיון" / "שחזר") plus the item's own
+       horizontal padding without wrapping. No new @media query: this app has no desktop-specific
+       layout distinct from mobile anywhere in this file (the one existing @media rule only adds
+       a box-shadow to .app-shell at >=700px), so none is needed here either. The dropdown's own
+       overflow:hidden simply clips its rounded corners against a hovered .tx-menu-item's square
+       background — it is not a clipping risk for anything positioned outside the dropdown. */
+    .tx-menu-dropdown {
+        display: none;
+        position: absolute; top: 100%; left: 0; margin-top: 6px;
+        min-width: 150px;
+        background: var(--color-surface); border: 1px solid var(--color-border);
+        border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,.12);
+        z-index: 10;
+        overflow: hidden;
+    }
+    .tx-menu-dropdown.open { display: block; }
+
+    /* Single action row inside the dropdown — full-width tappable text button, right-aligned to
+       match the surrounding RTL page. Deliberately unstyled for a "destructive"/edit look (no
+       var(--color-danger), no icon) since edit/delete are out of scope for this stage; both
+       "העבר לארכיון" and "שחזר" are simple neutral actions today. */
+    .tx-menu-item {
+        display: block; width: 100%; text-align: right;
+        padding: 10px 14px; background: none; border: none;
+        font-size: 13.5px; color: var(--color-text);
+        cursor: pointer; font-family: inherit;
+    }
+    .tx-menu-item:hover, .tx-menu-item:focus-visible {
+        background: var(--color-bg); outline: none;
+    }
+    /* Stage G.3: permanent-delete menu item — same .tx-menu-item base, only the text color
+       changes to signal a destructive action (no separate confirm dialog is built; the browser's
+       own confirm() handles that, per approved product decision). */
+    .tx-menu-item-danger { color: var(--color-danger); }
+
+    /* ===== Stage G.4: inline edit form — replaces a .tx-row entirely while that row's item is
+       being edited (Stage G.4 product decision 2א). Deliberately its own class names (not reused
+       from index.html's .edit-inside-form/.form-group/.btn-save-edit/.btn-cancel-edit), since this
+       file has its own separate design system — only the underlying field ids/behavior mirror
+       index.html, not the CSS. */
+    .tx-edit-form {
+        background: var(--color-surface); border-radius: 12px; padding: 14px;
+        margin-bottom: 8px; box-shadow: var(--shadow);
+    }
+    .tx-edit-group { margin-bottom: 10px; }
+    .tx-edit-group label { display: block; font-size: 12px; color: var(--color-text-muted); margin-bottom: 4px; }
+    .tx-edit-group input, .tx-edit-group select, .tx-edit-group textarea {
+        width: 100%; padding: 9px 12px; border: 1px solid var(--color-border);
+        border-radius: 10px; font-size: 14px; background: var(--color-bg); font-family: inherit;
+    }
+    .tx-edit-group textarea { min-height: 56px; resize: vertical; }
+    .tx-edit-actions { display: flex; gap: 8px; margin-top: 4px; }
+    .tx-edit-save, .tx-edit-cancel {
+        flex: 1; padding: 10px; border-radius: 10px; border: none;
+        font-size: 13.5px; cursor: pointer; font-family: inherit;
+    }
+    .tx-edit-save { background: var(--color-primary); color: #fff; }
+    .tx-edit-cancel { background: var(--color-bg); color: var(--color-text); border: 1px solid var(--color-border); }
+
+    /* ===== Stage G.5: expense-type picker buttons — shown inside the add-transaction form area
+       (#preview-add-form-area) when "הוצאה חדשה" is chosen, before a specific expense type
+       (fixed/variable/dated) is picked. The picker itself reuses .tx-edit-form as its wrapping
+       card (no new wrapper class); only these 2 rules are new. */
+    .expense-type-btn {
+        display: block; width: 100%; text-align: right; margin-bottom: 8px;
+        padding: 12px 14px; border-radius: 10px; border: 1px solid var(--color-border);
+        background: var(--color-bg); font-size: 14px; cursor: pointer; font-family: inherit;
+    }
+    .expense-type-btn.disabled { opacity: .55; cursor: not-allowed; }
+
+    /* ===== Transactions screen: search + filter (visual only) ===== */
+    .search-bar input {
+        width: 100%; padding: 10px 14px; border: 1px solid var(--color-border);
+        border-radius: 10px; font-size: 14px; background: var(--color-surface); font-family: inherit;
+    }
+    .filter-toggle { display: flex; gap: 8px; margin: 10px 0 16px; }
+    .filter-btn {
+        flex: 1; padding: 8px; border-radius: 10px; border: 1px solid var(--color-border);
+        background: var(--color-surface); font-size: 13px; cursor: pointer; font-family: inherit;
+    }
+    .filter-btn.active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+
+    /* ===== Insights ===== */
+    .insight-card {
+        display: flex; align-items: flex-start; gap: 14px;
+        background: var(--color-insight-card-bg); border-radius: 14px; padding: 16px;
+        margin-bottom: 12px; box-shadow: var(--shadow); border-right: 4px solid var(--color-primary);
+    }
+    .insight-card.warning { background: var(--color-warning-bg); border-right-color: var(--color-warning); }
+    .insight-card.danger { background: var(--color-danger-bg); border-right-color: var(--color-danger); }
+    .insight-icon {
+        width: 38px; height: 38px; border-radius: 50%; background: var(--color-surface);
+        display: flex; align-items: center; justify-content: center; font-size: 18px;
+        flex-shrink: 0; box-shadow: 0 1px 2px rgba(0,0,0,.08);
+    }
+    .insight-body { flex: 1; min-width: 0; }
+    .insight-title { font-size: 11.5px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: .3px; font-weight: 600; }
+    /* Stage F.1 follow-up: same bidi isolation fix as .tx-amount/.hero-amount/.snapshot-card .value
+       — the forecast-warning insight card's value can be negative. Display-only, value unchanged. */
+    .insight-value { font-size: 21px; font-weight: 800; margin-top: 5px; letter-spacing: -.2px; direction: ltr; unicode-bidi: isolate; }
+    .insight-card.warning .insight-value { color: var(--color-warning); }
+    .insight-card.danger .insight-value { color: var(--color-danger); }
+    .insight-note { font-size: 12.5px; color: var(--color-text); margin-top: 6px; line-height: 1.55; opacity: .82; }
+
+    /* ===== Forecast (Stage 3ב.4): chart/table box, adapted from index.html's .forecast-box for   =====
+       ===== this screen's card language (white surface, var(--shadow), var(--radius)) instead of  =====
+       ===== index.html's dark theme vars. Bar/zero-line/scale-label geometry and colors (positive  =====
+       ===== = primary green, negative = danger red) are unchanged from index.html's own choices.  ===== */
+    .preview-forecast-box {
+        background: var(--color-surface); border-radius: var(--radius); padding: 16px;
+        margin-bottom: 12px; box-shadow: var(--shadow);
+    }
+    .preview-forecast-toggle-row { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+    .preview-forecast-toggle-btn {
+        padding: 6px 12px; font-size: 12px; background: var(--color-bg);
+        border: 1px solid var(--color-border); border-radius: 8px; cursor: pointer; font-family: inherit;
+    }
+    .preview-forecast-chart-wrap { position: relative; }
+    .preview-forecast-chart-wrap svg { width: 100%; height: auto; display: block; overflow: visible; }
+    .preview-forecast-bar { cursor: pointer; }
+    .preview-forecast-bar:hover, .preview-forecast-bar:focus { filter: brightness(1.15); outline: none; }
+    .preview-forecast-bar-pos { fill: var(--color-primary-text); }
+    .preview-forecast-bar-neg { fill: var(--color-danger); }
+    .preview-forecast-zero-line { stroke: var(--color-border); stroke-width: 1; }
+    .preview-forecast-axis-label { font-size: 7px; fill: var(--color-text-muted); }
+    .preview-forecast-scale-label { font-size: 6px; fill: var(--color-text-muted); }
+    .preview-forecast-tooltip {
+        position: absolute; background: var(--color-text); color: #fff; border-radius: 8px;
+        padding: 5px 9px; font-size: 12px; pointer-events: none; white-space: nowrap;
+        transform: translate(-50%, -110%); z-index: 10; display: none;
+    }
+    .preview-forecast-tooltip strong { display: block; }
+    .preview-forecast-table-wrap table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .preview-forecast-table-wrap td, .preview-forecast-table-wrap th {
+        padding: 6px; text-align: center; border-bottom: 1px solid var(--color-border);
+    }
+    .preview-forecast-table-wrap th { color: var(--color-text-muted); font-weight: 500; font-size: 11.5px; }
+    .preview-forecast-positive { color: var(--color-primary-text); font-weight: 700; }
+    .preview-forecast-negative { color: var(--color-danger); font-weight: 700; }
+
+    /* ===== Goals (Milestone 4) — approved reference: Design/forecast-goals-milestone2-preview.html.
+       Card/spacing language matches the rest of the app (var(--radius-adjacent) 12px, var(--shadow),
+       var(--color-surface)); the two new tokens used below (--color-insight-card-bg, and the plain
+       --color-warning-bg/--color-danger-bg pairs) are the SAME ones already verified for dark-mode
+       AA contrast in the Milestone 3 correction — no new unverified color pairing is introduced. */
+    .goal-card { background: var(--color-surface); border-radius: 12px; box-shadow: var(--shadow); margin-bottom: 10px; overflow: hidden; }
+    .goal-card-head { padding: 13px 14px; cursor: pointer; display: flex; align-items: center; gap: 10px; min-height: 44px; }
+    .goal-card-head:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+    .goal-head-main { flex: 1; min-width: 0; }
+    .goal-name { font-size: 14.5px; font-weight: 700; margin-bottom: 4px; }
+    .goal-meta-row { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--color-text-muted); margin-bottom: 6px; gap: 8px; }
+    .goal-meta-row b { color: var(--color-text); direction: ltr; unicode-bidi: isolate; font-weight: 700; }
+    .goal-progress-track { height: 7px; border-radius: 4px; background: var(--color-border); overflow: hidden; }
+    .goal-progress-fill { height: 100%; background: var(--color-primary); border-radius: 4px; }
+    .goal-chevron { font-size: 13px; color: var(--color-text-muted); transition: transform .18s ease; flex: none; }
+    .goal-card.expanded .goal-chevron { transform: rotate(180deg); }
+    /* Approved subtle expand/collapse animation — a deliberate, scoped exception to this file's
+       usual instant innerHTML row-swap (e.g. the Transactions inline editor), per the Milestone 2
+       design approval. */
+    .goal-body { max-height: 0; overflow: hidden; transition: max-height .22s ease; border-top: 1px solid var(--color-border); }
+    .goal-card.expanded .goal-body { max-height: 900px; }
+    .goal-body-inner { padding: 12px 14px 14px; }
+    .goal-component-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; font-size: 13px; border-bottom: 1px dashed var(--color-border); gap: 8px; }
+    .goal-component-row:last-of-type { border-bottom: none; }
+    .goal-component-main { flex: 1; min-width: 0; }
+    .goal-component-name { font-weight: 600; }
+    .goal-component-date { font-size: 11px; color: var(--color-text-muted); margin-top: 2px; }
+    .goal-component-amount { direction: ltr; unicode-bidi: isolate; font-weight: 600; white-space: nowrap; }
+    .goal-component-total { display: flex; justify-content: space-between; font-size: 13.5px; font-weight: 700; padding-top: 8px; margin-top: 2px; border-top: 1px solid var(--color-border); }
+    .goal-total-amount { direction: ltr; unicode-bidi: isolate; }
+    .goal-actions-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    .goal-inline-confirm { background: var(--color-danger-bg); border-radius: 10px; padding: 10px 12px; margin-top: 10px; font-size: 12.5px; }
+    .goal-inline-confirm .tx-edit-actions { margin-top: 8px; }
+    .goal-badge { display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 6px; margin-right: 6px; font-weight: 600; }
+    .goal-badge-inherited { background: var(--color-bg); color: var(--color-text-muted); border: 1px solid var(--color-border); }
+    .goal-badge-early { background: var(--color-warning-bg); color: var(--color-warning); }
+    .goal-badge-completed { background: var(--color-insight-card-bg); color: var(--color-text); }
+    .goal-badge-overdue { background: var(--color-danger-bg); color: var(--color-danger); }
+    .goal-schedule-note { font-size: 12px; color: var(--color-text-muted); line-height: 1.55; margin-top: 8px; }
+    .goal-schedule-note.warning { color: var(--color-warning); }
+    .goal-schedule-note.danger { color: var(--color-danger); font-weight: 600; }
+
+    /* Milestone 4: inline field validation for the new Goals forms — a new, deliberately-scoped
+       pattern (existing forms elsewhere in this file use alert() only, an established product
+       decision that is not being changed here; this applies only to the new Goals forms). */
+    .tx-edit-group input.invalid, .tx-edit-group select.invalid { border-color: var(--color-danger); background: var(--color-danger-bg); }
+    .field-error { color: var(--color-danger); font-size: 12px; margin-top: 4px; }
+
+    /* ===== Milestone 5: Goals reminder overlay ===== */
+    .reminder-overlay {
+        position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 900;
+        display: none; align-items: center; justify-content: center; padding: 18px;
+    }
+    .reminder-overlay.open { display: flex; }
+    .reminder-card {
+        background: var(--color-surface); border-radius: var(--radius); box-shadow: 0 12px 40px rgba(0,0,0,.25);
+        padding: 20px 18px; max-width: 400px; width: 100%; max-height: 88vh; overflow-y: auto;
+    }
+    .reminder-icon { font-size: 26px; text-align: center; margin-bottom: 6px; }
+    .reminder-title { font-size: 16px; font-weight: 700; text-align: center; margin-bottom: 4px; }
+    .reminder-subtitle { font-size: 12.5px; color: var(--color-text-muted); text-align: center; margin-bottom: 14px; line-height: 1.5; }
+    .reminder-goal-row { background: var(--color-bg); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+    .reminder-goal-row-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .reminder-goal-name { font-size: 13.5px; font-weight: 700; }
+    .reminder-goal-amount { font-size: 14px; font-weight: 700; direction: ltr; unicode-bidi: isolate; white-space: nowrap; }
+    .reminder-goal-sub { font-size: 11.5px; color: var(--color-text-muted); margin-top: 3px; }
+    .reminder-goal-sub.danger { color: var(--color-danger); font-weight: 600; }
+    .reminder-total-row {
+        display: flex; justify-content: space-between; font-weight: 700; font-size: 14.5px;
+        border-top: 1px solid var(--color-border); margin-top: 10px; padding-top: 10px;
+    }
+    .reminder-total-amount { direction: ltr; unicode-bidi: isolate; }
+    .reminder-fineprint { font-size: 11px; color: var(--color-text-muted); text-align: center; margin-top: 12px; line-height: 1.5; }
+    .reminder-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+    .reminder-btn-primary {
+        padding: 12px; border-radius: 10px; border: none; font-size: 14px; font-weight: 700;
+        background: var(--color-primary); color: #fff; cursor: pointer; font-family: inherit; min-height: 44px;
+    }
+    .reminder-btn-primary:disabled { opacity: .6; cursor: default; }
+    .reminder-btn-secondary {
+        padding: 11px; border-radius: 10px; border: 1px solid var(--color-border); font-size: 13.5px;
+        background: var(--color-bg); color: var(--color-text); cursor: pointer; font-family: inherit; min-height: 44px;
+    }
+    .reminder-btn-secondary:disabled { opacity: .6; cursor: default; }
+    .reminder-btn-postpone {
+        background: none; border: none; color: var(--color-text-muted); font-size: 12.5px;
+        text-decoration: underline; cursor: pointer; padding: 8px; min-height: 44px; font-family: inherit;
+    }
+    .reminder-custom-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px dashed var(--color-border); }
+    .reminder-custom-row:last-of-type { border-bottom: none; }
+    .reminder-custom-label { flex: 1; min-width: 0; }
+    .reminder-custom-name { font-size: 13px; font-weight: 600; }
+    .reminder-custom-hint { font-size: 11px; color: var(--color-text-muted); margin-top: 2px; }
+    .reminder-custom-input {
+        width: 96px; text-align: left; direction: ltr; padding: 8px 9px; min-height: 40px; font-size: 13.5px;
+        border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-surface); font-family: inherit;
+    }
+    .reminder-custom-input.invalid { border-color: var(--color-danger); background: var(--color-danger-bg); }
+    .reminder-custom-warn { font-size: 10.5px; color: var(--color-warning); margin-top: 3px; }
+    .reminder-error-box { background: var(--color-danger-bg); color: var(--color-danger); border-radius: 8px; padding: 8px 10px; font-size: 12px; margin-top: 10px; line-height: 1.5; }
+
+    /* ===== Settings ===== */
+    .category-row {
+        display: flex; justify-content: space-between; align-items: center;
+        background: var(--color-surface); border-radius: 12px; padding: 12px 14px;
+        margin-bottom: 8px; box-shadow: var(--shadow);
+        /* Version 1.1, Stage 3: the row itself is clickable — it opens the category's own page
+           (filterTransactionsByCategory()), same navigation a Home category tile already triggers. */
+        cursor: pointer;
+    }
+    .cat-label { font-size: 14px; }
+
+    /* ===== Stage 3ב.2: category-row action buttons + add-category toggle. Deliberately small,
+       dedicated classes (not reused from .tx-edit-save/.tx-edit-cancel, which are sized for a
+       full-width two-button action bar) — these sit inline inside a compact .category-row next to
+       the label. The rename/add forms themselves still reuse .tx-edit-form/.tx-edit-group/
+       .tx-edit-actions/.tx-edit-save/.tx-edit-cancel as-is (same reasoning already applied to the
+       add-transaction form in Stage G.5: no visual reason for a separate form class set). */
+    .cat-row-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .cat-edit-btn, .cat-delete-btn, .cat-cancel-btn {
+        font-size: 12px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--color-border);
+        background: var(--color-bg); cursor: pointer; font-family: inherit;
+    }
+    .cat-delete-btn { color: var(--color-danger); border-color: var(--color-danger); }
+    .cat-confirm-delete-btn {
+        font-size: 12px; padding: 6px 10px; border-radius: 8px; border: none;
+        background: var(--color-danger); color: #fff; cursor: pointer; font-family: inherit;
+    }
+    .cat-delete-confirm-text { font-size: 12.5px; color: var(--color-danger); }
+    .cat-add-toggle {
+        display: block; width: 100%; padding: 10px; border-radius: 10px;
+        border: 1px dashed var(--color-border); background: var(--color-bg);
+        font-size: 13.5px; cursor: pointer; font-family: inherit; margin-top: 4px;
+        /* Explicit here so a <label class="cat-add-toggle"> (restore control, see
+           .restore-file-input-hidden below) matches a <button class="cat-add-toggle">
+           pixel-for-pixel — a button's UA stylesheet already centers text by default, a label's
+           does not. No-op for the existing buttons using this class (already centered). */
+        text-align: center;
+    }
+    /* Data-restore fix (Android): visually-hidden-but-still-rendered technique, standard
+       accessible pattern — unlike display:none (which removes the element from the render tree
+       entirely), this keeps the file input a real, paintable element so its native OS/document-
+       provider file-picker return path has the best chance of behaving reliably across mobile
+       browsers. Paired with <label for="restore-file-input"> (see buildDataSectionHtml()) so
+       activation is a single, directly-trusted user gesture — no JS-programmatic .click(). */
+    .restore-file-input-hidden {
+        position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+        overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+    }
+    /* Android fallback restore path ("הדבק גיבוי"): the pasted content is raw JSON, so it reads
+       best left-to-right in a monospace face even inside this RTL app; sized tall enough to work
+       with a full backup pasted on a small phone screen without page-level horizontal overflow. */
+    .tx-edit-group textarea.restore-paste-textarea {
+        min-height: 140px; font-family: 'SFMono-Regular', Consolas, Menlo, monospace;
+        font-size: 12.5px; direction: ltr; text-align: left; word-break: break-all;
+    }
+
+    /* ===== Bottom navigation ===== */
+    .bottom-nav {
+        position: fixed; bottom: 0; left: 0; right: 0; max-width: 560px; margin: 0 auto;
+        background: var(--color-surface); border-top: 1px solid var(--color-border);
+        display: flex; justify-content: space-around; padding: 8px 0; z-index: 50;
+    }
+    .nav-btn {
+        background: none; border: none; display: flex; flex-direction: column; align-items: center;
+        gap: 3px; font-size: 10.5px; color: var(--color-text-muted); cursor: pointer;
+        padding: 4px 6px; font-family: inherit;
+    }
+    .nav-btn .nav-icon {
+        font-size: 18px; padding: 3px 10px; border-radius: 12px;
+        transition: background-color .15s ease;
+    }
+    .nav-btn.active { color: var(--color-primary-text); font-weight: 700; }
+    .nav-btn.active .nav-icon { background: var(--color-primary-bg); }
+
+    /* ===== Floating quick-add button ===== */
+    .fab {
+        position: fixed; bottom: 88px; left: 50%; transform: translateX(-50%);
+        width: 56px; height: 56px; border-radius: 50%; background: var(--color-primary);
+        color: #fff; font-size: 28px; line-height: 1; border: none; box-shadow: 0 6px 16px rgba(0,0,0,.25);
+        cursor: pointer; z-index: 60; display: flex; align-items: center; justify-content: center;
+    }
+
+    /* Version 1.1, Stage 4.0.2.2: non-blocking auto-archive notice — fixed at the TOP of the
+       viewport (not the bottom, where .fab/.bottom-nav already live) so it never overlaps them.
+       z-index 80 is intentionally above .quick-actions-overlay's 70 (the highest existing layer)
+       so it's still visible if a sweep result happens to coincide with that sheet being open, but
+       it never captures clicks/taps of its own (JS only toggles display:none/block; no onclick) —
+       "no blocking Popup" per the approved requirement. */
+    .auto-archive-toast {
+        position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+        max-width: calc(100% - 32px); background: var(--color-primary); color: #fff;
+        padding: 10px 18px; border-radius: 10px; font-size: 13px; font-weight: 600;
+        text-align: center; box-shadow: var(--shadow); z-index: 80;
+    }
+
+    /* ===== Quick actions sheet ===== */
+    .quick-actions-overlay {
+        position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 70; display: none;
+    }
+    .quick-actions-overlay.open { display: block; }
+    .quick-actions-sheet {
+        position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+        width: 100%; max-width: 560px; background: var(--color-surface);
+        border-radius: 20px 20px 0 0; padding: 20px; box-shadow: 0 -4px 20px rgba(0,0,0,.15);
+    }
+    .quick-actions-sheet h3 { margin: 0 0 14px; font-size: 15px; text-align: center; }
+    .quick-action-btn {
+        width: 100%; display: flex; align-items: center; gap: 12px; padding: 14px;
+        border-radius: 12px; border: 1px solid var(--color-border); background: var(--color-bg);
+        margin-bottom: 10px; font-size: 14px; cursor: pointer; font-family: inherit;
+    }
+    .quick-action-btn .qa-icon { font-size: 18px; }
+    /* Stage F.1 fix: these 3 actions aren't wired to any save logic yet (clicking them today
+       just closes the sheet) — this visual treatment makes that clear instead of looking like a
+       fully working button. Matches the existing "עריכה (בקרוב)" convention already used in the
+       Settings category list for the same "not active yet" concept. */
+    .quick-action-btn.disabled { opacity: .55; cursor: not-allowed; }
+    .quick-action-btn .qa-label { flex: 1; }
+    .quick-action-btn .qa-soon { font-size: 11.5px; color: var(--color-text-muted); }
+    .quick-action-close {
+        width: 100%; text-align: center; padding: 10px; background: none; border: none;
+        color: var(--color-text-muted); font-size: 13px; margin-top: 4px; cursor: pointer; font-family: inherit;
+    }
+
+    /* ===== Version 1.1, Stage 4.0.3: Settings screen ===== */
+    .settings-section { margin-bottom: 22px; }
+    .settings-section-title { font-size: 14.5px; font-weight: 700; margin-bottom: 10px; }
+    .settings-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; gap: 10px; }
+    .settings-row-label { font-size: 13.5px; }
+    .settings-hint { font-size: 12px; color: var(--color-text-muted); margin: 4px 0 10px; line-height: 1.5; }
+
+    /* Version 1.2, Stage C: settings topics menu (screen-settings) + detail screen header
+       (screen-settings-detail). .settings-topic-row deliberately mirrors .category-row (surface,
+       radius, padding, shadow, pointer cursor) for visual consistency with the rest of the app's
+       "tap a row to drill in" pattern (category rows, the "כל התנועות" row). */
+    .settings-topic-row {
+        display: flex; justify-content: space-between; align-items: center;
+        background: var(--color-surface); border-radius: 12px; padding: 12px 14px;
+        margin-bottom: 8px; box-shadow: var(--shadow); cursor: pointer;
+    }
+    .settings-topic-label { font-size: 14px; font-weight: 600; }
+    .settings-topic-desc { font-size: 12px; color: var(--color-text-muted); margin-top: 2px; }
+    .settings-topic-chevron { font-size: 18px; color: var(--color-text-muted); flex-shrink: 0; padding-inline-start: 8px; }
+    .settings-detail-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+    .settings-back-btn {
+        font-size: 13px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--color-border);
+        background: var(--color-bg); color: var(--color-text); cursor: pointer; font-family: inherit;
+        flex-shrink: 0;
+    }
+    .settings-hint.settings-error { color: var(--color-danger); }
+    .settings-choice-row { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+    .settings-choice-btn {
+        padding: 8px 14px; border-radius: 10px; border: 1px solid var(--color-border);
+        background: var(--color-surface); color: var(--color-text); font-size: 12.5px; cursor: pointer; font-family: inherit;
+    }
+    .settings-choice-btn.active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+    .settings-color-row { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+    .settings-color-swatch {
+        width: 32px; height: 32px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0;
+    }
+    .settings-color-swatch.active { border-color: var(--color-text); }
+    .settings-color-green { background: #0a7d3d; }
+    .settings-color-blue { background: #164b96; }
+    .settings-color-purple { background: #5b2f96; }
+    .settings-color-teal { background: #0d7274; }
+    .settings-color-orange { background: #b8560f; }
+    .settings-color-graphite { background: #3f4650; }
+    .settings-toggle-btn {
+        padding: 6px 16px; border-radius: 20px; border: 1px solid var(--color-border); flex-shrink: 0;
+        background: var(--color-surface); color: var(--color-text-muted); font-size: 12px; cursor: pointer; font-family: inherit;
+    }
+    .settings-toggle-btn.on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+    .settings-data-actions { display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px; }
+    .settings-danger-zone { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--color-border); }
+    .settings-danger-btn {
+        width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--color-danger);
+        background: none; color: var(--color-danger); font-size: 13.5px; font-weight: 600; cursor: pointer; font-family: inherit;
+    }
+    .restore-summary-list, .whats-new-list { font-size: 12.5px; padding-right: 18px; margin: 6px 0 12px; }
+    .restore-summary-list li, .whats-new-list li { margin-bottom: 4px; }
+    /* Milestone 4: Version-1-backup goals-preservation notice — warning tone, same dark-mode-safe
+       --color-warning/--color-warning-bg pair already verified elsewhere in this file. */
+    .restore-v1-note { background: var(--color-warning-bg); border-right: 4px solid var(--color-warning); border-radius: 10px; padding: 10px 12px; font-size: 12px; color: var(--color-text); line-height: 1.55; margin-bottom: 10px; }
+    .activity-log-list { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
+    .activity-log-row { background: var(--color-bg); border-radius: 10px; padding: 8px 12px; font-size: 12px; }
+    .activity-log-action { font-weight: 600; }
+    .activity-log-detail { color: var(--color-text-muted); margin-top: 2px; }
+    .activity-log-ts { color: var(--color-text-muted); font-size: 11px; margin-top: 3px; }
+
+    /* ===== Version 1.1, Stage 4.0.3: privacy-lock overlay — covers the whole viewport above     =====
+       everything else (z-index 1000, higher than the auto-archive toast's 80 and the quick-       =====
+       actions sheet's 70) whenever a PIN is set and the app is locked; unlockApp() hides it again. */
+    .lock-overlay {
+        position: fixed; inset: 0; background: var(--color-bg); z-index: 1000;
+        display: none; align-items: center; justify-content: center; flex-direction: column; padding: 24px;
+    }
+    .lock-card { text-align: center; max-width: 320px; width: 100%; }
+    .lock-icon { font-size: 40px; margin-bottom: 10px; }
+    .lock-title { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+    .lock-subtitle { font-size: 13px; color: var(--color-text-muted); margin-bottom: 18px; }
+    .lock-pin-input {
+        width: 100%; text-align: center; letter-spacing: 6px; font-size: 20px; padding: 12px;
+        border-radius: 10px; border: 1px solid var(--color-border); margin-bottom: 8px; font-family: inherit;
+        background: var(--color-surface); color: var(--color-text);
+    }
+    .lock-error { color: var(--color-danger); font-size: 12.5px; min-height: 16px; margin-bottom: 10px; }
+    .lock-unlock-btn {
+        width: 100%; padding: 12px; border-radius: 10px; border: none; background: var(--color-primary);
+        color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit;
+    }

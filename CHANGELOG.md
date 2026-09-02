@@ -412,3 +412,19 @@
 **לא בוצע/נבדק**: מכשיר Android/iOS פיזי, Vercel Preview, Production. `APP_VERSION` נשאר `'1.3.1'` (ללא שינוי schema-breaking). `schemaVersion` נשאר `2`. אין service worker.
 
 **נשמר ב-commit מקומי**: `4fc1b81d382b7e5a1024abdbf8d8e181ff1ea005` ("feat: add forecast and savings goals", 02/09/2026) — Milestones 3–6 בלבד, על גבי Version 1.3.1 שכבר הייתה ב-`origin/main` (ראו הערה עובדתית למעלה). **טרם push, טרם Production.** השלב הבא המתוכנן (ממתין לאישור נפרד): מודולריזציה של `index.html` לקבצים נפרדים, ללא שינוי התנהגות.
+
+## 03/09/2026 — Milestones 8–9: מודולריזציה — פיצול `index.html` ל-3 קבצים (HTML/CSS/JS)
+
+עבודה שבוצעה ישירות על `index.html`, על גבי Milestones 3–6 (עדיין commit מקומי, טרם push) והקשחת timestamp ל-Goals (`fix: harden goal timestamp validation`). **פירוק מבני טהור — אפס שינוי בלוגיקה עסקית, פונקציה, או חישוב.** ראו CURRENT_STATUS.md, סעיף "Milestones 8–9", לפירוט האימות המלא.
+
+**מה בוצע**: בלוק `<style>` היחיד ו-בלוק `<script>` היחיד של `index.html` חולצו ביט-לביט אל `styles.css`/`app.js` בהתאמה (שהוחלפו במלואם — תוכנם הקודם היה עותק ישן/שגוי מלפני Cutover ל-Cockpit, מעולם לא היה מקושר בפועל). `index.html` נשאר עם מבנה/markup בלבד וטוען את שני הקבצים דרך `<link rel="stylesheet" href="styles.css">`/`<script src="app.js"></script>` — **נתיבים יחסיים**, לא מוחלטים-משורש, כדי לשמר את היכולת לפתוח את `index.html` ישירות (`file://`, ללא שרת).
+
+**תיקון שנמצא ותוקן במהלך העבודה עצמה**: ניסיון ראשון עם נתיבים מוחלטים-משורש (`/styles.css`, `/app.js`, בהתאמה למוסכמת ה-`/manifest.webmanifest` הקיימת) הוכח **שובר לחלוטין** את הפתיחה הישירה דרך `file://` (נתיב מוחלט מתפענח מול שורש הכונן, לא מול תיקיית הקובץ) — נבדק ישירות בדפדפן אמיתי, לא רק ניתוח סטטי. תוקן לנתיבים יחסיים; אומת שוב ב-`file://` שהאפליקציה נטענת ופועלת במלואה.
+
+**אימות שלמות חילוץ**: 289/289 הצהרות `function` זהות; 254/254 חוקי CSS זהים; 7/7 מפתחות `family_finance_*` זהים; 12/12 מזהי `screen-*`/`nav-*` זהים; מדגם handlers (13 שמות) תואם 1:1. `node --check`/`git diff --check` תקינים.
+
+**אימות דפדפן אמיתי (Edge headless, `puppeteer-core`, פרופיל זמני מבודד)**: משאבים 200/MIME נכון; אפס שגיאות Console/Page בכל תרחיש; 5 מסכי ניווט תקינים; אפס גלישה אופקית ב-360/390/768/1280px; light/dark מוחלות נכון; מסך יעדים תקין; `collectAppLocalStorageBackup()` נגיש ומתנהג כמתועד. **השוואת Baseline הכרחית** (אותם נתוני-סימון, לפני/אחרי הפיצול) — פלט זהה-ביט, מוכיח אפס סטייה התנהגותית.
+
+**לא בוצע/נבדק**: מכשיר Android/iOS פיזי, Vercel Preview, Production. `APP_VERSION` נשאר `'1.3.1'`, `schemaVersion` נשאר `2`. אין service worker (לא נוסף). אין תלות חיצונית/framework/bundler חדשים.
+
+**נשמר ב-commit מקומי** ("refactor: modularize application assets", 03/09/2026) — על גבי Milestones 3–6 + הקשחת timestamp. **טרם push, טרם Production.**
