@@ -20,7 +20,15 @@
         --color-surface: #ffffff;
         --color-border: #e5e7eb;
         --color-text: #16181d;
-        --color-text-muted: #6b7280;
+        /* Milestone 6 correction: darkened from #6b7280 — the previous value scored below the
+           WCAG AA 4.5:1 normal-text threshold on two real light-mode backgrounds it's actually
+           used against (--color-bg for .app-header .subtitle: 4.432:1; the --color-primary-bg-
+           derived --color-insight-card-bg for .insight-title, worst case 4.116:1 on purple).
+           #616774 was chosen as the minimal darkening that clears 4.5:1 with a safe margin
+           (measured minimum 4.831:1) across --color-bg and all 6 --color-primary-bg tints, while
+           staying visually the same muted gray. Dark mode's --color-text-muted (below) already
+           passes everywhere and is unchanged. */
+        --color-text-muted: #616774;
         --color-danger: #c0392b;
         --color-warning: #b45309;
         --color-warning-bg: #fef3e2;
@@ -44,6 +52,17 @@
     :root[data-color="orange"] { --color-primary: #b8560f; --color-primary-dark: #95450c; --color-primary-bg: #fdece0; --color-primary-text: #b8560f; }
     :root[data-color="graphite"] { --color-primary: #3f4650; --color-primary-dark: #2c3138; --color-primary-bg: #eceef1; --color-primary-text: #3f4650; }
 
+    /* Milestone 3 correction: dedicated token for a tinted CARD background with default
+       (--color-text/--color-text-muted) text on top — e.g. .insight-card's untoned/"normal"
+       variant. Defaults to --color-primary-bg (byte-identical to before in light mode, and for
+       every OTHER existing consumer of --color-primary-bg, e.g. .category-filter-chip and the
+       active nav-icon pill, which keep using --color-primary-bg directly and are unaffected by
+       this change). Only dark mode overrides it below, per color theme — --color-primary-bg
+       itself deliberately stays untouched so those other consumers are not affected: fixing
+       .insight-card's dark-mode contrast this way cannot regress anything else that already
+       reads --color-primary-bg today. */
+    :root { --color-insight-card-bg: var(--color-primary-bg); }
+
     :root[data-theme="dark"] {
         --color-bg: #14161a;
         --color-surface: #1e2126;
@@ -55,12 +74,12 @@
         --color-warning-bg: #3a2f18;
         --color-danger-bg: #3a1f1c;
     }
-    :root[data-theme="dark"][data-color="green"] { --color-primary-text: #3ddc84; }
-    :root[data-theme="dark"][data-color="blue"] { --color-primary-text: #6fa8f5; }
-    :root[data-theme="dark"][data-color="purple"] { --color-primary-text: #b592e8; }
-    :root[data-theme="dark"][data-color="teal"] { --color-primary-text: #4fd0d2; }
-    :root[data-theme="dark"][data-color="orange"] { --color-primary-text: #f0a35f; }
-    :root[data-theme="dark"][data-color="graphite"] { --color-primary-text: #b9c0cc; }
+    :root[data-theme="dark"][data-color="green"] { --color-primary-text: #3ddc84; --color-insight-card-bg: #16311f; }
+    :root[data-theme="dark"][data-color="blue"] { --color-primary-text: #6fa8f5; --color-insight-card-bg: #16233a; }
+    :root[data-theme="dark"][data-color="purple"] { --color-primary-text: #b592e8; --color-insight-card-bg: #271f38; }
+    :root[data-theme="dark"][data-color="teal"] { --color-primary-text: #4fd0d2; --color-insight-card-bg: #123030; }
+    :root[data-theme="dark"][data-color="orange"] { --color-primary-text: #f0a35f; --color-insight-card-bg: #382513; }
+    :root[data-theme="dark"][data-color="graphite"] { --color-primary-text: #b9c0cc; --color-insight-card-bg: #282b30; }
 
     * { box-sizing: border-box; }
 
@@ -140,6 +159,14 @@
     .category-tile {
         background: var(--color-surface); border-radius: 12px; padding: 12px 6px;
         text-align: center; box-shadow: var(--shadow);
+        /* min-width:0 overrides a grid item's default min-width:auto (= its min-content size),
+           which otherwise refuses to shrink below the unbroken width of .category-tile-label's
+           text (white-space:nowrap) — without this, a long label (e.g. the "יתרת תשלומים שונים"
+           stat tile below) forces its 1fr grid track wider than its fair share, pushing
+           .category-tiles-grid, and with it html/body, past the viewport width. This lets the
+           track shrink to the grid's actual column width so .category-tile-label's own
+           overflow:hidden/text-overflow:ellipsis (already defined below) can do its job instead. */
+        min-width: 0;
         cursor: pointer; user-select: none; -webkit-user-select: none;
         /* Lets normal vertical page scrolling start immediately on a tile; only once a genuine
            long-press-without-movement engages drag mode does the JS lock this down to 'none'. */
@@ -171,6 +198,9 @@
     .stat-tile {
         background: var(--color-surface); border-radius: 12px; padding: 12px 6px;
         text-align: center; box-shadow: var(--shadow);
+        /* min-width:0 — same grid-shrink fix as .category-tile above; this is the tile whose
+           label ("יתרת תשלומים שונים") is actually long enough to trigger the overflow. */
+        min-width: 0;
         cursor: pointer; user-select: none; -webkit-user-select: none;
     }
     .stat-tile-toggle { display: flex; justify-content: center; gap: 4px; margin-top: 6px; }
@@ -371,7 +401,7 @@
     /* ===== Insights ===== */
     .insight-card {
         display: flex; align-items: flex-start; gap: 14px;
-        background: var(--color-primary-bg); border-radius: 14px; padding: 16px;
+        background: var(--color-insight-card-bg); border-radius: 14px; padding: 16px;
         margin-bottom: 12px; box-shadow: var(--shadow); border-right: 4px solid var(--color-primary);
     }
     .insight-card.warning { background: var(--color-warning-bg); border-right-color: var(--color-warning); }
@@ -425,6 +455,107 @@
     .preview-forecast-table-wrap th { color: var(--color-text-muted); font-weight: 500; font-size: 11.5px; }
     .preview-forecast-positive { color: var(--color-primary-text); font-weight: 700; }
     .preview-forecast-negative { color: var(--color-danger); font-weight: 700; }
+
+    /* ===== Goals (Milestone 4) — approved reference: Design/forecast-goals-milestone2-preview.html.
+       Card/spacing language matches the rest of the app (var(--radius-adjacent) 12px, var(--shadow),
+       var(--color-surface)); the two new tokens used below (--color-insight-card-bg, and the plain
+       --color-warning-bg/--color-danger-bg pairs) are the SAME ones already verified for dark-mode
+       AA contrast in the Milestone 3 correction — no new unverified color pairing is introduced. */
+    .goal-card { background: var(--color-surface); border-radius: 12px; box-shadow: var(--shadow); margin-bottom: 10px; overflow: hidden; }
+    .goal-card-head { padding: 13px 14px; cursor: pointer; display: flex; align-items: center; gap: 10px; min-height: 44px; }
+    .goal-card-head:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+    .goal-head-main { flex: 1; min-width: 0; }
+    .goal-name { font-size: 14.5px; font-weight: 700; margin-bottom: 4px; }
+    .goal-meta-row { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--color-text-muted); margin-bottom: 6px; gap: 8px; }
+    .goal-meta-row b { color: var(--color-text); direction: ltr; unicode-bidi: isolate; font-weight: 700; }
+    .goal-progress-track { height: 7px; border-radius: 4px; background: var(--color-border); overflow: hidden; }
+    .goal-progress-fill { height: 100%; background: var(--color-primary); border-radius: 4px; }
+    .goal-chevron { font-size: 13px; color: var(--color-text-muted); transition: transform .18s ease; flex: none; }
+    .goal-card.expanded .goal-chevron { transform: rotate(180deg); }
+    /* Approved subtle expand/collapse animation — a deliberate, scoped exception to this file's
+       usual instant innerHTML row-swap (e.g. the Transactions inline editor), per the Milestone 2
+       design approval. */
+    .goal-body { max-height: 0; overflow: hidden; transition: max-height .22s ease; border-top: 1px solid var(--color-border); }
+    .goal-card.expanded .goal-body { max-height: 900px; }
+    .goal-body-inner { padding: 12px 14px 14px; }
+    .goal-component-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; font-size: 13px; border-bottom: 1px dashed var(--color-border); gap: 8px; }
+    .goal-component-row:last-of-type { border-bottom: none; }
+    .goal-component-main { flex: 1; min-width: 0; }
+    .goal-component-name { font-weight: 600; }
+    .goal-component-date { font-size: 11px; color: var(--color-text-muted); margin-top: 2px; }
+    .goal-component-amount { direction: ltr; unicode-bidi: isolate; font-weight: 600; white-space: nowrap; }
+    .goal-component-total { display: flex; justify-content: space-between; font-size: 13.5px; font-weight: 700; padding-top: 8px; margin-top: 2px; border-top: 1px solid var(--color-border); }
+    .goal-total-amount { direction: ltr; unicode-bidi: isolate; }
+    .goal-actions-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    .goal-inline-confirm { background: var(--color-danger-bg); border-radius: 10px; padding: 10px 12px; margin-top: 10px; font-size: 12.5px; }
+    .goal-inline-confirm .tx-edit-actions { margin-top: 8px; }
+    .goal-badge { display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 6px; margin-right: 6px; font-weight: 600; }
+    .goal-badge-inherited { background: var(--color-bg); color: var(--color-text-muted); border: 1px solid var(--color-border); }
+    .goal-badge-early { background: var(--color-warning-bg); color: var(--color-warning); }
+    .goal-badge-completed { background: var(--color-insight-card-bg); color: var(--color-text); }
+    .goal-badge-overdue { background: var(--color-danger-bg); color: var(--color-danger); }
+    .goal-schedule-note { font-size: 12px; color: var(--color-text-muted); line-height: 1.55; margin-top: 8px; }
+    .goal-schedule-note.warning { color: var(--color-warning); }
+    .goal-schedule-note.danger { color: var(--color-danger); font-weight: 600; }
+
+    /* Milestone 4: inline field validation for the new Goals forms — a new, deliberately-scoped
+       pattern (existing forms elsewhere in this file use alert() only, an established product
+       decision that is not being changed here; this applies only to the new Goals forms). */
+    .tx-edit-group input.invalid, .tx-edit-group select.invalid { border-color: var(--color-danger); background: var(--color-danger-bg); }
+    .field-error { color: var(--color-danger); font-size: 12px; margin-top: 4px; }
+
+    /* ===== Milestone 5: Goals reminder overlay ===== */
+    .reminder-overlay {
+        position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 900;
+        display: none; align-items: center; justify-content: center; padding: 18px;
+    }
+    .reminder-overlay.open { display: flex; }
+    .reminder-card {
+        background: var(--color-surface); border-radius: var(--radius); box-shadow: 0 12px 40px rgba(0,0,0,.25);
+        padding: 20px 18px; max-width: 400px; width: 100%; max-height: 88vh; overflow-y: auto;
+    }
+    .reminder-icon { font-size: 26px; text-align: center; margin-bottom: 6px; }
+    .reminder-title { font-size: 16px; font-weight: 700; text-align: center; margin-bottom: 4px; }
+    .reminder-subtitle { font-size: 12.5px; color: var(--color-text-muted); text-align: center; margin-bottom: 14px; line-height: 1.5; }
+    .reminder-goal-row { background: var(--color-bg); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+    .reminder-goal-row-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .reminder-goal-name { font-size: 13.5px; font-weight: 700; }
+    .reminder-goal-amount { font-size: 14px; font-weight: 700; direction: ltr; unicode-bidi: isolate; white-space: nowrap; }
+    .reminder-goal-sub { font-size: 11.5px; color: var(--color-text-muted); margin-top: 3px; }
+    .reminder-goal-sub.danger { color: var(--color-danger); font-weight: 600; }
+    .reminder-total-row {
+        display: flex; justify-content: space-between; font-weight: 700; font-size: 14.5px;
+        border-top: 1px solid var(--color-border); margin-top: 10px; padding-top: 10px;
+    }
+    .reminder-total-amount { direction: ltr; unicode-bidi: isolate; }
+    .reminder-fineprint { font-size: 11px; color: var(--color-text-muted); text-align: center; margin-top: 12px; line-height: 1.5; }
+    .reminder-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+    .reminder-btn-primary {
+        padding: 12px; border-radius: 10px; border: none; font-size: 14px; font-weight: 700;
+        background: var(--color-primary); color: #fff; cursor: pointer; font-family: inherit; min-height: 44px;
+    }
+    .reminder-btn-primary:disabled { opacity: .6; cursor: default; }
+    .reminder-btn-secondary {
+        padding: 11px; border-radius: 10px; border: 1px solid var(--color-border); font-size: 13.5px;
+        background: var(--color-bg); color: var(--color-text); cursor: pointer; font-family: inherit; min-height: 44px;
+    }
+    .reminder-btn-secondary:disabled { opacity: .6; cursor: default; }
+    .reminder-btn-postpone {
+        background: none; border: none; color: var(--color-text-muted); font-size: 12.5px;
+        text-decoration: underline; cursor: pointer; padding: 8px; min-height: 44px; font-family: inherit;
+    }
+    .reminder-custom-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px dashed var(--color-border); }
+    .reminder-custom-row:last-of-type { border-bottom: none; }
+    .reminder-custom-label { flex: 1; min-width: 0; }
+    .reminder-custom-name { font-size: 13px; font-weight: 600; }
+    .reminder-custom-hint { font-size: 11px; color: var(--color-text-muted); margin-top: 2px; }
+    .reminder-custom-input {
+        width: 96px; text-align: left; direction: ltr; padding: 8px 9px; min-height: 40px; font-size: 13.5px;
+        border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-surface); font-family: inherit;
+    }
+    .reminder-custom-input.invalid { border-color: var(--color-danger); background: var(--color-danger-bg); }
+    .reminder-custom-warn { font-size: 10.5px; color: var(--color-warning); margin-top: 3px; }
+    .reminder-error-box { background: var(--color-danger-bg); color: var(--color-danger); border-radius: 8px; padding: 8px 10px; font-size: 12px; margin-top: 10px; line-height: 1.5; }
 
     /* ===== Settings ===== */
     .category-row {
@@ -606,6 +737,9 @@
     }
     .restore-summary-list, .whats-new-list { font-size: 12.5px; padding-right: 18px; margin: 6px 0 12px; }
     .restore-summary-list li, .whats-new-list li { margin-bottom: 4px; }
+    /* Milestone 4: Version-1-backup goals-preservation notice — warning tone, same dark-mode-safe
+       --color-warning/--color-warning-bg pair already verified elsewhere in this file. */
+    .restore-v1-note { background: var(--color-warning-bg); border-right: 4px solid var(--color-warning); border-radius: 10px; padding: 10px 12px; font-size: 12px; color: var(--color-text); line-height: 1.55; margin-bottom: 10px; }
     .activity-log-list { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
     .activity-log-row { background: var(--color-bg); border-radius: 10px; padding: 8px 12px; font-size: 12px; }
     .activity-log-action { font-weight: 600; }
@@ -701,15 +835,28 @@
         <div id="transactions-list"></div>
     </div>
 
-    <!-- ===== מסך 3: תובנות ===== -->
+    <!-- ===== מסך 3: תחזית (Milestone 3: replaces "תובנות" in place — same screen id/DOM,
+         no parallel second screen; approved design reference:
+         Design/forecast-goals-milestone2-preview.html) ===== -->
     <div class="screen" id="screen-insights">
-        <div class="section-title" style="margin-top:4px;">תובנות</div>
+        <div class="section-title" style="margin-top:4px;">תחזית</div>
+
+        <!-- Milestone 3: exact-calendar-day 30/60/90 horizon selector for the period-scoped
+             forecast below (stat cards, cumulative graph, timeline). Reuses the existing
+             .filter-toggle/.filter-btn classes verbatim (same control already used for the
+             Transactions active/archived toggle) — no new CSS, no new visual language. -->
+        <div class="filter-toggle" role="group" aria-label="טווח תחזית">
+            <button type="button" class="filter-btn active" id="forecast-period-btn-30" onclick="setForecastPeriodDays(30)">30 יום</button>
+            <button type="button" class="filter-btn" id="forecast-period-btn-60" onclick="setForecastPeriodDays(60)">60 יום</button>
+            <button type="button" class="filter-btn" id="forecast-period-btn-90" onclick="setForecastPeriodDays(90)">90 יום</button>
+        </div>
 
         <!-- Version 1.3, Phase 2E: BALANCE ANCHOR hero. Before setup: "הגדר יתרת בסיס" +
              the entry form shown directly. After setup: "יתרה משוערת להיום" (calculated forward
              from the anchor, never re-entered daily) + the anchor/as-of date shown unobtrusively
              + a collapsed-by-default "עדכן יתרה בפועל" reconciliation action. Sole source of truth for
-             every number here is buildCashflowSummary() — no calculation is duplicated. -->
+             every number here is buildCashflowSummary() — no calculation is duplicated.
+             Unchanged by Milestone 3 (same markup/ids/behavior as before). -->
         <div class="hero-gauge">
             <div class="hero-label" id="cashflow-hero-label">מצב להיום</div>
             <div class="hero-amount" id="cashflow-today-balance"></div>
@@ -728,21 +875,38 @@
             </div>
         </div>
 
-        <!-- Version 1.3, Phase 2C: האירוע הבא / ההכנסה הבאה / צפוי לרדת עד ההכנסה / נקודת השפל /
-             תחזית סוף חודש — all built from the SAME buildCashflowSummary() call, one card each,
-             reusing the existing .insight-card markup/classes verbatim. -->
+        <!-- Version 1.3, Phase 2C: האירוע הבא / ההכנסה הבאה / צפוי לרדת עד ההכנסה — built from the
+             SAME buildCashflowSummary() call, reusing the existing .insight-card markup verbatim.
+             Milestone 3: the two current-month-only cards that used to sit here (נקודת השפל /
+             תחזית סוף חודש) are removed from this feed — they are superseded by the period-scoped
+             equivalents below (#forecast-period-stats), so the same concept is never shown twice
+             with two different scopes at once. See renderCashflowInsightsFromRealData(). -->
         <div id="cashflow-summary-feed"></div>
 
-        <!-- Version 1.3, Phase 2C: expandable cash-flow timeline. Collapsed by default (only the
-             next few events shown); "הצג הכל" reveals the full 6-month event list inside a
-             scrollable .activity-log-list (existing pattern, reused as-is). Natural RTL order
-             (soonest first, reading right-to-left like the rest of this screen). Events are
-             grouped by calendar date and only ever include tomorrow-onward events — the exact
-             same set the numerical forecast itself uses (summary.timelineEvents) — so nothing
-             here can ever imply a today-dated item is pending/processed; today's own events are
-             simply not shown, never labeled either way. -->
+        <!-- Milestone 3: period-scoped negative-balance warning + lowest/end-of-period stats.
+             Both these, the cumulative graph, and the timeline below are populated from ONE
+             buildPeriodCashflowForecast(forecastPeriodDays) result inside
+             renderForecastPeriodSection() — they can never disagree with each other because
+             none of them recomputes anything independently. -->
+        <div id="forecast-period-negative-banner"></div>
+        <div id="forecast-period-stats"></div>
+
         <div class="preview-forecast-box">
-            <div class="section-title" style="margin:0 0 10px;">📅 ציר תזרים קרוב</div>
+            <div class="section-title" style="margin:0 0 10px;" id="forecast-period-chart-title">📈 יתרה מצטברת צפויה</div>
+            <div class="preview-forecast-chart-wrap" id="forecast-period-chart-wrap">
+                <svg id="forecast-period-svg" viewBox="0 0 300 170" preserveAspectRatio="xMidYMid meet" role="img"></svg>
+            </div>
+            <div class="insight-note" id="forecast-period-chart-summary"></div>
+        </div>
+
+        <!-- Version 1.3, Phase 2C: expandable cash-flow timeline (existing markup/ids/toggle
+             behavior — toggleCashflowTimeline() — unchanged). Milestone 3: now populated from the
+             SAME period-scoped event set as the graph/stats above (buildPeriodCashflowForecast()),
+             instead of the previously unbounded 6-month summary.timelineEvents, so the timeline
+             can never disagree with the graph/stats. Still only ever tomorrow-onward events —
+             today's own events are simply not shown, never labeled either way. -->
+        <div class="preview-forecast-box">
+            <div class="section-title" style="margin:0 0 10px;" id="cashflow-timeline-title">📅 ציר תזרים קרוב</div>
             <div id="cashflow-timeline-preview"></div>
             <div class="preview-forecast-toggle-row">
                 <button type="button" class="preview-forecast-toggle-btn" id="cashflow-timeline-toggle-btn" onclick="toggleCashflowTimeline()">הצג הכל</button>
@@ -750,24 +914,46 @@
             <div class="activity-log-list" id="cashflow-timeline-full" style="display:none;"></div>
         </div>
 
-        <!-- Stage 3ב.4: forecast chart/table, adapted from index.html's .forecast-box. Always
-             visible on this dedicated Insights screen (no collapse header, unlike index.html's
-             dashboard placement). Version 1.3, Phase 2C: values now sourced from
-             buildCashflowSummary() (see renderForecast() below) instead of computeForecast() —
-             same chart/table markup and geometry, unchanged. -->
-        <div class="preview-forecast-box">
-            <div class="section-title" style="margin:0 0 10px;">📈 תחזית יתרה פנויה — 6 חודשים קדימה</div>
-            <div class="preview-forecast-toggle-row">
-                <button type="button" class="preview-forecast-toggle-btn" id="preview-forecast-toggle-btn" onclick="toggleForecastView()">טבלה</button>
-            </div>
-            <div class="preview-forecast-chart-wrap" id="preview-forecast-chart-wrap">
-                <svg id="preview-forecast-svg" viewBox="0 0 300 170" preserveAspectRatio="xMidYMid meet"></svg>
-                <div class="preview-forecast-tooltip" id="preview-forecast-tooltip"></div>
-            </div>
-            <div class="preview-forecast-table-wrap" id="preview-forecast-table-wrap" style="display:none;"></div>
+        <!-- Milestone 3: the pre-existing 6-month monthly forecast (chart/table) and the legacy
+             narrative cards (credit-card total / loans remaining / month-scoped forecast warning)
+             are preserved with zero logic change, only relocated under a collapsed
+             "תחזית חודשית מורחבת" section per the approved Milestone 2 design — nothing deleted,
+             same renderForecast()/toggleForecastView()/renderInsightsScreenFromRealData()
+             functions and markup as before. -->
+        <div class="preview-forecast-toggle-row" style="justify-content:flex-start;">
+            <button type="button" class="preview-forecast-toggle-btn" id="monthly-forecast-toggle-btn" onclick="toggleMonthlyForecastSection()">📆 תחזית חודשית מורחבת ▾</button>
         </div>
+        <div id="monthly-forecast-section" style="display:none;">
+            <!-- Stage 3ב.4: forecast chart/table, adapted from index.html's .forecast-box.
+                 Version 1.3, Phase 2C: values sourced from buildCashflowSummary() (see
+                 renderForecast() below) instead of computeForecast() — same chart/table markup
+                 and geometry, unchanged by Milestone 3. -->
+            <div class="preview-forecast-box">
+                <div class="section-title" style="margin:0 0 10px;">📈 תחזית יתרה פנויה — 6 חודשים קדימה</div>
+                <div class="preview-forecast-toggle-row">
+                    <button type="button" class="preview-forecast-toggle-btn" id="preview-forecast-toggle-btn" onclick="toggleForecastView()">טבלה</button>
+                </div>
+                <div class="preview-forecast-chart-wrap" id="preview-forecast-chart-wrap">
+                    <svg id="preview-forecast-svg" viewBox="0 0 300 170" preserveAspectRatio="xMidYMid meet"></svg>
+                    <div class="preview-forecast-tooltip" id="preview-forecast-tooltip"></div>
+                </div>
+                <div class="preview-forecast-table-wrap" id="preview-forecast-table-wrap" style="display:none;"></div>
+            </div>
 
-        <div id="insights-feed"></div>
+            <div id="insights-feed"></div>
+        </div>
+    </div>
+
+    <!-- ===== מסך: יעדים (Milestone 4 — new; approved design reference:
+         Design/forecast-goals-milestone2-preview.html) ===== -->
+    <div class="screen" id="screen-goals">
+        <div class="section-title" style="margin-top:4px;">יעדים</div>
+        <div class="filter-toggle" role="group" aria-label="סינון יעדים">
+            <button type="button" class="filter-btn active" id="goals-filter-active" onclick="setGoalsShowArchived(false)">פעילים</button>
+            <button type="button" class="filter-btn" id="goals-filter-archived" onclick="setGoalsShowArchived(true)">ארכיון</button>
+        </div>
+        <div id="goal-create-form-area"></div>
+        <div id="goals-list-area"></div>
     </div>
 
     <!-- ===== מסך 4: קטגוריות ===== -->
@@ -823,7 +1009,10 @@
         <span class="nav-icon">🏠</span><span>בית</span>
     </button>
     <button type="button" class="nav-btn" id="nav-insights" onclick="showScreen('insights')">
-        <span class="nav-icon">💡</span><span>תובנות</span>
+        <span class="nav-icon">📈</span><span>תחזית</span>
+    </button>
+    <button type="button" class="nav-btn" id="nav-goals" onclick="showScreen('goals')">
+        <span class="nav-icon">🎯</span><span>יעדים</span>
     </button>
     <button type="button" class="nav-btn" id="nav-categories" onclick="showScreen('categories')">
         <span class="nav-icon">📁</span><span>קטגוריות</span>
@@ -860,6 +1049,15 @@
     </div>
 </div>
 
+<!-- Milestone 5: consolidated monthly Goals reminder — an in-app modal only (no OS/background
+     notification of any kind). Not closable by tapping the backdrop (deliberately no onclick on
+     this outer div); role="dialog"/aria-modal mirror the existing lock-overlay pattern above.
+     z-index sits below the PIN lock overlay (1000) but above every other overlay in the app. All
+     content is rendered by renderGoalsReminderOverlay() — see the Milestone 5 JS section. -->
+<div class="reminder-overlay" id="goals-reminder-overlay" role="dialog" aria-modal="true" aria-labelledby="goals-reminder-title">
+    <div class="reminder-card" id="goals-reminder-card" onclick="event.stopPropagation()"></div>
+</div>
+
 <!-- ===== חלונית פעולות מהירות (חזותי בלבד בשלב זה) ===== -->
 <div class="quick-actions-overlay" id="quick-actions-overlay" onclick="toggleQuickActions(false)">
     <div class="quick-actions-sheet" onclick="event.stopPropagation()">
@@ -894,6 +1092,10 @@
     var SETTINGS_KEY = 'family_finance_settings';
     var ACTIVITY_LOG_KEY = 'family_finance_activity_log';
     var ACTIVITY_LOG_MAX = 200;
+    // Milestone 4: same 'family_finance_' prefix as every other key above — automatically
+    // included by collectAppLocalStorageBackup()'s/confirmResetAllData()'s existing prefix-sweep
+    // with zero changes to either function.
+    var GOALS_KEY = 'family_finance_goals';
     var APP_VERSION = '1.3.1';
 
     var PRIMARY_COLOR_OPTIONS = [
@@ -1187,9 +1389,19 @@
         return !!(txScreenEl && txScreenEl.classList.contains('active') && currentCategoryFilterKey !== null && categoryConfig[currentCategoryFilterKey]);
     }
 
+    // Milestone 4: the Goals screen is the FAB's second context (add-goal), alongside the
+    // existing category-page context (add-transaction) — see handleFabClick() below.
+    function isOnGoalsScreen() {
+        var goalsScreenEl = document.getElementById('screen-goals');
+        return !!(goalsScreenEl && goalsScreenEl.classList.contains('active'));
+    }
+
     function updateFabVisibility() {
         var fabEl = document.getElementById('fab-button');
-        if (fabEl) { fabEl.style.display = isOnCategoryPage() ? 'flex' : 'none'; }
+        // Milestone 4 correction: the FAB's "add goal" action is unavailable while the local
+        // Goals dataset is invalid (goalsState.valid false) — every Goals mutation is blocked
+        // during that state, so there is nothing useful for it to do.
+        if (fabEl) { fabEl.style.display = (isOnCategoryPage() || (isOnGoalsScreen() && goalsState.valid)) ? 'flex' : 'none'; }
     }
 
     // ===== Transactions filter toggle — visual only, does not filter the mock list =====
@@ -1225,6 +1437,8 @@
     function handleFabClick() {
         if (isOnCategoryPage()) {
             startPreviewAddForCategory(currentCategoryFilterKey);
+        } else if (isOnGoalsScreen() && goalsState.valid) {
+            startGoalCreate();
         } else {
             toggleQuickActions();
         }
@@ -1632,94 +1846,19 @@
         setTimeout(function () { el.style.display = 'none'; }, 4000);
     }
 
-    // ----- Stage D.6 Part B: real implementations, built only on top of computeForecast()/  -----
-    // ----- getBillingRange()/isBillingActiveInMonth() (all copied verbatim above) — no new  -----
-    // ----- date arithmetic invented here.                                                   -----
-
-    // "Biggest upcoming charge" is searched only within computeForecast()'s own 6-month range
-    // (current month + 5 ahead) — no new range is invented. Only `loan` and `dated` items are
-    // considered "charges" (income is never a charge, fixed is deliberately excluded — see the
-    // Stage D.6 audit report: the approved insight definition is "loan/dated בעלי תאריך ידוע"
-    // only); a loan counts in a given month using the exact same
-    // getBillingRange()+isBillingActiveInMonth() test computeForecast() itself uses for its loan
-    // branch; a dated item counts using the same exact-year+month test computeForecast() uses
-    // for its dated branch. Archived items are skipped, matching computeForecast()'s own
-    // `if (item.isArchived) continue;`. Returns null when no such charge exists anywhere in the
-    // 6-month window.
-    //
-    // Audit fix: renamed the parameter from `items` to `sourceItems` (it was shadowing the
-    // file-global `items` in a way that invited confusion) and now passes it explicitly into
-    // computeForecast(sourceItems), so the returned month/label always come from a forecast
-    // computed over the SAME array this function was called with — never a mix with the global.
-    function getBiggestUpcomingCharge(sourceItems) {
-        var forecastMonths = computeForecast(sourceItems);
-        var now = new Date();
-        var best = null;
-        for (var m = 0; m < forecastMonths.length; m++) {
-            var d = new Date(now.getFullYear(), now.getMonth() + m, 1);
-            for (var i = 0; i < sourceItems.length; i++) {
-                var item = sourceItems[i];
-                if (item.isArchived) continue;
-                var amount = null;
-                if (item.type === 'loan') {
-                    var range = getBillingRange(item.start, item.total, item.day);
-                    if (range && isBillingActiveInMonth(range, d.getFullYear(), d.getMonth())) { amount = item.amount; }
-                } else if (item.type === 'dated' && item.start) {
-                    var itemDate = new Date(item.start);
-                    if (itemDate.getFullYear() === d.getFullYear() && itemDate.getMonth() === d.getMonth()) { amount = item.amount; }
-                }
-                if (amount !== null && (best === null || amount > best.amount)) {
-                    best = { amount: amount, month: forecastMonths[m].label, monthIndex: m, label: item.title };
-                }
-            }
-        }
-        return best;
-    }
-
-    // Reuses getBiggestUpcomingCharge()'s result to find WHICH month is relevant, then reads that
-    // exact month's `net` straight out of computeForecast()'s own output — no separate/parallel
-    // forecast is computed. Returns null when there is no relevant upcoming charge to project after.
-    //
-    // Audit fix: parameter renamed to `sourceItems`; both computeForecast(sourceItems) and
-    // getBiggestUpcomingCharge(sourceItems) now receive the same explicit array — previously
-    // this read the file-global `items` here regardless of what was passed in.
-    function getProjectedBalanceAfterUpcoming(sourceItems) {
-        var charge = getBiggestUpcomingCharge(sourceItems);
-        if (charge === null) { return null; }
-        var forecastMonths = computeForecast(sourceItems);
-        var monthData = forecastMonths[charge.monthIndex];
-        if (!monthData) { return null; }
-        return { balance: monthData.net, month: monthData.label };
-    }
-
-    // Uses computeForecast()'s own numbers directly: the first (soonest) month whose `net` is
-    // negative, if any — the exact same "negative balance" concept CURRENT_STATUS.md already
-    // documented as sourced from computeForecast(). No new risk tiers/ratings are invented; the
-    // message reuses the "יתרה שלילית" phrasing already established in buildNarrative's own
-    // monthSnapshot sentence (not new vocabulary like "מסוכן"/"קריטי"). Returns null when no
-    // month in the 6-month range has a negative net.
-    //
-    // Audit fix: parameter renamed to `sourceItems` and now passed explicitly into
-    // computeForecast(sourceItems) — previously this function's `items` parameter was never read
-    // at all, and it always evaluated the file-global `items` regardless of what was passed in.
-    function getForecastWarning(sourceItems) {
-        var forecastMonths = computeForecast(sourceItems);
-        for (var m = 0; m < forecastMonths.length; m++) {
-            if (forecastMonths[m].net < 0) {
-                var monthData = forecastMonths[m];
-                return {
-                    type: 'negative_balance',
-                    month: monthData.label,
-                    balance: monthData.net,
-                    // Stage F.1 fix: uses formatHomeCurrency() (Stage D.5) instead of a raw number,
-                    // so this message matches the same '₪' + thousands-separator formatting used
-                    // everywhere else (previously e.g. "₪6000" instead of "₪6,000").
-                    message: 'ב-' + monthData.label + ' צפויה יתרה שלילית של ' + formatHomeCurrency(Math.abs(monthData.net)) + '.'
-                };
-            }
-        }
-        return null;
-    }
+    // Milestone 6 correction: getBiggestUpcomingCharge()/getProjectedBalanceAfterUpcoming()/
+    // getForecastWarning() (all computeForecast()-derived) were removed here — confirmed
+    // unreachable: their only caller was buildNarrative(), whose sentences.biggestUpcomingCharge/
+    // .projectedBalanceAfterUpcoming/.forecastWarning fields were themselves never read by the
+    // single live consumer of buildNarrative()'s output (renderInsightsScreenFromRealData(), which
+    // reads only narrativeResult.creditCardTotal/.loansRemaining — see buildNarrative() below).
+    // computeForecast() itself is removed for the same reason (see its own former location, just
+    // above the unified cash-flow engine section) — the six-month "תחזית חודשית מורחבת" UI these
+    // three functions' names might suggest they feed was, in fact, already sourced exclusively
+    // from the unified engine's buildCashflowSummary() (see renderForecast()), since Phase 2C —
+    // computeForecast()'s output never reached any screen. isBillingActiveInMonth()/
+    // getBillingRange() (which these functions also used) are NOT removed: the unified engine
+    // reuses them directly (see its own header comment) and remains fully live.
 
     // Compares dated-item totals between the CURRENT calendar month and the PREVIOUS calendar
     // month (the one immediately before it — not part of computeForecast()'s forward-looking
@@ -1801,21 +1940,11 @@
             ? 'הפעילות האחרונה כוללת ' + recent.length + ' תנועות.'
             : 'אין עדיין פעילות להצגה.';
 
-        // Stage D.6: these 4 fields are no longer Stub-backed — connected to the real
-        // implementations. Only these 4 assignments changed; everything above is untouched.
-        var biggestCharge = getBiggestUpcomingCharge(items);
-        sentences.biggestUpcomingCharge = biggestCharge
-            ? 'החיוב הצפוי הגדול ביותר בחודשים הקרובים הוא ' + biggestCharge.label + ' על סך ₪' + biggestCharge.amount + ' (' + biggestCharge.month + ').'
-            : null;
-
-        var projectedBalance = getProjectedBalanceAfterUpcoming(items);
-        sentences.projectedBalanceAfterUpcoming = projectedBalance
-            ? 'לאחר החיוב הזה, היתרה הצפויה ב-' + projectedBalance.month + ' עומדת על ₪' + projectedBalance.balance + '.'
-            : null;
-
-        var warning = getForecastWarning(items);
-        sentences.forecastWarning = warning ? warning.message : null;
-
+        // Milestone 6 correction: the computeForecast()-derived biggestUpcomingCharge/
+        // projectedBalanceAfterUpcoming/forecastWarning fields that used to be set here were
+        // removed — confirmed unreachable (see the removal note above computeForecast()'s former
+        // location for the full call-graph evidence): renderInsightsScreenFromRealData(), the only
+        // live reader of this function's return value, never read any of the three.
         var datedChange = getDatedMonthOverMonthChange(items);
         sentences.datedMonthOverMonthChange = datedChange
             ? 'החיובים החד-פעמיים ' + (datedChange.changeAmount >= 0 ? 'עלו' : 'ירדו') + ' ב-₪' + Math.abs(datedChange.changeAmount) + ' לעומת ' + datedChange.previousMonthLabel + '.'
@@ -1926,7 +2055,9 @@
         return 1;
     }
 
-    // Copied verbatim from index.html — used only by computeForecast() below, for the loan branch.
+    // Copied verbatim from index.html. Milestone 6: its original sole caller, computeForecast(),
+    // was removed as dead code — this function remains live because the unified cash-flow engine
+    // below (buildCashflowSummary()/generateCashflowEvents()) also reuses it directly.
     function isBillingActiveInMonth(range, year, monthIndex) {
         var firstYm = range.first.getFullYear() * 12 + range.first.getMonth();
         var lastYm = range.last.getFullYear() * 12 + range.last.getMonth();
@@ -1934,50 +2065,11 @@
         return targetYm >= firstYm && targetYm <= lastYm;
     }
 
-    // Copied verbatim from index.html, with exactly one minimal, backward-compatible addition
-    // made in the follow-up audit fix: an optional `itemsOverride` parameter. No business
-    // condition, no month range, no per-type calculation, no field name, no output shape was
-    // touched — only the local data-source variable name changed (items -> forecastItems) so
-    // that callers who explicitly pass a different item array (e.g. the 3 fixed stub functions
-    // below) are guaranteed to get a forecast computed over THAT array, not the file-global
-    // `items`. Called with no argument (as index.html itself always does), forecastItems falls
-    // back to the same global `items` as before — byte-identical behavior to the original copy.
-    // The known inconsistency with renderAll()/getMonthSnapshot() (documented in the Stage-D
-    // scoping report: fixed excludes credit, variable is fully excluded, loan uses
-    // getBillingRange+isBillingActiveInMonth per-month rather than the left>0 gate) is preserved
-    // exactly as-is — not reconciled, not "fixed".
-    function computeForecast(itemsOverride) {
-        var forecastItems = Array.isArray(itemsOverride) ? itemsOverride : items;
-        var now = new Date();
-        var months = [];
-        for (var m = 0; m < 6; m++) {
-            var d = new Date(now.getFullYear(), now.getMonth() + m, 1);
-            var sumInc = 0, sumExp = 0;
-            for (var i = 0; i < forecastItems.length; i++) {
-                var item = forecastItems[i];
-                if (item.isArchived) continue;
-                if (item.type === 'income') {
-                    sumInc += item.amount;
-                } else if (item.type === 'fixed') {
-                    if (item.where !== 'credit') {
-                        sumExp += (item.period === 'שנתי') ? (item.amount / 12) : item.amount;
-                    }
-                } else if (item.type === 'variable') {
-                    // תשלומים שונים למעקב/תצוגה בלבד - לא נכללים בתחזית
-                } else if (item.type === 'loan') {
-                    var range2 = getBillingRange(item.start, item.total, item.day);
-                    if (range2 && isBillingActiveInMonth(range2, d.getFullYear(), d.getMonth())) sumExp += item.amount;
-                } else if (item.type === 'dated') {
-                    if (item.start) {
-                        var itemDate = new Date(item.start);
-                        if (itemDate.getFullYear() === d.getFullYear() && itemDate.getMonth() === d.getMonth()) sumExp += item.amount;
-                    }
-                }
-            }
-            months.push({ label: d.toLocaleDateString('he-IL', { month: 'short' }), net: sumInc - sumExp });
-        }
-        return months;
-    }
+    // Milestone 6 correction: computeForecast() removed here — confirmed unreachable (see the
+    // removal note above getDatedMonthOverMonthChange() for the full call-graph evidence). The
+    // six-month "תחזית חודשית מורחבת" UI is, and since Phase 2C always was, sourced exclusively
+    // from buildCashflowSummary() below (see renderForecast()) — this function's output never
+    // reached any live screen.
 
     // =====================================================================================
     // ===== Version 1.3, Phase 2B/2E: unified cash-flow engine. Single source of truth for  =====
@@ -1985,9 +2077,10 @@
     // ===== Reuses resolveEffectiveDay/getClampedBillingDate/getBillingRange/               =====
     // ===== parseDatesAndGetLeft/isBillingActiveInMonth verbatim from above — no new date    =====
     // ===== arithmetic is invented here. Does NOT replace getMonthSnapshot/                  =====
-    // ===== getCategoryMonthlyTotals/computeForecast (those keep serving the screens that    =====
-    // ===== already consume them, unmodified, per the approved "no rewrite" scope) — this    =====
-    // ===== is new, additive code that the Phase 2C+ Insights UI consumes instead.           =====
+    // ===== getCategoryMonthlyTotals (those keep serving the screens that already consume    =====
+    // ===== them, unmodified, per the approved "no rewrite" scope) — this is new, additive    =====
+    // ===== code that the Phase 2C+ Insights UI consumes instead. Milestone 6: computeForecast=====
+    // ===== itself was later confirmed unreachable and removed — see its former location.     =====
     // =====================================================================================
 
     // EVENT CONTRACT: { date: Date, amount: signed number, itemId, type, title }.
@@ -2305,6 +2398,79 @@
             horizonMonths: horizonMonths
         };
     }
+
+    // =====================================================================================
+    // ===== Milestone 3: exact-calendar-day 30/60/90 horizon extension of the SAME unified  =====
+    // ===== engine above. This is NOT a third forecast engine — it takes buildCashflowSummary()'s =====
+    // ===== own estimatedTodayBalance and timelineEvents (the identical future-event stream  =====
+    // ===== nextEvent/nextIncome/the 6-month chart already read, already anchor-catch-up'd,  =====
+    // ===== already sorted via compareCashflowEvents) and only (a) re-slices it to an exact  =====
+    // ===== calendar-day cutoff instead of a whole-month boundary, and (b) walks it forward   =====
+    // ===== into a day-atomic cumulative running-balance series for the chart/stats/timeline. =====
+    // ===== No event is generated here — generateCashflowEvents() is still the only place that =====
+    // ===== happens. Day-atomic grouping (all of a day's events summed before checking for a  =====
+    // ===== new low) is the exact same convention buildCashflowSummary() itself already uses,  =====
+    // ===== so same-day events (e.g. income + a card charge on the same date) can never be     =====
+    // ===== reordered into a false intra-day dip — same guarantee, extended to day granularity. =====
+    // =====================================================================================
+    function buildPeriodCashflowForecast(days) {
+        var summary = buildCashflowSummary();
+        if (!summary.anchorIsSet) {
+            return { anchorIsSet: false, days: days };
+        }
+
+        var todayZero = cashflowDateOnly(new Date());
+        var cutoff = new Date(todayZero.getFullYear(), todayZero.getMonth(), todayZero.getDate() + days);
+
+        // summary.timelineEvents is already every tomorrow-onward event across the full 6-month
+        // engine horizon (180ish days), already sorted — always enough to cover a 90-day cutoff.
+        var eventsInRange = [];
+        for (var i = 0; i < summary.timelineEvents.length; i++) {
+            if (cashflowDateOnly(summary.timelineEvents[i].date) <= cutoff) { eventsInRange.push(summary.timelineEvents[i]); }
+        }
+
+        var byDate = {};
+        var dateKeys = [];
+        for (var j = 0; j < eventsInRange.length; j++) {
+            var ev = eventsInRange[j];
+            var key = cashflowDateKey(ev.date);
+            if (!(key in byDate)) { byDate[key] = { total: 0, date: cashflowDateOnly(ev.date) }; dateKeys.push(key); }
+            byDate[key].total += ev.amount;
+        }
+        dateKeys.sort();
+
+        var running = summary.estimatedTodayBalance;
+        var lowest = running;
+        var lowestDate = todayZero;
+        var points = [{ dayOffset: 0, date: todayZero, balance: running }];
+
+        for (var d = 0; d < dateKeys.length; d++) {
+            var entry = byDate[dateKeys[d]];
+            running += entry.total;
+            if (running < lowest) { lowest = running; lowestDate = entry.date; }
+            var offset = Math.round((entry.date.getTime() - todayZero.getTime()) / 86400000);
+            points.push({ dayOffset: offset, date: entry.date, balance: running });
+        }
+        // Flat trailing point out to the exact horizon cutoff, so the chart/stats always cover the
+        // full selected period even with zero, or few, events — no fabricated balance change.
+        if (points[points.length - 1].dayOffset < days) {
+            points.push({ dayOffset: days, date: cutoff, balance: running });
+        }
+
+        return {
+            anchorIsSet: true,
+            days: days,
+            estimatedTodayBalance: summary.estimatedTodayBalance,
+            events: eventsInRange,
+            points: points,
+            lowest: lowest,
+            lowestDate: lowestDate,
+            endBalance: running,
+            isNegative: lowest < 0,
+            todayDate: todayZero,
+            cutoffDate: cutoff
+        };
+    }
     // =====================================================================================
     // ===== Stage 3ב.4: forecast chart/table UI for the Insights screen. niceRoundUp/       =====
     // ===== barPath/attachForecastHandlers/renderForecast/toggleForecastView are copied      =====
@@ -2514,6 +2680,597 @@
         };
     }
 
+    // =====================================================================================
+    // ===== Milestone 4: Goals data model, storage, and pure planning-calculation         =====
+    // ===== functions. Goals are a wholly separate collection from items[] — a new           =====
+    // ===== 'family_finance_goals' key, automatically covered by the existing prefix-sweep    =====
+    // ===== backup/reset functions (no changes needed there beyond the schemaVersion bump).   =====
+    // =====================================================================================
+
+    // Rounds to currency (2dp) precision at every summation boundary to avoid visible float
+    // drift (e.g. 0.1+0.2 style errors) — the app's existing convention elsewhere is plain
+    // floats rounded only at DISPLAY time (formatHomeCurrency does Math.round); goals follow
+    // that same plain-float approach (consistent with every other amount in this file — loans,
+    // fixed, income are all plain floats too, so a separate integer-cents representation only
+    // for goals would be LESS consistent, not more), with this extra rounding step added at
+    // sum/subtract boundaries specifically because goal math chains multiple additions
+    // (component sums, remaining = target - saved - confirmed) where drift could otherwise
+    // visibly accumulate before the final display-time rounding.
+    function round2(n) {
+        return Math.round((n + Number.EPSILON) * 100) / 100;
+    }
+
+    var goalsIdCounter = 0;
+    // Stable unique IDs, string-typed (items[] uses numeric Date.now() ids; goals are a
+    // separate collection with no compatibility requirement to match that exact type — a
+    // string prefix is clearer for two different id namespaces, e.g. "goal" vs "comp", and
+    // the counter guarantees uniqueness even when several components are created in the same
+    // synchronous save, which Date.now() alone cannot guarantee).
+    function generateGoalsId(prefix) {
+        goalsIdCounter += 1;
+        return prefix + '_' + Date.now() + '_' + goalsIdCounter;
+    }
+
+    // Same 'YYYY-MM-DD' shape check used implicitly elsewhere via parseLocalDateStr(), made
+    // explicit here for form validation (parseLocalDateStr is lenient — it happily returns a
+    // Date for garbage input like "9999-99-99" — so goal/component due-date validation needs
+    // its own real-calendar-date check).
+    function isValidDateStr(str) {
+        if (typeof str !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(str)) { return false; }
+        var d = parseLocalDateStr(str);
+        if (!d || isNaN(d.getTime())) { return false; }
+        // Reject a clamped-but-different date (e.g. "2027-02-30" silently becoming March 2 in
+        // native Date arithmetic) — the stored string must describe a real calendar date.
+        var parts = str.split('-');
+        return d.getFullYear() === parseInt(parts[0], 10) && (d.getMonth() + 1) === parseInt(parts[1], 10) && d.getDate() === parseInt(parts[2], 10);
+    }
+
+    // Positive-amount parse: rejects NaN, Infinity, zero, and negative values. Returns the
+    // parsed number or null (never NaN) so callers can use a simple truthiness-safe check.
+    function sanitizePositiveAmount(raw) {
+        var n = parseFloat(raw);
+        if (!isFinite(n) || n <= 0) { return null; }
+        return round2(n);
+    }
+
+    // Non-negative amount parse (saved/opening amount — 0 is valid, negative is not).
+    function sanitizeNonNegativeAmount(raw) {
+        var n = parseFloat(raw);
+        if (!isFinite(n) || n < 0) { return null; }
+        return round2(n);
+    }
+
+    // Milestone 6 correction: genuinely strict raw-shape validation, replacing the previous
+    // version which silently REPAIRED several kinds of invalid input into something that looked
+    // valid — auto-generating a missing id, defaulting a missing/wrong-typed createdAt/updatedAt
+    // to "now", truthiness-coercing isArchived, and (via sanitizePositiveAmount/
+    // sanitizeNonNegativeAmount's parseFloat) silently accepting a NUMERIC-STRING amount as if it
+    // were already a number. That is the opposite of "strict, all-or-nothing, never partial
+    // trust" for restore-time/local-integrity data. normalizeComponent()/normalizeGoal() are
+    // called ONLY from isValidGoalsArrayStrict() below (never for parsing live FORM input, which
+    // goes through sanitizePositiveAmount()/sanitizeNonNegativeAmount() directly in
+    // saveNewGoal()/saveGoalEdit()/the component forms, untouched by this correction) — so there
+    // is no longer any live "lenient" caller to preserve, and the `strict` parameter these two
+    // functions used to take is removed as dead. Every check below inspects the RAW parsed
+    // value's actual type BEFORE any trimming/rounding/shaping happens, so an invalid raw shape
+    // can never be coerced/defaulted/repaired into an apparently-valid one. Goals are not yet
+    // released to Production, so there is no compatibility requirement to keep accepting
+    // malformed records that happened to work under the old lenient rules.
+
+    // One component: id/name/amount required with exact types (amount must already be a number,
+    // never a numeric string); dueDate, if present at all, must already be a real calendar date
+    // string (a present-but-invalid dueDate rejects the component — there is no more "silently
+    // treat as inherited" fallback for a value that was actually supplied and wrong).
+    function normalizeComponent(raw) {
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) { return null; }
+        if (typeof raw.id !== 'string' || !raw.id) { return null; }
+        if (typeof raw.name !== 'string') { return null; }
+        var name = raw.name.trim();
+        if (!name) { return null; }
+        if (typeof raw.amount !== 'number' || !isFinite(raw.amount) || raw.amount <= 0) { return null; }
+        var dueDate = null;
+        if (raw.dueDate !== null && raw.dueDate !== undefined) {
+            if (!isValidDateStr(raw.dueDate)) { return null; }
+            dueDate = raw.dueDate;
+        }
+        return { id: raw.id, name: name, amount: round2(raw.amount), dueDate: dueDate };
+    }
+
+    // One goal. Required raw types: id/title (non-empty string), dueDate (real calendar date),
+    // isArchived (actual boolean, not merely truthy), createdAt/updatedAt (non-empty string, per
+    // the app's own nowTimestampStr() contract — never silently defaulted when missing/invalid),
+    // components/confirmedTransfers (arrays). targetAmount/savedAmount must already be numbers
+    // (never numeric strings). For a goal WITH components, the stored targetAmount is additionally
+    // required to reconcile EXACTLY with round2(sum of the already-validated component amounts) —
+    // a stale/contradictory stored total is rejected outright, never silently overwritten with the
+    // recomputed sum as the previous implementation did.
+    function normalizeGoal(raw) {
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) { return null; }
+        if (typeof raw.id !== 'string' || !raw.id) { return null; }
+        if (typeof raw.title !== 'string') { return null; }
+        var title = raw.title.trim();
+        if (!title) { return null; }
+        if (!isValidDateStr(raw.dueDate)) { return null; }
+        if (typeof raw.isArchived !== 'boolean') { return null; }
+        if (typeof raw.createdAt !== 'string' || !raw.createdAt) { return null; }
+        if (typeof raw.updatedAt !== 'string' || !raw.updatedAt) { return null; }
+        if (!Array.isArray(raw.components)) { return null; }
+        if (!Array.isArray(raw.confirmedTransfers)) { return null; }
+
+        var components = [];
+        var seenComponentIds = {};
+        for (var i = 0; i < raw.components.length; i++) {
+            var comp = normalizeComponent(raw.components[i]);
+            if (!comp) { return null; }
+            if (seenComponentIds[comp.id]) { return null; } // no duplicate component IDs
+            seenComponentIds[comp.id] = true;
+            components.push(comp);
+        }
+
+        var targetAmount;
+        if (components.length > 0) {
+            var sum = 0;
+            for (var j = 0; j < components.length; j++) { sum = round2(sum + components[j].amount); }
+            if (typeof raw.targetAmount !== 'number' || !isFinite(raw.targetAmount)) { return null; }
+            if (round2(raw.targetAmount) !== sum) { return null; } // stale/contradictory stored total
+            targetAmount = sum;
+        } else {
+            if (typeof raw.targetAmount !== 'number' || !isFinite(raw.targetAmount) || raw.targetAmount <= 0) { return null; }
+            targetAmount = round2(raw.targetAmount);
+        }
+
+        if (typeof raw.savedAmount !== 'number' || !isFinite(raw.savedAmount) || raw.savedAmount < 0) { return null; }
+        var savedAmount = round2(raw.savedAmount);
+
+        var confirmedTransfers = [];
+        for (var k = 0; k < raw.confirmedTransfers.length; k++) {
+            var ct = raw.confirmedTransfers[k];
+            if (!ct || typeof ct !== 'object' || Array.isArray(ct)) { return null; }
+            // date/amount are the only two REQUIRED fields — a true legacy {date, amount}-only
+            // record (predating Milestone 5) is fully valid on its own, exactly as before.
+            if (typeof ct.amount !== 'number' || !isFinite(ct.amount) || ct.amount <= 0) { return null; }
+            if (typeof ct.date !== 'string' || !isValidDateStr(ct.date)) { return null; }
+            var normalizedCt = { date: ct.date, amount: round2(ct.amount) };
+            // Milestone 5's 4 extended ledger fields: OPTIONAL, kept only when present AND
+            // individually well-formed. Present-but-wrong-shape rejects the whole dataset — same
+            // "no partial trust" rule as every other check here.
+            if (ct.id !== undefined) {
+                if (typeof ct.id !== 'string' || !ct.id) { return null; }
+                normalizedCt.id = ct.id;
+            }
+            if (ct.confirmedAt !== undefined) {
+                if (typeof ct.confirmedAt !== 'string' || !ct.confirmedAt) { return null; }
+                normalizedCt.confirmedAt = ct.confirmedAt;
+            }
+            if (ct.reminderPeriod !== undefined) {
+                if (typeof ct.reminderPeriod !== 'string' || !/^\d{4}-\d{2}$/.test(ct.reminderPeriod)) { return null; }
+                normalizedCt.reminderPeriod = ct.reminderPeriod;
+            }
+            if (ct.source !== undefined) {
+                if (typeof ct.source !== 'string' || !ct.source) { return null; }
+                normalizedCt.source = ct.source;
+            }
+            confirmedTransfers.push(normalizedCt);
+        }
+
+        return {
+            id: raw.id,
+            title: title,
+            dueDate: raw.dueDate,
+            targetAmount: targetAmount,
+            savedAmount: savedAmount,
+            components: components,
+            isArchived: raw.isArchived,
+            createdAt: raw.createdAt,
+            updatedAt: raw.updatedAt,
+            confirmedTransfers: confirmedTransfers
+        };
+    }
+
+    // Strict, restore-time AND local-load-time validator (the same one function serves both — no
+    // separate lenient variant, per the Milestone 4 "one strict definition of valid, used
+    // everywhere" decision, which this Milestone 6 correction keeps intact while tightening what
+    // "valid" actually inspects): returns the fully-normalized array on success, or null if ANY
+    // goal/component in `arr` is structurally invalid (per normalizeGoal()/normalizeComponent()
+    // above) or if any goal/component id is duplicated.
+    function isValidGoalsArrayStrict(arr) {
+        if (!Array.isArray(arr)) { return null; }
+        var result = [];
+        var seenIds = {};
+        for (var i = 0; i < arr.length; i++) {
+            var g = normalizeGoal(arr[i]);
+            if (!g) { return null; }
+            if (seenIds[g.id]) { return null; } // no duplicate goal IDs
+            seenIds[g.id] = true;
+            result.push(g);
+        }
+        return result;
+    }
+
+    // Milestone 4 correction: ALL-OR-NOTHING local integrity check, replacing the previous
+    // lenient per-entry loader (which silently dropped malformed entries and de-duplicated ids —
+    // no longer approved behavior). Never writes to localStorage — a pure read. Absence of the
+    // key is a valid empty list (the lazy-write model: a goals-aware device that has never
+    // created a goal has no key yet, which is NOT corruption). Any other problem — invalid JSON,
+    // a non-array value, or ANY malformed goal/component/confirmedTransfer/duplicate-id anywhere
+    // in the array (isValidGoalsArrayStrict() already checks every one of these) — makes the
+    // ENTIRE local dataset invalid: nothing is dropped, filtered, or silently repaired, and
+    // `raw` preserves the exact original localStorage string byte-for-byte for later recovery
+    // paths (reset-only / restore) to act on. `goals` is [] in BOTH the "genuinely empty" and
+    // "invalid" cases — callers MUST check `.valid` before treating that [] as real data (see
+    // renderGoalsScreenFromRealData()'s integrity-warning branch and saveGoals()'s guard below).
+    function loadGoalsState() {
+        var raw;
+        try { raw = localStorage.getItem(GOALS_KEY); } catch (e) { raw = null; }
+        if (raw === null) { return { valid: true, raw: null, goals: [] }; }
+        var parsed;
+        try { parsed = JSON.parse(raw); } catch (e) { return { valid: false, raw: raw, goals: [] }; }
+        var validated = isValidGoalsArrayStrict(parsed);
+        if (validated === null) { return { valid: false, raw: raw, goals: [] }; }
+        return { valid: true, raw: raw, goals: validated };
+    }
+
+    // Guarded write: refuses to persist while the local dataset is known-invalid (goalsState.valid
+    // false), so a stray call from any Goals mutation path can never overwrite the corrupted raw
+    // value with an in-memory [] — the ONLY sanctioned ways to change GOALS_KEY while invalid are
+    // confirmResetGoalsIntegrity() (explicit, destructive, user-confirmed) or a restore. Every
+    // create/edit/archive/component mutation funnels through this one function, so guarding it
+    // here protects all of them at once rather than repeating the check at each call site.
+    function saveGoals() {
+        if (!goalsState.valid) { console.log('שגיאה: לא ניתן לשמור יעדים בעוד הנתונים המקומיים פגומים'); return; }
+        try { localStorage.setItem(GOALS_KEY, JSON.stringify(goals)); } catch (e) { console.log('שגיאה בשמירת יעדים'); }
+    }
+
+    // ----- Goal amount helpers (single source of truth for the "components sum vs. entered
+    // target" rule — never two independently-editable totals that can disagree) -----
+
+    function goalTargetAmount(goal) {
+        if (goal.components && goal.components.length > 0) {
+            var sum = 0;
+            for (var i = 0; i < goal.components.length; i++) { sum += goal.components[i].amount; }
+            return round2(sum);
+        }
+        return round2(goal.targetAmount || 0);
+    }
+
+    function goalConfirmedTransfersTotal(goal) {
+        var sum = 0;
+        var list = goal.confirmedTransfers || [];
+        for (var i = 0; i < list.length; i++) { sum += (list[i].amount || 0); }
+        return round2(sum);
+    }
+
+    function goalRemainingAmount(goal) {
+        var target = goalTargetAmount(goal);
+        var saved = round2(goal.savedAmount || 0);
+        var confirmed = goalConfirmedTransfersTotal(goal);
+        return Math.max(round2(target - saved - confirmed), 0);
+    }
+
+    function goalProgressPercent(goal) {
+        var target = goalTargetAmount(goal);
+        if (target <= 0) { return 0; }
+        var saved = round2(goal.savedAmount || 0) + goalConfirmedTransfersTotal(goal);
+        return Math.min(100, Math.max(0, Math.round((saved / target) * 100)));
+    }
+
+    // A component with no own dueDate inherits the parent goal's due date — the single place
+    // this inheritance rule is implemented, so the UI and the schedule math can never disagree
+    // about which date a given component actually uses.
+    function resolveComponentEffectiveDueDate(component, goal) {
+        return component.dueDate || goal.dueDate;
+    }
+
+    // "If the due date is before the 2nd of its month, the final eligible transfer date is the
+    // 2nd of the previous month. If the due date is on or after the 2nd, that month's 2nd is
+    // eligible." Real calendar-date arithmetic (JS Date month rollover), not approximate.
+    function getLastEligibleTransferDate(dueDateStr) {
+        var due = parseLocalDateStr(dueDateStr);
+        var y = due.getFullYear(), m = due.getMonth(), d = due.getDate();
+        if (d < 2) { m -= 1; }
+        return new Date(y, m, 2);
+    }
+
+    // Every 2nd-of-month date from the next upcoming opportunity (today's own 2nd counts if
+    // today IS the 2nd — it has not passed yet today) through the last eligible date inclusive.
+    // Returns [] when the last eligible date is already in the past relative to today (the
+    // overdue case) or otherwise before the next upcoming opportunity.
+    function getUpcomingEligibleTransferDates(dueDateStr) {
+        var last = getLastEligibleTransferDate(dueDateStr);
+        var today = cashflowDateOnly(new Date());
+        var firstCandidate = new Date(today.getFullYear(), today.getMonth(), 2);
+        if (firstCandidate.getTime() < today.getTime()) {
+            firstCandidate = new Date(today.getFullYear(), today.getMonth() + 1, 2);
+        }
+        var dates = [];
+        var cursor = firstCandidate;
+        while (cursor.getTime() <= last.getTime()) {
+            dates.push(cursor);
+            cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 2);
+        }
+        return dates;
+    }
+
+    // Milestone 5: the reminder needs its OWN date sequence for the same deadline — "today"
+    // itself counts as an immediate opportunity (not "the next upcoming 2nd", which is what the
+    // Goals-card view uses) whenever the reminder is actually showing (on/after the 2nd, or the
+    // obligation is overdue). Before the 2nd (day 1 only), today is not yet a real opportunity for
+    // a NON-overdue obligation, so this falls back to the exact same "next upcoming 2nd" sequence
+    // the card uses — nothing appears artificially immediate on day 1. An already-overdue
+    // deadline returns [] here too (same convention as getUpcomingEligibleTransferDates) — the
+    // overdue amount is handled separately, in full, by buildGoalReminderInfo() below.
+    function getReminderEligibleTransferDates(dueDateStr) {
+        var last = getLastEligibleTransferDate(dueDateStr);
+        var today = cashflowDateOnly(new Date());
+        if (today.getTime() > last.getTime()) { return []; }
+        if (today.getDate() < 2) { return getUpcomingEligibleTransferDates(dueDateStr); }
+        var dates = [today];
+        var cursor = new Date(today.getFullYear(), today.getMonth() + 1, 2);
+        while (cursor.getTime() <= last.getTime()) {
+            dates.push(cursor);
+            cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 2);
+        }
+        return dates;
+    }
+
+    // Single-deadline schedule builder over an ALREADY-COMPUTED list of eligible dates — the
+    // shared core both buildDeadlineSchedule() (Goals card: "next upcoming 2nd" cadence) and
+    // Milestone 5's reminder scheduler (getReminderEligibleTransferDates(): "today is immediate")
+    // reduce to. Round up to a whole shekel; the final date absorbs whatever remainder is left, so
+    // per-date amounts always sum to EXACTLY `remaining`; never negative; an empty `eligibleDates`
+    // with remaining>0 means overdue, never a division by zero.
+    function buildDeadlineScheduleFromDates(remaining, dueDateStr, eligibleDates) {
+        var isCompleted = remaining <= 0;
+        var isOverdue = !isCompleted && eligibleDates.length === 0;
+
+        var suggestedMonthly = null;
+        var perDateAmounts = [];
+        if (!isCompleted && !isOverdue) {
+            suggestedMonthly = Math.ceil(remaining / eligibleDates.length);
+            var runningRemaining = remaining;
+            for (var i = 0; i < eligibleDates.length; i++) {
+                var isLast = (i === eligibleDates.length - 1);
+                var amt = isLast ? runningRemaining : Math.min(suggestedMonthly, runningRemaining);
+                amt = Math.max(round2(amt), 0);
+                perDateAmounts.push({ date: eligibleDates[i], amount: amt });
+                runningRemaining = round2(runningRemaining - amt);
+            }
+        }
+        return { remaining: remaining, dueDate: dueDateStr, isCompleted: isCompleted, isOverdue: isOverdue, eligibleDates: eligibleDates, suggestedMonthly: suggestedMonthly, perDateAmounts: perDateAmounts };
+    }
+
+    // Goals-card scheduler — unchanged behavior/signature from Milestone 4, now a thin wrapper
+    // over the shared core above. This is used PER BUCKET by buildGoalScheduleInfo() below.
+    function buildDeadlineSchedule(remaining, dueDateStr) {
+        var isCompleted = remaining <= 0;
+        var eligibleDates = isCompleted ? [] : getUpcomingEligibleTransferDates(dueDateStr);
+        return buildDeadlineScheduleFromDates(remaining, dueDateStr, eligibleDates);
+    }
+
+    // Milestone 5 reminder scheduler — same shared core, "today is immediate" date sequence.
+    function buildReminderDeadlineSchedule(remaining, dueDateStr) {
+        var isCompleted = remaining <= 0;
+        var eligibleDates = isCompleted ? [] : getReminderEligibleTransferDates(dueDateStr);
+        return buildDeadlineScheduleFromDates(remaining, dueDateStr, eligibleDates);
+    }
+
+    // Milestone 4 correction (approved product decision, replaces the earlier "earliest date
+    // funds the entire goal" rule): true COMPONENT-SPECIFIC deadline planning. Each component (or
+    // the flat goal itself, when it has no components) is its own independent funding "bucket"
+    // with its own due date and its own buildDeadlineSchedule() — so an earlier component is
+    // always funded by its OWN effective date, never merely implied by a pace set for a later
+    // sibling/parent deadline.
+    //
+    // The single pooled savedAmount + confirmedTransfers total is not attributed per-component in
+    // the data model, so it must be ATTRIBUTED for scheduling purposes — done here via the
+    // simplest defensible rule (not an invented proportional-split model): earliest-deadline-first.
+    // Buckets are sorted by due date and the pool is applied to the earliest bucket first, then
+    // the next, etc. — the same order that money would actually need to be spent in reality, so a
+    // component due sooner is never left looking underfunded just because a later component's
+    // money happens to sit in the same undifferentiated pool.
+    //
+    // Every bucket's own perDateAmounts are then merged into one combined per-calendar-date total
+    // (mergedPerDateAmounts) — this is what actually answers "how much do I need to transfer on
+    // the 2nd of next month," accounting for every still-open component at once. nextTransferDate/
+    // nextTransferAmount expose the single soonest such combined figure for the headline UI text.
+    // Shared bucket-building core: given a goal and a deadline-scheduler function (either
+    // buildDeadlineSchedule — Goals card — or buildReminderDeadlineSchedule — Milestone 5
+    // reminder), builds the exact same funding buckets, FIFO pool allocation, and merged
+    // per-date view either way. This is the ONE place bucket construction happens — the two
+    // call sites below (buildGoalScheduleInfo/buildGoalReminderInfo) never duplicate it, so the
+    // Goals card and the reminder can never disagree about target/saved/confirmed/remaining or
+    // about which bucket owns how much of the pool — only the DATE SEQUENCE each deadline is
+    // scheduled against legitimately differs between the two (by design: the reminder answers
+    // "what do I need to pay right now," the card answers "what's the ongoing monthly pace").
+    function buildGoalFundingBuckets(goal, deadlineSchedulerFn) {
+        var target = goalTargetAmount(goal);
+        var saved = round2(goal.savedAmount || 0);
+        var confirmed = goalConfirmedTransfersTotal(goal);
+        var remaining = goalRemainingAmount(goal);
+        var pool = round2(saved + confirmed);
+
+        var rawBuckets = [];
+        if (goal.components && goal.components.length > 0) {
+            for (var i = 0; i < goal.components.length; i++) {
+                var c = goal.components[i];
+                rawBuckets.push({ key: c.id, label: c.name, amount: c.amount, dueDate: resolveComponentEffectiveDueDate(c, goal) });
+            }
+        } else {
+            rawBuckets.push({ key: 'goal', label: goal.title, amount: target, dueDate: goal.dueDate });
+        }
+        rawBuckets.sort(function (a, b) { return a.dueDate < b.dueDate ? -1 : (a.dueDate > b.dueDate ? 1 : 0); });
+
+        var poolRemaining = pool;
+        var buckets = [];
+        for (var j = 0; j < rawBuckets.length; j++) {
+            var rb = rawBuckets[j];
+            var allocated = round2(Math.max(0, Math.min(rb.amount, poolRemaining)));
+            poolRemaining = round2(poolRemaining - allocated);
+            var bucketRemaining = Math.max(round2(rb.amount - allocated), 0);
+            var sched = deadlineSchedulerFn(bucketRemaining, rb.dueDate);
+            buckets.push({
+                key: rb.key, label: rb.label, amount: rb.amount, saved: allocated,
+                remaining: sched.remaining, dueDate: rb.dueDate,
+                isCompleted: sched.isCompleted, isOverdue: sched.isOverdue,
+                eligibleDates: sched.eligibleDates, suggestedMonthly: sched.suggestedMonthly,
+                perDateAmounts: sched.perDateAmounts
+            });
+        }
+
+        var isCompleted = remaining <= 0;
+        var isOverdue = false;
+        for (var k = 0; k < buckets.length; k++) { if (buckets[k].isOverdue) { isOverdue = true; break; } }
+
+        var mergedMap = {};
+        var mergedKeys = [];
+        for (var m = 0; m < buckets.length; m++) {
+            var pd = buckets[m].perDateAmounts;
+            for (var n = 0; n < pd.length; n++) {
+                var dk = cashflowDateKey(pd[n].date);
+                if (!(dk in mergedMap)) { mergedMap[dk] = { date: pd[n].date, amount: 0 }; mergedKeys.push(dk); }
+                mergedMap[dk].amount = round2(mergedMap[dk].amount + pd[n].amount);
+            }
+        }
+        mergedKeys.sort();
+        var mergedPerDateAmounts = [];
+        for (var p = 0; p < mergedKeys.length; p++) { mergedPerDateAmounts.push(mergedMap[mergedKeys[p]]); }
+
+        // Kept for any caller still expecting a single "effective due date": the earliest due
+        // date among buckets that STILL need money — an already-funded early component no longer
+        // drives urgency, unlike the old rule this replaces.
+        var effectiveDueDate = goal.dueDate;
+        for (var q = 0; q < buckets.length; q++) {
+            if (buckets[q].remaining > 0) { effectiveDueDate = buckets[q].dueDate; break; }
+        }
+
+        return {
+            target: target,
+            saved: saved,
+            confirmed: confirmed,
+            remaining: remaining,
+            isCompleted: isCompleted,
+            isOverdue: isOverdue,
+            effectiveDueDate: effectiveDueDate,
+            buckets: buckets,
+            mergedPerDateAmounts: mergedPerDateAmounts,
+            nextTransferDate: mergedPerDateAmounts.length ? mergedPerDateAmounts[0].date : null,
+            nextTransferAmount: mergedPerDateAmounts.length ? mergedPerDateAmounts[0].amount : null
+        };
+    }
+
+    // Milestone 4 correction (approved product decision, replaces the earlier "earliest date
+    // funds the entire goal" rule): true COMPONENT-SPECIFIC deadline planning, via the shared
+    // buildGoalFundingBuckets() core above with the Goals-card "next upcoming 2nd" scheduler.
+    // Byte-for-byte unchanged output from before this refactor — same function name, same
+    // signature, same values for every existing caller (the Goals card).
+    function buildGoalScheduleInfo(goal) {
+        return buildGoalFundingBuckets(goal, buildDeadlineSchedule);
+    }
+
+    // Milestone 5: reminder-specific view — same shared bucket core, "today is immediate"
+    // scheduler. See buildGoalReminderInfo() further below for the reminder-facing wrapper that
+    // adds the overdue-vs-today split the reminder UI actually needs.
+    function buildGoalReminderScheduleInfo(goal) {
+        return buildGoalFundingBuckets(goal, buildReminderDeadlineSchedule);
+    }
+
+    // Milestone 5: the reminder period is simply "which calendar month is today in," in the same
+    // local-date-derived YYYY-MM shape confirmedTransfers.reminderPeriod records use — reuses
+    // todayStr() (already local-date-safe, no UTC risk) rather than a new date formatter.
+    function getCurrentReminderPeriod() {
+        return todayStr().slice(0, 7);
+    }
+
+    // Legacy-compatible: a positive confirmedTransfers record already covers a goal for "the
+    // current period" if either its own reminderPeriod matches, OR — for an older 2-field
+    // {date, amount} record that predates this field — its valid local transfer date falls in
+    // the same YYYY-MM. Any positive record for the period counts, per the approved rule ("any
+    // positive amount, including a partial amount, counts as that goal's confirmed transfer for
+    // the current reminder period") — no comparison against the suggested amount is made here.
+    function isGoalHandledForPeriod(goal, period) {
+        var list = goal.confirmedTransfers || [];
+        for (var i = 0; i < list.length; i++) {
+            var rec = list[i];
+            if (!(rec.amount > 0)) { continue; }
+            var recPeriod = (typeof rec.reminderPeriod === 'string' && rec.reminderPeriod) ? rec.reminderPeriod : (rec.date || '').slice(0, 7);
+            if (recPeriod === period) { return true; }
+        }
+        return false;
+    }
+
+    // Milestone 5: builds the reminder-facing view for one goal — the overdue amount (if any) is
+    // shown and summed SEPARATELY from today's regular contribution (never silently merged into
+    // one undifferentiated number, and never causes a later, genuinely-on-time component to be
+    // mislabeled overdue). `suggestedTotal` is the exact amount this goal's reminder row proposes
+    // — always >= 0, never NaN/Infinity by construction (every input is already a round2()'d,
+    // Math.max-guarded non-negative number from buildGoalFundingBuckets()/
+    // buildDeadlineScheduleFromDates()).
+    function buildGoalReminderInfo(goal) {
+        var funding = buildGoalReminderScheduleInfo(goal);
+        var today = cashflowDateOnly(new Date());
+        var todayKey = cashflowDateKey(today);
+        var overdueAmount = 0;
+        var todayContribution = 0;
+        for (var i = 0; i < funding.buckets.length; i++) {
+            var b = funding.buckets[i];
+            if (b.isCompleted) { continue; }
+            if (b.isOverdue) {
+                overdueAmount = round2(overdueAmount + b.remaining);
+            } else if (b.perDateAmounts.length && cashflowDateKey(b.perDateAmounts[0].date) === todayKey) {
+                todayContribution = round2(todayContribution + b.perDateAmounts[0].amount);
+            }
+        }
+        var suggestedTotal = round2(overdueAmount + todayContribution);
+        return {
+            goal: goal,
+            target: funding.target,
+            saved: funding.saved,
+            confirmed: funding.confirmed,
+            remaining: funding.remaining,
+            buckets: funding.buckets,
+            overdueAmount: overdueAmount,
+            todayContribution: todayContribution,
+            suggestedTotal: suggestedTotal,
+            remainingAfterSuggested: Math.max(round2(funding.remaining - suggestedTotal), 0)
+        };
+    }
+
+    // Milestone 5: whether `goal` should appear in the consolidated reminder RIGHT NOW. Every
+    // input is one of the explicitly-approved deterministic sources — no second persistent
+    // reminder-state store: active/completed state (isArchived, suggestedTotal<=0 from a
+    // fully-funded goal), the confirmed-transfer ledger (isGoalHandledForPeriod), and the
+    // calculation engine's own overdue/today-due determination (suggestedTotal itself, which is
+    // already 0 for a goal that isn't actually due yet — e.g. before the 2nd, or a component due
+    // further out than today). A goal's OWN createdAt is not read here directly: it doesn't need
+    // to be — a freshly created goal's schedule is computed exactly like any other goal's, so it
+    // naturally becomes due (or not) the instant its own due date/component dates say so, with no
+    // separate "is this a new goal" branch required.
+    function isGoalDueForReminderNow(goal) {
+        if (goal.isArchived) { return false; }
+        var info = buildGoalReminderInfo(goal);
+        if (info.suggestedTotal <= 0) { return false; }
+        if (isGoalHandledForPeriod(goal, getCurrentReminderPeriod())) { return false; }
+        return true;
+    }
+
+    // The full consolidated due-list for the reminder overlay — every active, invalid-data-free,
+    // currently-due goal with its reminder info attached, goal-array order preserved (no
+    // reordering invented). Returns [] immediately (no computation attempted) when the local
+    // Goals dataset itself is invalid, per the explicit "must not be processed" requirement.
+    function getGoalsDueForReminder() {
+        if (!goalsState.valid) { return []; }
+        var due = [];
+        for (var i = 0; i < goals.length; i++) {
+            var g = goals[i];
+            if (g.isArchived) { continue; }
+            var info = buildGoalReminderInfo(g);
+            if (info.suggestedTotal <= 0) { continue; }
+            if (isGoalHandledForPeriod(g, getCurrentReminderPeriod())) { continue; }
+            due.push({ goal: g, info: info });
+        }
+        return due;
+    }
+
     function loadAppSettings() {
         var defaults = getDefaultAppSettings();
         var raw = null;
@@ -2606,6 +3363,13 @@
     var categoryConfig = loadPreviewCategoryConfig();
     var appSettings = loadAppSettings();
     var activityLog = loadActivityLog();
+    // Milestone 4: loaded early alongside items/categoryConfig/activityLog, same reasoning as the
+    // comment below about CATEGORY_TILE_ORDER_KEY — declared before any render call reads it.
+    // Milestone 4 correction: goalsState.valid gates the entire Goals screen (integrity-warning
+    // branch) and every mutation (saveGoals()'s guard) — `goals` is [] in memory whenever invalid,
+    // but is NEVER treated as real data or written back in that case; see loadGoalsState().
+    var goalsState = loadGoalsState();
+    var goals = goalsState.goals;
     var lastAutoArchivedTitles = [];
     var appBackgroundedAt = null;
     var settingsPinFormMode = null;
@@ -2649,6 +3413,42 @@
     // reset to null on page load.
     var previewAddMode = null;
     var previewAddCategoryKey = null;
+
+    // Milestone 4: Goals screen UI-only state — never persisted, always reset to defaults on page
+    // load, same convention as previewEditingId/previewAddMode above.
+    var goalsExpandedId = null;          // id of the one inline-expanded goal card, or null
+    var goalsShowArchived = false;       // active/archived list toggle (mirrors setTxFilter's two states)
+    var goalCreateFormOpen = false;      // new-goal form open at the top of the Goals screen
+    var goalEditingId = null;            // id of the goal currently showing its inline edit form
+    var goalComponentFormFor = null;     // goal id whose add/edit-component form is open, or null
+    var goalComponentEditingId = null;   // component id being edited (null = the open form is "add new")
+    var goalArchiveConfirmId = null;     // goal id showing the inline "archive this goal?" confirm
+    var goalRemoveComponentConfirm = null; // {goalId, componentId} showing the inline remove-component confirm
+    var goalsIntegrityResetConfirm = false; // showing the "reset corrupted goals data?" destructive confirm
+
+    // Milestone 5: Goals reminder overlay state — ALL of this is transient, session-only, in-
+    // memory UI state, exactly like the vars above. None of it is ever written to localStorage or
+    // included in a backup; "remind later"/postponement in particular MUST NOT be persisted per
+    // the approved spec, which this satisfies simply by being a plain `var` that resets on every
+    // fresh page load, the same way every other transient flag in this file already does.
+    //
+    // Per-goal/per-period suppression (audit correction — replaces a single global dismissal
+    // flag, which incorrectly blocked an unrelated goal's reminder for the rest of the session):
+    // keyed by "<reminderPeriod>::<goalId>", so postponing/confirming the goals CURRENTLY SHOWN in
+    // one opening of the dialog never prevents a different goal — created before or after that
+    // moment — from opening its own reminder later in the same session. See
+    // suppressReminderDueList() below, the one place tokens are ever added. Ordinary navigation
+    // never reopens an already-suppressed goal either (checkAndShowGoalsReminder() only ever fires
+    // at page load and right after creating a goal, never on plain screen changes); a fresh reload
+    // clears this object entirely, exactly like the flag it replaces did.
+    var reminderSuppressedTokens = {};
+    var reminderOpen = false;
+    var reminderMode = 'summary'; // 'summary' | 'custom'
+    var reminderDueList = [];     // snapshot captured at open time: [{goal, info}, ...]
+    var reminderCustomAmounts = {}; // goalId -> raw string currently in that row's input
+    var reminderWriteInProgress = false;
+    var reminderPreviouslyFocusedEl = null;
+    var reminderErrorMessage = null;
 
     // Version 1.1, Stage 1: which category key (if any) the Transactions screen is currently
     // filtered to, set only via clicking a Home category tile (filterTransactionsByCategory()) and
@@ -2951,6 +3751,13 @@
     // source of truth for that one piece of UI state instead.
     var balanceAnchorFormExpanded = false;
 
+    // Milestone 3: UI-only state for the Forecast screen's day-horizon selector and the
+    // collapsed "תחזית חודשית מורחבת" section. Neither is persisted (resets to the 30-day/
+    // collapsed default on reload), matching the existing balanceAnchorFormExpanded/
+    // previewForecastView convention of transient, in-memory-only UI state.
+    var forecastPeriodDays = 30;
+    var monthlyForecastExpanded = false;
+
     function renderCashflowInsightsFromRealData() {
         var summary = buildCashflowSummary();
 
@@ -3020,21 +3827,10 @@
             cards.push({ title: 'צפוי לרדת עד ההכנסה הבאה', value: 'לא ידוע', note: 'אין הכנסה עתידית מוגדרת שממנה ניתן לחשב', tone: 'normal' });
         }
 
-        var lowestNegative = summary.currentMonth.lowest < 0;
-        cards.push({
-            title: 'נקודת השפל (מהיום עד סוף החודש)',
-            value: formatHomeCurrency(summary.currentMonth.lowest),
-            note: 'הנקודה הנמוכה ביותר הצפויה מהיום/מחר ועד תום החודש הנוכחי — לא נקודת השפל ההיסטורית של החודש.',
-            tone: lowestNegative ? 'danger' : 'normal'
-        });
-
-        var eomNegative = summary.currentMonth.endOfMonth < 0;
-        cards.push({
-            title: 'תחזית סוף חודש',
-            value: formatHomeCurrency(summary.currentMonth.endOfMonth),
-            note: 'היתרה הצפויה בסוף ' + summary.currentMonth.label,
-            tone: eomNegative ? 'danger' : 'normal'
-        });
+        // Milestone 3: the current-month-only "נקודת השפל"/"תחזית סוף חודש" cards that used to
+        // sit here are gone — superseded by the period-scoped equivalents in
+        // #forecast-period-stats (see renderForecastPeriodSection()), so the same concept is
+        // never shown twice at two different, potentially-confusing scopes at once.
 
         var feedHtml = '';
         for (var i = 0; i < cards.length; i++) {
@@ -3053,34 +3849,22 @@
         var feedEl = document.getElementById('cashflow-summary-feed');
         if (feedEl) { feedEl.innerHTML = feedHtml; }
 
-        var events = summary.timelineEvents || [];
-        function buildTimelineRowHtml(ev) {
-            return '<div class="attention-item">' +
-                '<div>' +
-                    '<div class="attention-title">' + escapeHtml(ev.title || '') + '</div>' +
-                    '<div class="attention-detail">' + escapeHtml(ev.date.toLocaleDateString('he-IL')) + '</div>' +
-                '</div>' +
-                '<div class="attention-amount">' + escapeHtml(formatSignedCurrency(ev.amount)) + '</div>' +
-            '</div>';
-        }
-        var previewEl = document.getElementById('cashflow-timeline-preview');
-        var fullEl = document.getElementById('cashflow-timeline-full');
-        if (previewEl) {
-            if (events.length === 0) {
-                previewEl.innerHTML = '<div class="insight-note">אין אירועים עתידיים להצגה בציר הזמן.</div>';
-            } else {
-                var previewHtml = '';
-                for (var p = 0; p < Math.min(3, events.length); p++) { previewHtml += buildTimelineRowHtml(events[p]); }
-                previewEl.innerHTML = previewHtml;
-            }
-        }
-        if (fullEl) {
-            var fullHtml = '';
-            for (var f = 0; f < events.length; f++) { fullHtml += buildTimelineRowHtml(events[f]); }
-            fullEl.innerHTML = fullHtml;
-        }
-        var toggleBtn = document.getElementById('cashflow-timeline-toggle-btn');
-        if (toggleBtn) { toggleBtn.style.display = (events.length > 3) ? '' : 'none'; }
+        // Milestone 3: the cash-flow timeline (#cashflow-timeline-preview/-full) is no longer
+        // populated here — it now comes from the SAME period-scoped result as the graph/stats,
+        // via renderForecastPeriodSection()/buildTimelineRowHtml() below, so it can never
+        // disagree with them. Hero + the 3 summary cards above are all this function still owns.
+    }
+
+    // Shared by renderForecastPeriodSection() below — same .attention-item markup/escaping
+    // convention as every other existing row in this file.
+    function buildTimelineRowHtml(ev) {
+        return '<div class="attention-item">' +
+            '<div>' +
+                '<div class="attention-title">' + escapeHtml(ev.title || '') + '</div>' +
+                '<div class="attention-detail">' + escapeHtml(ev.date.toLocaleDateString('he-IL')) + '</div>' +
+            '</div>' +
+            '<div class="attention-amount">' + escapeHtml(formatSignedCurrency(ev.amount)) + '</div>' +
+        '</div>';
     }
 
     // Show/hide the full scrollable timeline list vs. the 3-item preview. Pure display toggle,
@@ -3127,6 +3911,199 @@
         balanceAnchorFormExpanded = false;
         renderCashflowInsightsFromRealData();
         renderForecast();
+        renderForecastPeriodSection();
+    }
+
+    // =====================================================================================
+    // ===== Milestone 3: rendering for the 30/60/90-day period-scoped Forecast section —    =====
+    // ===== negative-balance warning, lowest/end-of-period stat cards, the cumulative        =====
+    // ===== projected-balance graph, and the cash-flow timeline. ONE buildPeriodCashflowForecast() =====
+    // ===== call per render feeds all four, so they cannot disagree (requirement in the      =====
+    // ===== Milestone 3 spec). Called on initial load, after any data mutation (from          =====
+    // ===== renderAllPreviewScreens()), on period-button click, and after an anchor update.   =====
+    // =====================================================================================
+
+    function setForecastPeriodDays(days) {
+        forecastPeriodDays = days;
+        renderForecastPeriodSection();
+    }
+
+    function renderForecastPeriodSection() {
+        var btn30 = document.getElementById('forecast-period-btn-30');
+        var btn60 = document.getElementById('forecast-period-btn-60');
+        var btn90 = document.getElementById('forecast-period-btn-90');
+        [btn30, btn60, btn90].forEach(function (b) { if (b) { b.classList.remove('active'); } });
+        var activeBtn = document.getElementById('forecast-period-btn-' + forecastPeriodDays);
+        if (activeBtn) { activeBtn.classList.add('active'); }
+
+        var timelineTitleEl = document.getElementById('cashflow-timeline-title');
+        if (timelineTitleEl) { timelineTitleEl.textContent = '📅 ציר תזרים — ' + forecastPeriodDays + ' הימים הקרובים'; }
+
+        var negBannerEl = document.getElementById('forecast-period-negative-banner');
+        var statsEl = document.getElementById('forecast-period-stats');
+        var chartSummaryEl = document.getElementById('forecast-period-chart-summary');
+        var svg = document.getElementById('forecast-period-svg');
+        var previewEl = document.getElementById('cashflow-timeline-preview');
+        var fullEl = document.getElementById('cashflow-timeline-full');
+        var toggleBtn = document.getElementById('cashflow-timeline-toggle-btn');
+
+        var pf = buildPeriodCashflowForecast(forecastPeriodDays);
+
+        if (!pf.anchorIsSet) {
+            // Honest empty state — never a synthetic/misleading balance. Same reasoning as the
+            // hero's own "הגדר יתרת בסיס" state above; nothing here can render without a real
+            // starting balance, so nothing here pretends to.
+            if (negBannerEl) { negBannerEl.innerHTML = ''; }
+            if (statsEl) {
+                statsEl.innerHTML = '<div class="insight-note">נמוך ביותר וסוף-התקופה יוצגו לאחר הגדרת יתרת הבסיס למעלה.</div>';
+            }
+            if (svg) { svg.innerHTML = ''; }
+            if (chartSummaryEl) { chartSummaryEl.textContent = 'הגרף יוצג לאחר הגדרת יתרת בסיס.'; }
+            if (svg) { svg.removeAttribute('aria-label'); }
+            if (previewEl) { previewEl.innerHTML = ''; }
+            if (fullEl) { fullEl.innerHTML = ''; }
+            if (toggleBtn) { toggleBtn.style.display = 'none'; }
+            return;
+        }
+
+        if (negBannerEl) {
+            negBannerEl.innerHTML = pf.isNegative ?
+                ('<div class="insight-card danger">' +
+                    '<div class="insight-icon">⚠️</div>' +
+                    '<div class="insight-body">' +
+                        '<div class="insight-title">אזהרת תחזית</div>' +
+                        '<div class="insight-value">' + escapeHtml(formatHomeCurrency(pf.lowest)) + '</div>' +
+                        '<div class="insight-note">' + escapeHtml('היתרה הצפויה צונחת מתחת לאפס בטווח ' + forecastPeriodDays + ' הימים שנבחר (ב-' + pf.lowestDate.toLocaleDateString('he-IL') + ').') + '</div>' +
+                    '</div>' +
+                '</div>') : '';
+        }
+
+        if (statsEl) {
+            var lowestToneClass = pf.lowest < 0 ? ' danger' : '';
+            var lowestIcon = pf.lowest < 0 ? '⚠️' : '📉';
+            var endToneClass = pf.endBalance < 0 ? ' danger' : '';
+            var endIcon = pf.endBalance < 0 ? '⚠️' : '📊';
+            statsEl.innerHTML =
+                '<div class="insight-card' + lowestToneClass + '">' +
+                    '<div class="insight-icon">' + lowestIcon + '</div>' +
+                    '<div class="insight-body">' +
+                        '<div class="insight-title">נמוך ביותר בתקופה</div>' +
+                        '<div class="insight-value">' + escapeHtml(formatHomeCurrency(pf.lowest)) + '</div>' +
+                        '<div class="insight-note">' + escapeHtml('בתאריך ' + pf.lowestDate.toLocaleDateString('he-IL')) + '</div>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="insight-card' + endToneClass + '">' +
+                    '<div class="insight-icon">' + endIcon + '</div>' +
+                    '<div class="insight-body">' +
+                        '<div class="insight-title">צפי בסוף התקופה</div>' +
+                        '<div class="insight-value">' + escapeHtml(formatHomeCurrency(pf.endBalance)) + '</div>' +
+                        '<div class="insight-note">' + escapeHtml('נכון ל-' + pf.cutoffDate.toLocaleDateString('he-IL')) + '</div>' +
+                    '</div>' +
+                '</div>';
+        }
+
+        renderForecastPeriodChart(pf, svg, chartSummaryEl);
+
+        var events = pf.events;
+        if (previewEl) {
+            if (events.length === 0) {
+                previewEl.innerHTML = '<div class="insight-note">אין אירועים עתידיים להצגה בטווח שנבחר.</div>';
+            } else {
+                var previewHtml = '';
+                for (var p = 0; p < Math.min(3, events.length); p++) { previewHtml += buildTimelineRowHtml(events[p]); }
+                previewEl.innerHTML = previewHtml;
+            }
+        }
+        if (fullEl) {
+            var fullHtml = '';
+            for (var f = 0; f < events.length; f++) { fullHtml += buildTimelineRowHtml(events[f]); }
+            fullEl.innerHTML = fullHtml;
+        }
+        if (toggleBtn) {
+            toggleBtn.style.display = (events.length > 3) ? '' : 'none';
+            // A period switch can leave a previously-expanded list showing stale content
+            // momentarily otherwise — force it back to the collapsed 3-item preview on every
+            // re-render so the toggle button's own "הצג הכל" label always matches what's shown.
+            document.getElementById('cashflow-timeline-full').style.display = 'none';
+            if (previewEl) { previewEl.style.display = 'block'; }
+            toggleBtn.textContent = 'הצג הכל';
+        }
+    }
+
+    // Draws the cumulative projected-balance graph as an SVG step chart (balance is flat
+    // between events, then jumps exactly on the day it changes — never a smoothed/interpolated
+    // line, since the underlying balance itself never changes gradually). Colors each held
+    // segment green (>=0) or red (<0) via barPath-adjacent styling reusing the existing
+    // preview-forecast-bar-pos/neg color tokens. No external charting library — plain SVG,
+    // consistent with the existing 6-month bar chart (renderForecast()) elsewhere on this file.
+    function renderForecastPeriodChart(pf, svg, summaryEl) {
+        if (!svg) { return; }
+        var points = pf.points;
+        var W = 300, H = 170, padL = 40, padR = 8, padT = 14, padB = 20;
+        var innerW = W - padL - padR, innerH = H - padT - padB;
+
+        var values = [0];
+        for (var vi = 0; vi < points.length; vi++) { values.push(points[vi].balance); }
+        var minV = Math.min.apply(null, values);
+        var maxV = Math.max.apply(null, values);
+        var range = (maxV - minV) || 1;
+
+        function xOf(dayOffset) { return padL + (pf.days > 0 ? (dayOffset / pf.days) : 0) * innerW; }
+        function yOf(balance) { return padT + innerH - ((balance - minV) / range) * innerH; }
+        var zeroY = yOf(0);
+
+        var parts = [];
+        parts.push('<line x1="' + padL + '" y1="' + zeroY + '" x2="' + (W - padR) + '" y2="' + zeroY + '" stroke="var(--color-border)" stroke-width="1" stroke-dasharray="3,3"></line>');
+
+        // Filled "held balance" rectangles — one per step, colored by the sign of the balance
+        // held during that interval. The vertical boundary between two adjacent rectangles IS
+        // the step's jump; no separate connector shape is needed.
+        for (var i = 0; i < points.length - 1; i++) {
+            var p = points[i], q = points[i + 1];
+            var x1 = xOf(p.dayOffset), x2 = xOf(q.dayOffset), y1 = yOf(p.balance);
+            var fill = (p.balance >= 0) ? 'var(--color-primary-text)' : 'var(--color-danger)';
+            parts.push('<rect x="' + Math.min(x1, x2) + '" y="' + Math.min(y1, zeroY) + '" width="' + Math.max(1, Math.abs(x2 - x1)) + '" height="' + Math.max(1, Math.abs(zeroY - y1)) + '" fill="' + fill + '" fill-opacity="0.16"></rect>');
+        }
+
+        // Staircase outline on top, single pass, same points as the fills above.
+        var strokePts = [];
+        for (var si = 0; si < points.length; si++) {
+            var sx = xOf(points[si].dayOffset), sy = yOf(points[si].balance);
+            strokePts.push(sx + ',' + sy);
+            if (si < points.length - 1) { strokePts.push(xOf(points[si + 1].dayOffset) + ',' + sy); }
+        }
+        parts.push('<polyline points="' + strokePts.join(' ') + '" fill="none" stroke="var(--color-primary-text)" stroke-width="2" stroke-linejoin="round"></polyline>');
+
+        // Lowest-point marker, only when negative (matches the danger-tone stat card above).
+        if (pf.lowest < 0) {
+            var lowestOffset = Math.round((pf.lowestDate.getTime() - pf.todayDate.getTime()) / 86400000);
+            parts.push('<circle cx="' + xOf(lowestOffset) + '" cy="' + yOf(pf.lowest) + '" r="3.5" fill="var(--color-danger)"></circle>');
+        }
+
+        parts.push('<text x="' + padL + '" y="' + (padT - 2) + '" font-size="7" fill="var(--color-text-muted)">' + escapeHtml(formatHomeCurrency(maxV)) + '</text>');
+        parts.push('<text x="' + padL + '" y="' + (H - padB + 12) + '" font-size="7" fill="var(--color-text-muted)">' + escapeHtml(formatHomeCurrency(minV)) + '</text>');
+        parts.push('<text x="' + padL + '" y="' + (H - 4) + '" font-size="7" fill="var(--color-text-muted)">' + escapeHtml(pf.todayDate.toLocaleDateString('he-IL')) + '</text>');
+        parts.push('<text x="' + (W - padR) + '" y="' + (H - 4) + '" font-size="7" fill="var(--color-text-muted)" text-anchor="end">' + escapeHtml(pf.cutoffDate.toLocaleDateString('he-IL')) + '</text>');
+
+        svg.innerHTML = parts.join('');
+
+        var a11ySummary = 'תחזית יתרה מצטברת ל-' + pf.days + ' יום: מ-' + formatHomeCurrency(pf.estimatedTodayBalance) +
+            ' ל-' + formatHomeCurrency(pf.endBalance) + '. הנמוך ביותר: ' + formatHomeCurrency(pf.lowest) +
+            ' בתאריך ' + pf.lowestDate.toLocaleDateString('he-IL') + '.';
+        svg.setAttribute('aria-label', a11ySummary);
+        if (summaryEl) { summaryEl.textContent = a11ySummary; }
+    }
+
+    // Show/hide the pre-existing 6-month monthly forecast + legacy narrative cards. Pure
+    // display toggle — renderForecast()/renderInsightsScreenFromRealData() already keep the
+    // content inside up to date regardless of whether the section is currently visible.
+    function toggleMonthlyForecastSection() {
+        var sectionEl = document.getElementById('monthly-forecast-section');
+        var btn = document.getElementById('monthly-forecast-toggle-btn');
+        if (!sectionEl || !btn) { return; }
+        monthlyForecastExpanded = !monthlyForecastExpanded;
+        sectionEl.style.display = monthlyForecastExpanded ? '' : 'none';
+        btn.textContent = monthlyForecastExpanded ? '📆 תחזית חודשית מורחבת ▴' : '📆 תחזית חודשית מורחבת ▾';
     }
 
     // charge.month/warning.month are the same short month labels (e.g. "אוג׳") computeForecast()
@@ -3140,10 +4117,9 @@
     // different concept from "the next event of any kind", which is what a user reading "מה
     // דורש תשומת לב" actually expects here; per the approved Phase 2C decision, this card now
     // shows the new engine's own coherent nextEvent instead of keeping two different answers to
-    // the same question on screen. Both old functions remain defined (still called from
-    // buildNarrative(), whose relevant output fields are already unused/dead — see the Phase 2B
-    // consumer-mapping report) — deliberately not deleted, per the "no unrelated cleanup" scope
-    // rule for this phase.
+    // the same question on screen. Milestone 6 update: getBiggestUpcomingCharge()/
+    // getForecastWarning() (and computeForecast() itself) were confirmed unreachable and removed
+    // — see the removal note near computeForecast()'s former location for the full evidence.
     function renderAttentionListFromRealData() {
         var cards = [];
         var cashflowSummaryForAttention = buildCashflowSummary(items);
@@ -3276,6 +4252,976 @@
     // loaded); also called from renderAllPreviewScreens() below so it stays in sync with any
     // later mutation.
     renderForecast();
+
+    // Milestone 3: draws the 30/60/90-day period-scoped Forecast section (graph/stats/warning/
+    // timeline). Same ordering guarantee as the two render calls directly above; also called
+    // from renderAllPreviewScreens() below.
+    renderForecastPeriodSection();
+
+    // Milestone 4: draws the Goals screen. Same ordering guarantee (goals/items/categoryConfig
+    // already loaded above); also called from renderAllPreviewScreens() below.
+    renderGoalsScreenFromRealData();
+
+    // Milestone 5: the ONE automatic trigger point for the consolidated Goals reminder — checked
+    // once per fresh page load, after goals/goalsState are fully loaded. See
+    // checkAndShowGoalsReminder() for the full eligibility contract (function hoisting makes this
+    // forward reference safe, same pattern already used throughout this file).
+    checkAndShowGoalsReminder();
+
+    // =====================================================================================
+    // ===== Milestone 4: Goals screen — collapsed/expanded cards, create/edit/archive forms, =====
+    // ===== component add/edit/remove, and inline validation. Reuses existing UI patterns    =====
+    // ===== verbatim: .filter-toggle/.filter-btn (active/archived toggle, same as Transactions),=====
+    // ===== .tx-edit-form/.tx-edit-group/.tx-edit-actions (forms), .cat-row-actions/.cat-edit-btn/=====
+    // ===== .cat-delete-btn (compact row actions), and the category-delete inline two-button    =====
+    // ===== confirm pattern (archive/remove-component confirmations). No second "add form"      =====
+    // ===== engine, no second validation convention beyond the two small DOM helpers below.      =====
+    // =====================================================================================
+
+    function findGoalById(id) {
+        for (var i = 0; i < goals.length; i++) { if (goals[i].id === id) { return goals[i]; } }
+        return null;
+    }
+
+    function findComponentById(goal, componentId) {
+        if (!goal) { return null; }
+        for (var i = 0; i < goal.components.length; i++) { if (goal.components[i].id === componentId) { return goal.components[i]; } }
+        return null;
+    }
+
+    // Small, reusable inline-validation DOM helpers shared by every Goals form (create/edit goal,
+    // add/edit component) — add/remove a `.invalid` class plus a `.field-error` message node
+    // directly next to the offending field, WITHOUT re-rendering the form, so whatever the user
+    // already typed in every field is never lost/reset by a failed validation attempt.
+    function clearFieldError(inputEl) {
+        if (!inputEl) { return; }
+        inputEl.classList.remove('invalid');
+        var next = inputEl.nextSibling;
+        if (next && next.classList && next.classList.contains('field-error')) { next.parentNode.removeChild(next); }
+    }
+    function setFieldError(inputEl, message) {
+        if (!inputEl) { return; }
+        clearFieldError(inputEl);
+        inputEl.classList.add('invalid');
+        var err = document.createElement('div');
+        err.className = 'field-error';
+        err.textContent = message;
+        inputEl.parentNode.insertBefore(err, inputEl.nextSibling);
+    }
+
+    function setGoalsShowArchived(showArchived) {
+        goalsShowArchived = !!showArchived;
+        goalsExpandedId = null;
+        goalCreateFormOpen = false;
+        goalEditingId = null;
+        goalComponentFormFor = null;
+        goalComponentEditingId = null;
+        goalArchiveConfirmId = null;
+        goalRemoveComponentConfirm = null;
+        renderGoalsScreenFromRealData();
+    }
+
+    function toggleGoalExpand(id) {
+        goalsExpandedId = (goalsExpandedId === id) ? null : id;
+        goalEditingId = null;
+        goalComponentFormFor = null;
+        goalComponentEditingId = null;
+        goalArchiveConfirmId = null;
+        goalRemoveComponentConfirm = null;
+        renderGoalsScreenFromRealData();
+        // Audit correction: renderGoalsScreenFromRealData() rebuilds #goals-list-area's innerHTML
+        // from scratch, which discards and replaces the very .goal-card-head element the user just
+        // activated (by click OR keyboard) — the browser drops focus to <body> when its focused
+        // element is removed from the DOM. Re-focusing the freshly-rendered head for this SAME goal
+        // keeps a keyboard user's place after both expanding and collapsing a card, instead of
+        // forcing them to Tab from the top of the screen again.
+        var headEl = document.querySelector('.goal-card-head[data-goal-id="' + id + '"]');
+        if (headEl) { headEl.focus(); }
+    }
+
+    function startGoalCreate() {
+        goalCreateFormOpen = true;
+        goalsExpandedId = null;
+        renderGoalsScreenFromRealData();
+    }
+    function cancelGoalCreate() {
+        goalCreateFormOpen = false;
+        renderGoalsScreenFromRealData();
+    }
+
+    function startGoalEdit(id) {
+        goalEditingId = id;
+        goalComponentFormFor = null;
+        goalComponentEditingId = null;
+        goalArchiveConfirmId = null;
+        goalRemoveComponentConfirm = null;
+        renderGoalsScreenFromRealData();
+    }
+    function cancelGoalEdit() {
+        goalEditingId = null;
+        renderGoalsScreenFromRealData();
+    }
+
+    // Shared by both the create form and the edit form — identical fields, only the pre-filled
+    // values and the save/cancel handlers differ. When `existingGoal` already has components,
+    // the target-amount field becomes a read-only computed display instead of an input (the
+    // "never two independently editable totals" rule) rather than being hidden entirely, so the
+    // user always sees where the number comes from.
+    function buildGoalFormHtml(existingGoal) {
+        var isEdit = !!existingGoal;
+        var hasComponents = isEdit && existingGoal.components && existingGoal.components.length > 0;
+        var titleVal = isEdit ? escapeHtml(existingGoal.title) : '';
+        var dateVal = isEdit ? existingGoal.dueDate : '';
+        var amountVal = isEdit ? existingGoal.targetAmount : '';
+        var savedVal = isEdit ? existingGoal.savedAmount : '';
+        var saveOnclick = isEdit ? ('saveGoalEdit(\'' + existingGoal.id + '\')') : 'saveNewGoal()';
+        var cancelOnclick = isEdit ? 'cancelGoalEdit()' : 'cancelGoalCreate()';
+
+        var amountFieldHtml;
+        if (hasComponents) {
+            amountFieldHtml = '<div class="tx-edit-group"><label>סכום יעד (מחושב אוטומטית מסכום הרכיבים)</label>' +
+                '<div style="padding:9px 12px;font-size:14px;color:var(--color-text-muted);">' + escapeHtml(formatHomeCurrency(goalTargetAmount(existingGoal))) + '</div></div>';
+        } else {
+            amountFieldHtml = '<div class="tx-edit-group"><label>סכום יעד</label><input type="number" id="goal-form-amount" placeholder="₪" value="' + (amountVal === '' ? '' : amountVal) + '"></div>';
+        }
+
+        return '<div class="tx-edit-form">' +
+            '<div style="font-size:14.5px;font-weight:700;margin-bottom:12px;">' + (isEdit ? 'עריכת יעד' : 'יעד חיסכון חדש') + '</div>' +
+            '<div class="tx-edit-group"><label>שם היעד</label><input type="text" id="goal-form-title" placeholder="לדוגמה: ביטוח רכב" value="' + titleVal + '"></div>' +
+            amountFieldHtml +
+            '<div class="tx-edit-group"><label>תאריך יעד</label><input type="date" id="goal-form-date" value="' + dateVal + '"></div>' +
+            '<div class="tx-edit-group"><label>נחסך כבר (לא חובה)</label><input type="number" id="goal-form-saved" placeholder="₪0" value="' + (savedVal === '' ? '' : savedVal) + '"></div>' +
+            '<div class="tx-edit-actions">' +
+            '<button type="button" class="tx-edit-save" onclick="' + saveOnclick + '">💾 שמור יעד</button>' +
+            '<button type="button" class="tx-edit-cancel" onclick="' + cancelOnclick + '">ביטול</button>' +
+            '</div></div>';
+    }
+
+    function saveNewGoal() {
+        var titleEl = document.getElementById('goal-form-title');
+        var dateEl = document.getElementById('goal-form-date');
+        var amountEl = document.getElementById('goal-form-amount');
+        var savedEl = document.getElementById('goal-form-saved');
+        clearFieldError(titleEl); clearFieldError(dateEl); clearFieldError(amountEl); clearFieldError(savedEl);
+
+        var valid = true;
+        var title = titleEl.value.trim();
+        if (!title) { setFieldError(titleEl, 'נא להזין שם ליעד.'); valid = false; }
+
+        var dueDate = dateEl.value;
+        if (!isValidDateStr(dueDate)) { setFieldError(dateEl, 'נא לבחור תאריך יעד תקין.'); valid = false; }
+
+        var amount = sanitizePositiveAmount(amountEl.value);
+        if (amount === null) { setFieldError(amountEl, 'נא להזין סכום יעד תקין (גדול מאפס).'); valid = false; }
+
+        var savedRaw = (savedEl.value === '') ? '0' : savedEl.value;
+        var saved = sanitizeNonNegativeAmount(savedRaw);
+        if (saved === null) { setFieldError(savedEl, 'נא להזין סכום שנחסך תקין (0 ומעלה).'); valid = false; }
+
+        if (!valid) { return; }
+
+        var now = nowTimestampStr();
+        goals.push({
+            id: generateGoalsId('goal'), title: title, dueDate: dueDate, targetAmount: amount,
+            savedAmount: saved, components: [], isArchived: false, createdAt: now, updatedAt: now,
+            confirmedTransfers: []
+        });
+        saveGoals();
+        goalCreateFormOpen = false;
+        renderGoalsScreenFromRealData();
+
+        // Milestone 5: "a new active, incomplete goal created after the 2nd becomes reminder-
+        // eligible immediately... show the consolidated reminder during the same application
+        // session." checkAndShowGoalsReminder() itself decides whether this specific new goal
+        // (or any other currently-due goal) actually warrants showing it right now — e.g. a goal
+        // created on day 1 correctly stays quiet until the 2nd, per getReminderEligibleTransferDates().
+        checkAndShowGoalsReminder();
+    }
+
+    function saveGoalEdit(id) {
+        var goal = findGoalById(id);
+        if (!goal) { return; }
+        var titleEl = document.getElementById('goal-form-title');
+        var dateEl = document.getElementById('goal-form-date');
+        var savedEl = document.getElementById('goal-form-saved');
+        var amountEl = document.getElementById('goal-form-amount'); // null when the goal already has components
+        clearFieldError(titleEl); clearFieldError(dateEl); clearFieldError(savedEl); clearFieldError(amountEl);
+
+        var valid = true;
+        var title = titleEl.value.trim();
+        if (!title) { setFieldError(titleEl, 'נא להזין שם ליעד.'); valid = false; }
+
+        var dueDate = dateEl.value;
+        if (!isValidDateStr(dueDate)) { setFieldError(dateEl, 'נא לבחור תאריך יעד תקין.'); valid = false; }
+
+        var savedRaw = (savedEl.value === '') ? '0' : savedEl.value;
+        var saved = sanitizeNonNegativeAmount(savedRaw);
+        if (saved === null) { setFieldError(savedEl, 'נא להזין סכום שנחסך תקין (0 ומעלה).'); valid = false; }
+
+        var hasComponents = goal.components && goal.components.length > 0;
+        var amount = goal.targetAmount;
+        if (!hasComponents) {
+            amount = sanitizePositiveAmount(amountEl.value);
+            if (amount === null) { setFieldError(amountEl, 'נא להזין סכום יעד תקין (גדול מאפס).'); valid = false; }
+        }
+
+        if (!valid) { return; }
+
+        goal.title = title;
+        goal.dueDate = dueDate;
+        goal.savedAmount = saved;
+        if (!hasComponents) { goal.targetAmount = amount; }
+        goal.updatedAt = nowTimestampStr();
+        saveGoals();
+        goalEditingId = null;
+        renderGoalsScreenFromRealData();
+    }
+
+    function startComponentCreate(goalId) {
+        goalComponentFormFor = goalId;
+        goalComponentEditingId = null;
+        goalArchiveConfirmId = null;
+        goalRemoveComponentConfirm = null;
+        renderGoalsScreenFromRealData();
+    }
+    function startComponentEdit(goalId, componentId) {
+        goalComponentFormFor = goalId;
+        goalComponentEditingId = componentId;
+        goalArchiveConfirmId = null;
+        goalRemoveComponentConfirm = null;
+        renderGoalsScreenFromRealData();
+    }
+    function cancelComponentForm() {
+        goalComponentFormFor = null;
+        goalComponentEditingId = null;
+        renderGoalsScreenFromRealData();
+    }
+
+    function buildComponentFormHtml(goalId, existingComponent) {
+        var isEdit = !!existingComponent;
+        var nameVal = isEdit ? escapeHtml(existingComponent.name) : '';
+        var amountVal = isEdit ? existingComponent.amount : '';
+        var dateVal = (isEdit && existingComponent.dueDate) ? existingComponent.dueDate : '';
+        var saveOnclick = isEdit ? ('saveComponentEdit(\'' + goalId + '\',\'' + existingComponent.id + '\')') : ('saveNewComponent(\'' + goalId + '\')');
+        return '<div class="tx-edit-form" style="margin-top:10px;">' +
+            '<div style="font-size:13.5px;font-weight:700;margin-bottom:10px;">' + (isEdit ? 'עריכת רכיב' : 'רכיב חדש') + '</div>' +
+            '<div class="tx-edit-group"><label>שם הרכיב</label><input type="text" id="comp-form-name" placeholder="לדוגמה: ביטוח מקיף" value="' + nameVal + '"></div>' +
+            '<div class="tx-edit-group"><label>סכום</label><input type="number" id="comp-form-amount" placeholder="₪" value="' + (amountVal === '' ? '' : amountVal) + '"></div>' +
+            '<div class="tx-edit-group"><label>תאריך יעד לרכיב זה (לא חובה — ברירת מחדל: תאריך היעד הראשי)</label><input type="date" id="comp-form-date" value="' + dateVal + '"></div>' +
+            '<div class="insight-note">לדוגמה: עבור ביטוח רכב יש להוסיף רק את הכיסויים שנבחרו בפועל — חובה + צד ג׳, או חובה + מקיף.</div>' +
+            '<div class="tx-edit-actions">' +
+            '<button type="button" class="tx-edit-save" onclick="' + saveOnclick + '">💾 שמור רכיב</button>' +
+            '<button type="button" class="tx-edit-cancel" onclick="cancelComponentForm()">ביטול</button>' +
+            '</div></div>';
+    }
+
+    function readComponentFormFields() {
+        var nameEl = document.getElementById('comp-form-name');
+        var amountEl = document.getElementById('comp-form-amount');
+        var dateEl = document.getElementById('comp-form-date');
+        clearFieldError(nameEl); clearFieldError(amountEl); clearFieldError(dateEl);
+
+        var valid = true;
+        var name = nameEl.value.trim();
+        if (!name) { setFieldError(nameEl, 'נא להזין שם לרכיב.'); valid = false; }
+        var amount = sanitizePositiveAmount(amountEl.value);
+        if (amount === null) { setFieldError(amountEl, 'נא להזין סכום תקין (גדול מאפס).'); valid = false; }
+        var dueDate = null;
+        if (dateEl.value) {
+            if (!isValidDateStr(dateEl.value)) { setFieldError(dateEl, 'תאריך לא תקין.'); valid = false; }
+            else { dueDate = dateEl.value; }
+        }
+        if (!valid) { return null; }
+        return { name: name, amount: amount, dueDate: dueDate };
+    }
+
+    function saveNewComponent(goalId) {
+        var goal = findGoalById(goalId);
+        if (!goal) { return; }
+        var fields = readComponentFormFields();
+        if (!fields) { return; }
+        goal.components.push({ id: generateGoalsId('comp'), name: fields.name, amount: fields.amount, dueDate: fields.dueDate });
+        // Keep the STORED targetAmount in sync with the component sum, not just the display layer
+        // (buildGoalCardHtml() already always calls goalTargetAmount() fresh) — otherwise an
+        // exported backup, or any future code reading goal.targetAmount directly, would see a
+        // stale flat value left over from before this goal had any components. This is the one
+        // and only place goal.targetAmount is derived from components; it is never independently
+        // user-editable once components exist (see buildGoalFormHtml()).
+        goal.targetAmount = goalTargetAmount(goal);
+        goal.updatedAt = nowTimestampStr();
+        saveGoals();
+        goalComponentFormFor = null;
+        renderGoalsScreenFromRealData();
+    }
+
+    function saveComponentEdit(goalId, componentId) {
+        var goal = findGoalById(goalId);
+        if (!goal) { return; }
+        var comp = findComponentById(goal, componentId);
+        if (!comp) { return; }
+        var fields = readComponentFormFields();
+        if (!fields) { return; }
+        comp.name = fields.name;
+        comp.amount = fields.amount;
+        comp.dueDate = fields.dueDate;
+        goal.targetAmount = goalTargetAmount(goal);
+        goal.updatedAt = nowTimestampStr();
+        saveGoals();
+        goalComponentFormFor = null;
+        goalComponentEditingId = null;
+        renderGoalsScreenFromRealData();
+    }
+
+    function askRemoveComponent(goalId, componentId) {
+        goalRemoveComponentConfirm = { goalId: goalId, componentId: componentId };
+        goalComponentFormFor = null;
+        goalComponentEditingId = null;
+        goalArchiveConfirmId = null;
+        renderGoalsScreenFromRealData();
+    }
+    function cancelRemoveComponent() {
+        goalRemoveComponentConfirm = null;
+        renderGoalsScreenFromRealData();
+    }
+    function confirmRemoveComponent() {
+        if (!goalRemoveComponentConfirm) { return; }
+        var goal = findGoalById(goalRemoveComponentConfirm.goalId);
+        if (goal) {
+            for (var i = 0; i < goal.components.length; i++) {
+                if (goal.components[i].id === goalRemoveComponentConfirm.componentId) { goal.components.splice(i, 1); break; }
+            }
+            // If components remain, keep targetAmount in sync with their new sum (same reasoning
+            // as saveNewComponent/saveComponentEdit). If that was the LAST component, there is no
+            // user-entered flat amount to fall back to — deliberately leave targetAmount at its
+            // last known value (the sum just before this removal) rather than zeroing it out, so
+            // the goal isn't left with an undefined/zero target; the edit form's amount field
+            // becomes directly editable again from this point since components.length is now 0.
+            if (goal.components.length > 0) { goal.targetAmount = goalTargetAmount(goal); }
+            goal.updatedAt = nowTimestampStr();
+            saveGoals();
+        }
+        goalRemoveComponentConfirm = null;
+        renderGoalsScreenFromRealData();
+    }
+
+    function askArchiveGoal(id) {
+        goalArchiveConfirmId = id;
+        goalComponentFormFor = null;
+        goalComponentEditingId = null;
+        goalRemoveComponentConfirm = null;
+        renderGoalsScreenFromRealData();
+    }
+    function cancelArchiveGoal() {
+        goalArchiveConfirmId = null;
+        renderGoalsScreenFromRealData();
+    }
+    function confirmArchiveToggle(id) {
+        var goal = findGoalById(id);
+        if (goal) {
+            goal.isArchived = !goal.isArchived;
+            goal.updatedAt = nowTimestampStr();
+            saveGoals();
+        }
+        goalArchiveConfirmId = null;
+        goalsExpandedId = null;
+        renderGoalsScreenFromRealData();
+    }
+
+    // Builds one collapsed/expanded goal card. Every user-controlled string (goal.title,
+    // component.name) goes through escapeHtml() before insertion; every onclick argument is a
+    // system-generated id (generateGoalsId()), never raw title/name text.
+    function buildGoalCardHtml(goal) {
+        var target = goalTargetAmount(goal);
+        var saved = round2(goal.savedAmount || 0) + goalConfirmedTransfersTotal(goal);
+        var remaining = goalRemainingAmount(goal);
+        var pct = goalProgressPercent(goal);
+        var schedule = buildGoalScheduleInfo(goal);
+        var expanded = (goalsExpandedId === goal.id);
+        var dueDateObj = parseLocalDateStr(goal.dueDate);
+        var dueDateLabel = dueDateObj ? dueDateObj.toLocaleDateString('he-IL') : '';
+
+        var headerBadge = '';
+        if (schedule.isCompleted) { headerBadge = '<span class="goal-badge goal-badge-completed">הושלם</span>'; }
+        else if (schedule.isOverdue) { headerBadge = '<span class="goal-badge goal-badge-overdue">באיחור</span>'; }
+
+        var headHtml =
+            '<div class="goal-card-head" role="button" tabindex="0" aria-expanded="' + expanded + '" aria-label="' + escapeHtml('יעד: ' + goal.title) + '" data-goal-id="' + goal.id + '" ' +
+                'onclick="toggleGoalExpand(\'' + goal.id + '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();toggleGoalExpand(\'' + goal.id + '\');}">' +
+                '<div class="goal-head-main">' +
+                    '<div class="goal-name">' + escapeHtml(goal.title) + headerBadge + '</div>' +
+                    '<div class="goal-meta-row"><span>יעד: <b>' + escapeHtml(formatHomeCurrency(target)) + '</b></span><span>נותר: <b>' + escapeHtml(formatHomeCurrency(remaining)) + '</b></span></div>' +
+                    '<div class="goal-meta-row"><span>נחסך: <b>' + escapeHtml(formatHomeCurrency(saved)) + '</b></span><span>תאריך יעד: <b>' + escapeHtml(dueDateLabel) + '</b></span></div>' +
+                    '<div class="goal-progress-track"><div class="goal-progress-fill" style="width:' + pct + '%;"></div></div>' +
+                '</div>' +
+                '<div class="goal-chevron">▾</div>' +
+            '</div>';
+
+        var bodyHtml = '';
+        if (expanded) {
+            if (goalEditingId === goal.id) {
+                bodyHtml = '<div class="goal-body-inner">' + buildGoalFormHtml(goal) + '</div>';
+            } else {
+                var compHtml = '';
+                for (var i = 0; i < goal.components.length; i++) {
+                    var c = goal.components[i];
+                    var effDate = resolveComponentEffectiveDueDate(c, goal);
+                    var effDateObj = parseLocalDateStr(effDate);
+                    var effLabel = effDateObj ? effDateObj.toLocaleDateString('he-IL') : '';
+                    var inherited = !c.dueDate;
+                    var isEarly = !inherited && c.dueDate < goal.dueDate;
+                    var badge = inherited ? '<span class="goal-badge goal-badge-inherited">מתאריך היעד</span>' : (isEarly ? '<span class="goal-badge goal-badge-early">מוקדם מתאריך היעד</span>' : '');
+
+                    // Milestone 4 correction: each component now has its own funding bucket (see
+                    // buildGoalScheduleInfo()) — show what's actually still needed for THIS
+                    // component specifically, not just its full face amount, so component-specific
+                    // deadline planning is visible on the component itself, not only in aggregate.
+                    var bucketForComp = null;
+                    for (var bi = 0; bi < schedule.buckets.length; bi++) { if (schedule.buckets[bi].key === c.id) { bucketForComp = schedule.buckets[bi]; break; } }
+                    var fundingBadge = '';
+                    var fundingLine = '';
+                    if (bucketForComp) {
+                        if (bucketForComp.isCompleted) {
+                            fundingBadge = '<span class="goal-badge goal-badge-completed">מומן</span>';
+                        } else if (bucketForComp.isOverdue) {
+                            fundingBadge = '<span class="goal-badge goal-badge-overdue">באיחור</span>';
+                            fundingLine = '<div class="goal-component-date">נותר: ' + escapeHtml(formatHomeCurrency(bucketForComp.remaining)) + '</div>';
+                        } else if (bucketForComp.saved > 0) {
+                            fundingLine = '<div class="goal-component-date">נותר: ' + escapeHtml(formatHomeCurrency(bucketForComp.remaining)) + '</div>';
+                        }
+                    }
+
+                    compHtml += '<div class="goal-component-row">' +
+                        '<div class="goal-component-main">' +
+                            '<div class="goal-component-name">' + escapeHtml(c.name) + '</div>' +
+                            '<div class="goal-component-date">' + escapeHtml(effLabel) + badge + fundingBadge + '</div>' +
+                            fundingLine +
+                        '</div>' +
+                        '<div class="goal-component-amount">' + escapeHtml(formatHomeCurrency(c.amount)) + '</div>' +
+                        '<div class="cat-row-actions">' +
+                            '<button type="button" class="cat-edit-btn" onclick="event.stopPropagation();startComponentEdit(\'' + goal.id + '\',\'' + c.id + '\')">✏️</button>' +
+                            '<button type="button" class="cat-delete-btn" onclick="event.stopPropagation();askRemoveComponent(\'' + goal.id + '\',\'' + c.id + '\')">🗑️</button>' +
+                        '</div>' +
+                    '</div>';
+                }
+                if (goal.components.length > 0) {
+                    compHtml += '<div class="goal-component-total"><span>סה״כ יעד (מרכיבים)</span><span class="goal-total-amount">' + escapeHtml(formatHomeCurrency(target)) + '</span></div>';
+                } else {
+                    compHtml += '<div class="insight-note">אין רכיבים — היעד משתמש בסכום שהוזן ישירות.</div>';
+                }
+
+                // Milestone 4 correction: component-specific deadline planning — each bucket
+                // (component, or the flat goal when it has none) is funded by its OWN due date.
+                // An overdue bucket is named explicitly (only when there is more than one real
+                // component — a single flat goal doesn't need to repeat its own title back to
+                // itself); the combined next-transfer figure covers every still-open bucket at
+                // once, so it can never silently omit an earlier component's own requirement.
+                var scheduleHtml;
+                if (schedule.isCompleted) {
+                    scheduleHtml = '<div class="goal-schedule-note">✅ היעד הושלם — לא נדרשת העברה נוספת.</div>';
+                } else {
+                    var hasRealComponents = goal.components && goal.components.length > 1;
+                    var overdueHtml = '';
+                    for (var oi = 0; oi < schedule.buckets.length; oi++) {
+                        var ob = schedule.buckets[oi];
+                        if (!ob.isOverdue) { continue; }
+                        var obDueObj = parseLocalDateStr(ob.dueDate);
+                        var obDueLabel = obDueObj ? obDueObj.toLocaleDateString('he-IL') : '';
+                        var obLabelPrefix = hasRealComponents ? (escapeHtml(ob.label) + ' — ') : '';
+                        overdueHtml += '<div class="goal-schedule-note danger">⚠️ ' + obLabelPrefix + 'באיחור (' + escapeHtml(formatHomeCurrency(ob.remaining)) + ' נדרש עד ' + escapeHtml(obDueLabel) + ', לא נותרו מועדי העברה).</div>';
+                    }
+                    var nextHtml = '';
+                    if (schedule.nextTransferAmount !== null && schedule.nextTransferAmount > 0) {
+                        var ntLabel = schedule.nextTransferDate.toLocaleDateString('he-IL');
+                        nextHtml = '<div class="goal-schedule-note">💡 העברה קרובה מומלצת: ' + escapeHtml(formatHomeCurrency(schedule.nextTransferAmount)) + ' ב-' + escapeHtml(ntLabel) + '.</div>';
+                    }
+                    scheduleHtml = overdueHtml + nextHtml;
+                    if (!scheduleHtml) { scheduleHtml = '<div class="insight-note">אין מידע תזמון להצגה.</div>'; }
+                }
+
+                var componentFormHtml = '';
+                if (goalComponentFormFor === goal.id) {
+                    componentFormHtml = buildComponentFormHtml(goal.id, goalComponentEditingId ? findComponentById(goal, goalComponentEditingId) : null);
+                }
+
+                var removeConfirmHtml = '';
+                if (goalRemoveComponentConfirm && goalRemoveComponentConfirm.goalId === goal.id) {
+                    var compToRemove = findComponentById(goal, goalRemoveComponentConfirm.componentId);
+                    if (compToRemove) {
+                        removeConfirmHtml = '<div class="goal-inline-confirm">' + escapeHtml('להסיר את הרכיב "' + compToRemove.name + '"?') +
+                            '<div class="tx-edit-actions">' +
+                            '<button type="button" class="settings-danger-btn" onclick="confirmRemoveComponent()">אישור הסרה</button>' +
+                            '<button type="button" class="tx-edit-cancel" onclick="cancelRemoveComponent()">ביטול</button>' +
+                            '</div></div>';
+                    }
+                }
+
+                var archiveConfirmHtml = '';
+                if (goalArchiveConfirmId === goal.id) {
+                    archiveConfirmHtml = '<div class="goal-inline-confirm">' + (goal.isArchived ? 'לשחזר את היעד מהארכיון?' : 'להעביר את היעד לארכיון?') +
+                        '<div class="tx-edit-actions">' +
+                        '<button type="button" class="settings-danger-btn" onclick="confirmArchiveToggle(\'' + goal.id + '\')">' + (goal.isArchived ? 'אישור שחזור' : 'אישור העברה לארכיון') + '</button>' +
+                        '<button type="button" class="tx-edit-cancel" onclick="cancelArchiveGoal()">ביטול</button>' +
+                        '</div></div>';
+                }
+
+                var actionsHtml = '';
+                if (!componentFormHtml && !removeConfirmHtml && !archiveConfirmHtml) {
+                    actionsHtml = '<div class="goal-actions-row">' +
+                        '<button type="button" class="cat-edit-btn" onclick="startGoalEdit(\'' + goal.id + '\')">✏️ עריכה</button>' +
+                        '<button type="button" class="cat-add-toggle" style="padding:6px 10px;font-size:12px;" onclick="startComponentCreate(\'' + goal.id + '\')">+ הוסף רכיב</button>' +
+                        '<button type="button" class="cat-delete-btn" onclick="askArchiveGoal(\'' + goal.id + '\')">' + (goal.isArchived ? '↩️ שחזר מארכיון' : '🗄️ העבר לארכיון') + '</button>' +
+                        '</div>';
+                }
+
+                bodyHtml = '<div class="goal-body-inner">' + compHtml + scheduleHtml + componentFormHtml + removeConfirmHtml + archiveConfirmHtml + actionsHtml + '</div>';
+            }
+        }
+
+        return '<div class="goal-card' + (expanded ? ' expanded' : '') + '">' + headHtml + '<div class="goal-body">' + bodyHtml + '</div></div>';
+    }
+
+    // Milestone 4 correction: destructive, explicit "reset only the corrupted Goals data" recovery
+    // path — the ONE other sanctioned way (besides a restore) to change GOALS_KEY while
+    // goalsState.valid is false. Cancel never touches storage (the corrupted raw value is
+    // preserved byte-for-byte by construction — nothing is written). Confirm writes a valid
+    // serialized empty array and touches no other key, then reloads so every in-memory variable
+    // (goalsState/goals included) is re-derived fresh from the now-valid storage state.
+    function askResetGoalsIntegrity() {
+        goalsIntegrityResetConfirm = true;
+        renderGoalsScreenFromRealData();
+    }
+    function cancelResetGoalsIntegrity() {
+        goalsIntegrityResetConfirm = false;
+        renderGoalsScreenFromRealData();
+    }
+    function confirmResetGoalsIntegrity() {
+        try { localStorage.setItem(GOALS_KEY, '[]'); } catch (e) { console.log('שגיאה באיפוס נתוני יעדים'); return; }
+        location.reload();
+    }
+
+    // Shown INSTEAD OF the normal list/create-form whenever goalsState.valid is false — never a
+    // partial/filtered list. Offers exactly the two sanctioned recovery paths: restore a valid
+    // Version 2 backup (via the existing, unmodified restore flow in Settings), or explicitly
+    // reset only the corrupted Goals data.
+    function buildGoalsIntegrityWarningHtml() {
+        var actionHtml = goalsIntegrityResetConfirm ?
+            ('<div class="goal-inline-confirm">' +
+                'לאפס את נתוני היעדים הפגומים? רק נתוני היעדים יימחקו — שאר הנתונים באפליקציה לא ישתנו. לא ניתן לבטל לאחר הביצוע.' +
+                '<div class="tx-edit-actions">' +
+                    '<button type="button" class="settings-danger-btn" onclick="confirmResetGoalsIntegrity()">אישור איפוס נתוני יעדים</button>' +
+                    '<button type="button" class="tx-edit-cancel" onclick="cancelResetGoalsIntegrity()">ביטול</button>' +
+                '</div></div>') :
+            ('<div class="tx-edit-actions"><button type="button" class="settings-danger-btn" onclick="askResetGoalsIntegrity()">אפס נתוני יעדים פגומים</button></div>');
+        return '<div class="goal-inline-confirm" style="margin-bottom:0;">' +
+            '<div style="font-weight:700;margin-bottom:6px;">⚠️ לא ניתן לטעון את נתוני היעדים</div>' +
+            '<div style="font-size:12.5px;line-height:1.6;margin-bottom:8px;">הנתונים השמורים במכשיר זה פגומים או אינם תקינים. כדי למנוע אובדן מידע, הם לא שונו ולא נמחקו. ניתן:</div>' +
+            '<ul class="restore-summary-list">' +
+                '<li>לשחזר גיבוי גיבוי תקין (Version 2) דרך הגדרות ⟵ נתונים.</li>' +
+                '<li>לאפס אך ורק את נתוני היעדים הפגומים (פעולה בלתי הפיכה).</li>' +
+            '</ul>' +
+            actionHtml +
+        '</div>';
+    }
+
+    function renderGoalsScreenFromRealData() {
+        var activeBtn = document.getElementById('goals-filter-active');
+        var archivedBtn = document.getElementById('goals-filter-archived');
+        if (activeBtn) { activeBtn.classList.toggle('active', !goalsShowArchived); }
+        if (archivedBtn) { archivedBtn.classList.toggle('active', goalsShowArchived); }
+
+        var createArea = document.getElementById('goal-create-form-area');
+        var listEl = document.getElementById('goals-list-area');
+
+        if (!goalsState.valid) {
+            if (createArea) { createArea.innerHTML = ''; }
+            if (listEl) { listEl.innerHTML = buildGoalsIntegrityWarningHtml(); }
+            updateFabVisibility();
+            return;
+        }
+
+        if (createArea) { createArea.innerHTML = goalCreateFormOpen ? buildGoalFormHtml(null) : ''; }
+
+        if (listEl) {
+            var visible = [];
+            for (var i = 0; i < goals.length; i++) { if (!!goals[i].isArchived === goalsShowArchived) { visible.push(goals[i]); } }
+
+            if (visible.length === 0) {
+                if (goalsShowArchived) {
+                    listEl.innerHTML = '<div class="insight-note" style="text-align:center;padding:12px 4px;">אין יעדים בארכיון.</div>';
+                } else if (!goalCreateFormOpen) {
+                    listEl.innerHTML = '<div class="insight-note" style="text-align:center;padding:12px 4px;">עדיין אין יעדי חיסכון פעילים.<br>הוסף/י יעד ראשון כדי להתחיל לעקוב אחרי חיסכון והעברות חודשיות.</div>' +
+                        '<div class="tx-edit-actions" style="justify-content:center;"><button type="button" class="tx-edit-save" style="flex:none;padding:11px 22px;" onclick="startGoalCreate()">הוסף יעד ראשון</button></div>';
+                } else {
+                    listEl.innerHTML = '';
+                }
+            } else {
+                var html = '';
+                for (var j = 0; j < visible.length; j++) { html += buildGoalCardHtml(visible[j]); }
+                listEl.innerHTML = html;
+            }
+        }
+
+        updateFabVisibility();
+    }
+
+    // =====================================================================================
+    // ===== Milestone 5: consolidated monthly Goals reminder — in-app modal only. No browser/  =====
+    // ===== OS notification, no service worker, no background timer of any kind exists         =====
+    // ===== anywhere in this file; the reminder is checked ONLY at points the app is already    =====
+    // ===== actively running (page load, right after creating a new goal).                     =====
+    // =====================================================================================
+
+    // Atomic ledger write: builds a FULL deep-cloned copy of `goals` with every affected goal's
+    // new ledger record already appended, attempts ONE localStorage.setItem with that complete
+    // proposed state, and only reassigns the live `goals`/`goalsState.goals` references if that
+    // single write actually succeeded. On failure, the live in-memory `goals` array is never
+    // touched at all — it still points at the exact pre-attempt objects — so "preserve the
+    // previous in-memory and stored state, create no partial ledger update" holds by
+    // construction, not by manual rollback bookkeeping. `allocations` is an array of
+    // {goalId, amount} with amount already guaranteed > 0 by every caller.
+    function commitConfirmedTransfers(allocations, source) {
+        if (!goalsState.valid) { return { ok: false, error: 'לא ניתן לעדכן יעדים בעוד הנתונים המקומיים פגומים.' }; }
+        if (!allocations || allocations.length === 0) { return { ok: false, error: 'לא נמצא סכום חיובי לרישום.' }; }
+
+        var period = getCurrentReminderPeriod();
+        var todayD = todayStr();
+        var nowTs = nowTimestampStr();
+
+        var proposed;
+        try { proposed = JSON.parse(JSON.stringify(goals)); } catch (e) { return { ok: false, error: 'שגיאה בהכנת הנתונים לשמירה.' }; }
+
+        var touchedAny = false;
+        for (var i = 0; i < allocations.length; i++) {
+            var alloc = allocations[i];
+            if (!(alloc.amount > 0) || !isFinite(alloc.amount)) { continue; }
+            var target = null;
+            for (var j = 0; j < proposed.length; j++) { if (proposed[j].id === alloc.goalId) { target = proposed[j]; break; } }
+            if (!target) { continue; }
+            if (!Array.isArray(target.confirmedTransfers)) { target.confirmedTransfers = []; }
+            target.confirmedTransfers.push({
+                id: generateGoalsId('ct'),
+                amount: round2(alloc.amount),
+                date: todayD,
+                confirmedAt: nowTs,
+                reminderPeriod: period,
+                source: 'goals_reminder'
+            });
+            target.updatedAt = nowTs;
+            touchedAny = true;
+        }
+        if (!touchedAny) { return { ok: false, error: 'לא נמצא סכום חיובי לרישום.' }; }
+
+        var serialized;
+        try { serialized = JSON.stringify(proposed); } catch (e) { return { ok: false, error: 'שגיאה בהכנת הנתונים לשמירה.' }; }
+        try {
+            localStorage.setItem(GOALS_KEY, serialized);
+        } catch (e) {
+            return { ok: false, error: 'השמירה נכשלה — ייתכן שאין מספיק מקום אחסון במכשיר. הנתונים הקודמים נשמרו ללא שינוי.' };
+        }
+        goals = proposed;
+        goalsState = { valid: true, raw: serialized, goals: proposed };
+        return { ok: true };
+    }
+
+    function focusFirstReminderElement() {
+        var titleEl = document.getElementById('goals-reminder-title');
+        if (titleEl) { titleEl.focus(); }
+    }
+
+    function handleGoalsReminderKeydown(e) {
+        if (!reminderOpen) { return; }
+        if (e.key === 'Escape') {
+            // Approved, documented choice: Escape follows the SAME session-only postpone
+            // semantics as "הזכר לי מאוחר יותר" — it never confirms a transfer, only closes the
+            // dialog for the rest of this session (see postponeGoalsReminder()).
+            e.preventDefault();
+            postponeGoalsReminder();
+            return;
+        }
+        if (e.key === 'Tab') {
+            var card = document.getElementById('goals-reminder-card');
+            if (!card) { return; }
+            var focusable = card.querySelectorAll('button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])');
+            if (!focusable.length) { return; }
+            var first = focusable[0], last = focusable[focusable.length - 1];
+            if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+            else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        }
+    }
+
+    function openGoalsReminderOverlayWithList(dueList) {
+        reminderDueList = dueList;
+        reminderMode = 'summary';
+        reminderCustomAmounts = {};
+        reminderErrorMessage = null;
+        reminderOpen = true;
+        reminderPreviouslyFocusedEl = document.activeElement;
+        renderGoalsReminderOverlay();
+        var overlay = document.getElementById('goals-reminder-overlay');
+        if (overlay) { overlay.classList.add('open'); }
+        document.addEventListener('keydown', handleGoalsReminderKeydown, true);
+        focusFirstReminderElement();
+    }
+
+    function closeGoalsReminderOverlay() {
+        reminderOpen = false;
+        // Cleared so a stray/re-entrant call to a confirm handler AFTER the dialog has already
+        // closed (e.g. a second click event that was already queued before the button became
+        // disabled) has nothing left to act on — see the reminderOpen guard at the top of both
+        // confirm handlers below, which is the primary defense; this is the second layer.
+        reminderDueList = [];
+        var overlay = document.getElementById('goals-reminder-overlay');
+        if (overlay) { overlay.classList.remove('open'); }
+        document.removeEventListener('keydown', handleGoalsReminderKeydown, true);
+        if (reminderPreviouslyFocusedEl && document.body.contains(reminderPreviouslyFocusedEl)) {
+            try { reminderPreviouslyFocusedEl.focus(); } catch (e) { }
+        }
+        reminderPreviouslyFocusedEl = null;
+    }
+
+    function reminderSuppressionToken(goalId) {
+        return getCurrentReminderPeriod() + '::' + goalId;
+    }
+
+    // Marks every goal currently in `reminderDueList` as suppressed for the current reminder
+    // period — called by BOTH postpone (nothing was written) and a successful confirm (something
+    // WAS written for at least one of them, but not necessarily all — see custom allocation). A
+    // goal that received a positive ledger record this period is already excluded on its own by
+    // isGoalHandledForPeriod(); this additionally covers the custom-allocation case where an
+    // entered goal was deliberately left at 0 — it has no ledger record and would otherwise still
+    // read as "due" and reopen on the very next navigation-triggered check, which must not happen
+    // mid-session (only a fresh reload may bring it back). Must be called BEFORE
+    // closeGoalsReminderOverlay() clears reminderDueList.
+    function suppressReminderDueList() {
+        for (var i = 0; i < reminderDueList.length; i++) {
+            reminderSuppressedTokens[reminderSuppressionToken(reminderDueList[i].goal.id)] = true;
+        }
+    }
+
+    // "הזכר לי מאוחר יותר" AND Escape both call this. Writes nothing, changes no saved amount, no
+    // reminder-period completion state — purely closes the dialog for the remainder of THIS
+    // session, and only for the goals it was actually showing (reminderSuppressedTokens is an
+    // in-memory var only, never persisted).
+    function postponeGoalsReminder() {
+        suppressReminderDueList();
+        closeGoalsReminderOverlay();
+    }
+
+    // Milestone 5 trigger check — the ONLY place the reminder ever opens itself automatically.
+    // Called once at initial page load and once right after a new goal is successfully created.
+    // Deliberately NOT wired into showScreen()/navigation, so ordinary screen changes during a
+    // session never reopen it, per the approved "must not repeatedly reopen during ordinary
+    // navigation" requirement — once shown and dismissed by ANY exit path (postpone, full
+    // confirm, or a partial/custom confirm that leaves some goals still at zero), it stays closed
+    // until the next fresh application opening.
+    function checkAndShowGoalsReminder() {
+        if (reminderOpen) { return; }
+        if (!goalsState.valid) { return; }
+        var due = getGoalsDueForReminder();
+        var eligible = [];
+        for (var i = 0; i < due.length; i++) {
+            if (!reminderSuppressedTokens[reminderSuppressionToken(due[i].goal.id)]) { eligible.push(due[i]); }
+        }
+        if (eligible.length === 0) { return; }
+        openGoalsReminderOverlayWithList(eligible);
+    }
+
+    function switchReminderToCustomMode() {
+        reminderMode = 'custom';
+        reminderErrorMessage = null;
+        for (var i = 0; i < reminderDueList.length; i++) {
+            var item = reminderDueList[i];
+            reminderCustomAmounts[item.goal.id] = String(item.info.suggestedTotal);
+        }
+        renderGoalsReminderOverlay();
+        focusFirstReminderElement();
+    }
+
+    function cancelReminderCustomMode() {
+        reminderMode = 'summary';
+        reminderErrorMessage = null;
+        renderGoalsReminderOverlay();
+        focusFirstReminderElement();
+    }
+
+    // Live per-row update without a full re-render — same "never lose focus/cursor mid-type"
+    // convention already used elsewhere in this file (see updateReminderAmount() precedent from
+    // the Milestone 2 design pass). Only patches this row's warning text and the shared total.
+    function updateReminderCustomAmount(goalId, rawVal) {
+        reminderCustomAmounts[goalId] = rawVal;
+        var totalEl = document.getElementById('reminder-custom-total-amount');
+        var total = 0;
+        for (var i = 0; i < reminderDueList.length; i++) {
+            var v = parseFloat(reminderCustomAmounts[reminderDueList[i].goal.id]);
+            if (isFinite(v) && v > 0) { total = round2(total + v); }
+        }
+        if (totalEl) { totalEl.textContent = formatHomeCurrency(total); }
+
+        var inputEl = document.querySelector('.reminder-custom-input[data-goal-id="' + goalId + '"]');
+        var warnEl = document.getElementById('reminder-custom-warn-' + goalId);
+        var item = null;
+        for (var j = 0; j < reminderDueList.length; j++) { if (reminderDueList[j].goal.id === goalId) { item = reminderDueList[j]; break; } }
+        var n = parseFloat(rawVal);
+        var overRemaining = item && isFinite(n) && n > item.info.remaining;
+        if (inputEl) { inputEl.classList.toggle('invalid', rawVal !== '' && (!isFinite(n) || n < 0)); }
+        if (warnEl) { warnEl.style.display = overRemaining ? '' : 'none'; }
+    }
+
+    // Primary confirmation: "העברתי את הסכום המומלץ" — writes the EXACT already-calculated
+    // suggestedTotal for every goal in reminderDueList, one ledger record per goal, never an
+    // implicit even split of one combined number. Guarded against duplicate submission by the
+    // reminderWriteInProgress flag PLUS immediately disabling the button as the very first DOM
+    // action, before any async-feeling work happens (the write itself is synchronous, but this
+    // also protects against a theoretical rapid double-dispatch of the click event).
+    function confirmReminderFullTransfer() {
+        // Primary duplicate-submission guard: a stray re-invocation (a second click event already
+        // queued before the button was disabled, a repeated Enter keypress, etc.) after the FIRST
+        // call already completed successfully finds reminderOpen already false (set by
+        // closeGoalsReminderOverlay()) and reminderDueList already emptied — there is nothing left
+        // for it to act on, so it no-ops instead of writing a second ledger record per goal.
+        if (reminderWriteInProgress || !reminderOpen || reminderDueList.length === 0) { return; }
+        var btn = document.getElementById('reminder-confirm-full-btn');
+        var otherBtn = document.getElementById('reminder-confirm-custom-open-btn');
+        reminderWriteInProgress = true;
+        if (btn) { btn.disabled = true; }
+        if (otherBtn) { otherBtn.disabled = true; }
+
+        var allocations = [];
+        for (var i = 0; i < reminderDueList.length; i++) {
+            var item = reminderDueList[i];
+            if (item.info.suggestedTotal > 0) { allocations.push({ goalId: item.goal.id, amount: item.info.suggestedTotal }); }
+        }
+        var result = commitConfirmedTransfers(allocations, 'goals_reminder');
+        reminderWriteInProgress = false;
+
+        if (!result.ok) {
+            if (btn) { btn.disabled = false; }
+            if (otherBtn) { otherBtn.disabled = false; }
+            reminderErrorMessage = result.error;
+            renderGoalsReminderOverlay();
+            return;
+        }
+        suppressReminderDueList();
+        closeGoalsReminderOverlay();
+        renderGoalsScreenFromRealData();
+    }
+
+    // Different-amount confirmation: validates every entered value first (finite, non-negative —
+    // zero is explicitly allowed per-goal, meaning "not funded this period"), rejects only if
+    // EVERY entered amount is zero (nothing to write at all), then writes exactly one ledger
+    // record per goal with a positive entered amount — a zero-amount goal is left untouched
+    // (still pending, returns on the next fresh opening) and never silently clamped/altered.
+    function confirmReminderCustomAllocation() {
+        // Same primary duplicate-submission guard as confirmReminderFullTransfer() — see there.
+        if (reminderWriteInProgress || !reminderOpen || reminderDueList.length === 0) { return; }
+        var allocations = [];
+        var anyInvalid = false;
+        for (var i = 0; i < reminderDueList.length; i++) {
+            var goalId = reminderDueList[i].goal.id;
+            var raw = reminderCustomAmounts[goalId];
+            var n = parseFloat(raw);
+            if (raw === undefined || raw === '' || !isFinite(n) || n < 0) { anyInvalid = true; continue; }
+            if (n > 0) { allocations.push({ goalId: goalId, amount: round2(n) }); }
+        }
+        if (anyInvalid) {
+            reminderErrorMessage = 'נא להזין סכום תקין (0 ומעלה) עבור כל יעד.';
+            renderGoalsReminderOverlay();
+            return;
+        }
+        if (allocations.length === 0) {
+            reminderErrorMessage = 'כל הסכומים שהוזנו הם אפס — לא נרשמה אף העברה. ניתן להזין סכום חיובי לפחות עבור יעד אחד, או לסגור ולנסות שוב מאוחר יותר.';
+            renderGoalsReminderOverlay();
+            return;
+        }
+
+        var btn = document.getElementById('reminder-confirm-custom-btn');
+        reminderWriteInProgress = true;
+        if (btn) { btn.disabled = true; }
+        var result = commitConfirmedTransfers(allocations, 'goals_reminder');
+        reminderWriteInProgress = false;
+
+        if (!result.ok) {
+            if (btn) { btn.disabled = false; }
+            reminderErrorMessage = result.error;
+            renderGoalsReminderOverlay();
+            return;
+        }
+        suppressReminderDueList();
+        closeGoalsReminderOverlay();
+        renderGoalsScreenFromRealData();
+    }
+
+    function renderGoalsReminderOverlay() {
+        var card = document.getElementById('goals-reminder-card');
+        if (!card) { return; }
+        if (!reminderOpen || reminderDueList.length === 0) { card.innerHTML = ''; return; }
+
+        var errorHtml = reminderErrorMessage ? ('<div class="reminder-error-box">' + escapeHtml(reminderErrorMessage) + '</div>') : '';
+
+        if (reminderMode === 'custom') {
+            var rowsHtml = '';
+            var liveTotal = 0;
+            for (var i = 0; i < reminderDueList.length; i++) {
+                var item = reminderDueList[i];
+                var val = (reminderCustomAmounts[item.goal.id] !== undefined) ? reminderCustomAmounts[item.goal.id] : String(item.info.suggestedTotal);
+                var vNum = parseFloat(val);
+                if (isFinite(vNum) && vNum > 0) { liveTotal = round2(liveTotal + vNum); }
+                var overRemaining = isFinite(vNum) && vNum > item.info.remaining;
+                rowsHtml += '<div class="reminder-custom-row">' +
+                    '<div class="reminder-custom-label">' +
+                        '<div class="reminder-custom-name">' + escapeHtml(item.goal.title) + '</div>' +
+                        '<div class="reminder-custom-hint">נותר ביעד: ' + escapeHtml(formatHomeCurrency(item.info.remaining)) + '</div>' +
+                        '<div class="reminder-custom-warn" id="reminder-custom-warn-' + item.goal.id + '" style="display:' + (overRemaining ? '' : 'none') + ';">הסכום גבוה מהיתרה הנדרשת ליעד זה</div>' +
+                    '</div>' +
+                    '<input type="number" class="reminder-custom-input" data-goal-id="' + item.goal.id + '" min="0" step="0.01" value="' + escapeHtml(val) + '" oninput="updateReminderCustomAmount(\'' + item.goal.id + '\', this.value)" aria-label="' + escapeHtml('סכום עבור ' + item.goal.title) + '">' +
+                '</div>';
+            }
+            card.innerHTML =
+                '<div class="reminder-icon">✏️</div>' +
+                '<div class="reminder-title" id="goals-reminder-title" tabindex="-1">עדכון סכום שהועבר בפועל</div>' +
+                '<div class="reminder-subtitle">ניתן לעדכן כל יעד בנפרד, כולל הזנת 0 עבור יעד שלא מומן החודש.</div>' +
+                rowsHtml +
+                '<div class="reminder-total-row"><span>סה״כ</span><span class="reminder-total-amount" id="reminder-custom-total-amount">' + escapeHtml(formatHomeCurrency(liveTotal)) + '</span></div>' +
+                errorHtml +
+                '<div class="reminder-actions">' +
+                    '<button type="button" class="reminder-btn-primary" id="reminder-confirm-custom-btn" onclick="confirmReminderCustomAllocation()">אישור הקצאה</button>' +
+                    '<button type="button" class="reminder-btn-secondary" onclick="cancelReminderCustomMode()">חזרה לסיכום</button>' +
+                '</div>' +
+                '<div class="reminder-fineprint">האפליקציה אינה מבצעת את ההעברה בפועל — אישור זה מתעד שההעברה בוצעה על ידך מחוץ לאפליקציה.</div>';
+            return;
+        }
+
+        var goalsHtml = '';
+        var grandTotal = 0;
+        for (var g = 0; g < reminderDueList.length; g++) {
+            var it = reminderDueList[g];
+            grandTotal = round2(grandTotal + it.info.suggestedTotal);
+            var overdueLine = it.info.overdueAmount > 0 ?
+                ('<div class="reminder-goal-sub danger">מתוכם ' + escapeHtml(formatHomeCurrency(it.info.overdueAmount)) + ' באיחור</div>') : '';
+            goalsHtml += '<div class="reminder-goal-row">' +
+                '<div class="reminder-goal-row-head">' +
+                    '<span class="reminder-goal-name">' + escapeHtml(it.goal.title) + '</span>' +
+                    '<span class="reminder-goal-amount">' + escapeHtml(formatHomeCurrency(it.info.suggestedTotal)) + '</span>' +
+                '</div>' +
+                overdueLine +
+                '<div class="reminder-goal-sub">נותר לאחר ההעברה: ' + escapeHtml(formatHomeCurrency(it.info.remainingAfterSuggested)) + '</div>' +
+            '</div>';
+        }
+
+        card.innerHTML =
+            '<div class="reminder-icon">💰</div>' +
+            '<div class="reminder-title" id="goals-reminder-title" tabindex="-1">תזכורת חיסכון חודשית</div>' +
+            '<div class="reminder-subtitle">יש להעביר את הסכומים הבאים לחשבון החיסכון שלך.</div>' +
+            goalsHtml +
+            '<div class="reminder-total-row"><span>סה״כ מומלץ להעביר</span><span class="reminder-total-amount">' + escapeHtml(formatHomeCurrency(grandTotal)) + '</span></div>' +
+            errorHtml +
+            '<div class="reminder-actions">' +
+                '<button type="button" class="reminder-btn-primary" id="reminder-confirm-full-btn" onclick="confirmReminderFullTransfer()">העברתי את הסכום המומלץ</button>' +
+                '<button type="button" class="reminder-btn-secondary" id="reminder-confirm-custom-open-btn" onclick="switchReminderToCustomMode()">העברתי סכום אחר</button>' +
+            '</div>' +
+            '<div class="reminder-fineprint">האפליקציה אינה מבצעת את ההעברה בפועל — היא רק רושמת שאישרת שביצעת אותה בעצמך, מחוץ לאפליקציה.</div>' +
+            '<div style="text-align:center;"><button type="button" class="reminder-btn-postpone" onclick="postponeGoalsReminder()">הזכר לי מאוחר יותר</button></div>';
+    }
 
     // =====================================================================================
     // ===== Stage E.1 (display-only) → Stage 3ב.2 (full add/rename/delete UI): Settings      =====
@@ -3537,7 +5483,9 @@
     // tile so it always sits next to it regardless of drag history.
     function buildVariableRemainingStatTileHtml() {
         var amount = formatHomeCurrency(categoryTileVariableRemainingCache);
-        return '<div class="stat-tile" onclick="handleStatTileClick(\'variable-remaining\')">' +
+        return '<div class="stat-tile" role="button" tabindex="0" aria-label="יתרת תשלומים שונים" ' +
+            'onclick="handleStatTileClick(\'variable-remaining\')" ' +
+            'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();handleStatTileClick(\'variable-remaining\');}">' +
             '<div class="category-tile-icon"></div>' +
             '<div class="category-tile-label">יתרת תשלומים שונים</div>' +
             '<div class="category-tile-value">' + amount + '</div>' +
@@ -3552,7 +5500,9 @@
         var isPrincipal = (loanBalanceView === 'principal');
         var shownAmount = isPrincipal ? categoryTileLoanBalanceCache.principal : categoryTileLoanBalanceCache.total;
         var amount = formatHomeCurrency(shownAmount);
-        return '<div class="stat-tile" onclick="handleStatTileClick(\'loan-balance\')">' +
+        return '<div class="stat-tile" role="button" tabindex="0" aria-label="יתרת הלוואות" ' +
+            'onclick="handleStatTileClick(\'loan-balance\')" ' +
+            'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();handleStatTileClick(\'loan-balance\');}">' +
             '<div class="category-tile-icon"></div>' +
             '<div class="category-tile-label">יתרת הלוואות</div>' +
             '<div class="category-tile-value">' + amount + '</div>' +
@@ -3857,6 +5807,8 @@
         renderInsightsScreenFromRealData();
         renderCashflowInsightsFromRealData();
         renderForecast();
+        renderForecastPeriodSection();
+        renderGoalsScreenFromRealData();
         renderCategoriesScreenFromRealData();
         renderSettingsScreenFromRealData();
         renderTransactionsScreenFromRealData(getCurrentTxFilterName());
@@ -5305,14 +7257,37 @@
 
     // ----- Data: backup / restore / CSV export / reset -------------------------------------
 
+    // Milestone 4: schemaVersion 2 — a fresh export now includes family_finance_goals (via the
+    // same prefix-sweep loop below, unchanged) plus its confirmedTransfers ledger field, still
+    // empty until Milestone 5 populates it. The version bump exists ONLY to let restore-time code
+    // distinguish "this backup was made before goals existed" (schemaVersion 1 or absent, so its
+    // data object genuinely has no goals key) from "this backup is goals-aware and may legitimately
+    // contain zero goals" (schemaVersion 2) — see isValidBackupShape()/renderRestorePreview()/
+    // confirmRestoreBackup() below. APP_VERSION is unrelated and unchanged.
+    // Milestone 4 correction: returns null (never a partial/misleading backup) when the local
+    // Goals dataset is invalid — a schemaVersion-2 export must always represent trustworthy Goals
+    // data, and a corrupted raw value can neither be safely exported as-is nor silently replaced
+    // with an empty substitute (that would misrepresent real, still-recoverable local data as
+    // "confirmed empty"). See exportBackupJson() for how the caller surfaces this.
+    //
+    // When valid, the prefix-sweep loop below is preserved exactly as before (every OTHER
+    // family_finance_* key, present or not, behaves identically to prior milestones) — the one
+    // addition is that a schemaVersion-2 backup must ALWAYS include family_finance_goals, even
+    // when localStorage genuinely has no such key yet (the lazy-write model: a goals-aware device
+    // that has never created a goal has none). That case is exported as a valid empty array
+    // WITHOUT writing anything to localStorage — goalsState.valid is true with raw===null only
+    // when the key is confirmed absent, never when it's malformed, so this substitution can never
+    // mask real corrupted data.
     function collectAppLocalStorageBackup() {
-        var backup = { schemaVersion: 1, exportedAt: nowTimestampStr(), data: {} };
+        if (!goalsState.valid) { return null; }
+        var backup = { schemaVersion: 2, exportedAt: nowTimestampStr(), data: {} };
         for (var i = 0; i < localStorage.length; i++) {
             var key = localStorage.key(i);
             if (key && key.indexOf('family_finance_') === 0) {
                 backup.data[key] = localStorage.getItem(key);
             }
         }
+        if (backup.data[GOALS_KEY] === undefined) { backup.data[GOALS_KEY] = '[]'; }
         return backup;
     }
 
@@ -5330,6 +7305,15 @@
 
     function exportBackupJson() {
         var backup = collectAppLocalStorageBackup();
+        if (!backup) {
+            // Milestone 4 correction: refuse to produce a backup at all while local Goals data is
+            // invalid — never a normalized/empty substitute, and never a claim of success. The raw
+            // Goals value itself is untouched by this (collectAppLocalStorageBackup() never wrote
+            // anything before returning null).
+            var errEl = document.getElementById('restore-preview-area');
+            if (errEl) { errEl.innerHTML = '<div class="settings-hint settings-error">לא ניתן ליצור גיבוי — נתוני היעדים המקומיים פגומים. יש לשחזר גיבוי תקין או לאפס את נתוני היעדים הפגומים (במסך יעדים) לפני יצירת גיבוי חדש.</div>'; }
+            return;
+        }
         downloadTextFile('familyfinance-backup-' + todayStr() + '.json', JSON.stringify(backup, null, 2), 'application/json');
         appendActivityLog('backup', 'גיבוי הורד (' + Object.keys(backup.data).length + ' מפתחות)');
         refreshSettingsUI();
@@ -5374,6 +7358,26 @@
                 if (!st || typeof st !== 'object' || Array.isArray(st)) { return false; }
             }
             if (obj.data[ACTIVITY_LOG_KEY] !== undefined && !Array.isArray(JSON.parse(obj.data[ACTIVITY_LOG_KEY]))) { return false; }
+            // Milestone 4 correction: schemaVersion is the ONLY signal used to decide whether the
+            // goals key is mandatory — never key-presence-as-a-proxy (a Version 1 backup simply
+            // never had goals; that is not the same question as "is this Version 2 backup valid").
+            // For a goals-aware (schemaVersion >= 2) backup, family_finance_goals is REQUIRED —
+            // its absence makes the whole backup invalid (never silently treated as "no goals to
+            // restore"; see renderRestorePreview()/confirmRestoreBackup(), which can now assume
+            // this key is always present and valid for any backup that reaches them as Version 2).
+            // A present value must still be a fully well-formed goals array (every goal AND
+            // component individually valid, no duplicate ids) — strict, all-or-nothing, so a
+            // single malformed goal rejects the ENTIRE backup before any write happens.
+            //
+            // For a non-goals-aware (Version 1 or unversioned) backup, a goals key is neither
+            // required nor validated here — confirmRestoreBackup() explicitly excludes any such
+            // key from what it writes regardless of content, so its validity is moot.
+            var isGoalsAwareVersion = typeof obj.schemaVersion === 'number' && obj.schemaVersion >= 2;
+            if (isGoalsAwareVersion) {
+                if (obj.data[GOALS_KEY] === undefined) { return false; }
+                var goalsArr = JSON.parse(obj.data[GOALS_KEY]);
+                if (isValidGoalsArrayStrict(goalsArr) === null) { return false; }
+            }
         } catch (e) { return false; }
         return true;
     }
@@ -5415,6 +7419,15 @@
         reader.readAsText(file);
     }
 
+    // Milestone 4 correction: goals-aware version of the restore preview. `isValidBackupShape()`
+    // now guarantees that whenever isGoalsAwareBackup is true, data[GOALS_KEY] is ALWAYS present
+    // and ALWAYS a fully well-formed array (its absence, or malformed content, already rejected
+    // the entire backup upstream — pendingRestoreBackup can never reach this function in that
+    // state) — so the branch below is a simple, unconditional schemaVersion check, not a
+    // key-presence guess. Version detection uses ONLY pendingRestoreBackup.schemaVersion (never
+    // key-presence-as-a-proxy — see collectAppLocalStorageBackup()'s comment for why: a goals-
+    // aware device that has simply never created a goal can also lack the key locally, which must
+    // never be confused with "this Version 2 BACKUP is missing its mandatory goals key").
     function renderRestorePreview() {
         var el = document.getElementById('restore-preview-area');
         if (!el) { return; }
@@ -5424,18 +7437,65 @@
         var catCount = data[CONFIG_KEY] ? Object.keys(JSON.parse(data[CONFIG_KEY])).length : 0;
         var hasSettings = !!data[SETTINGS_KEY];
         var logCount = data[ACTIVITY_LOG_KEY] ? JSON.parse(data[ACTIVITY_LOG_KEY]).length : 0;
+
+        var isGoalsAwareBackup = typeof pendingRestoreBackup.schemaVersion === 'number' && pendingRestoreBackup.schemaVersion >= 2;
+
+        var goalsLine, versionNoteHtml, deleteGoalsHtml;
+        if (!isGoalsAwareBackup) {
+            // Local Goals may themselves be valid, genuinely empty, or corrupted — the message
+            // and checkbox must describe reality accurately in every case, never claim a count
+            // that isn't actually known.
+            var hasExistingGoalsData = goalsState.raw !== null;
+            if (!goalsState.valid) {
+                goalsLine = '<li>יעדים: לא כלולים בגיבוי זה — הנתונים הקיימים במכשיר פגומים ויישמרו ללא שינוי</li>';
+            } else {
+                goalsLine = '<li>יעדים: לא כלולים בגיבוי זה — היעדים הקיימים במכשיר (' + goals.length + ') יישמרו</li>';
+            }
+            versionNoteHtml = '<div class="restore-v1-note">הגיבוי נוצר לפני הוספת מערכת היעדים. הנתונים הכספיים ישוחזרו והיעדים הקיימים יישמרו.</div>';
+            var deleteLabel = goalsState.valid ? ('למחוק גם את ' + goals.length + ' היעדים הקיימים במכשיר') : 'למחוק גם את נתוני היעדים הפגומים במכשיר';
+            deleteGoalsHtml = hasExistingGoalsData ?
+                ('<div class="tx-edit-group">' +
+                    '<label style="display:flex;align-items:center;gap:8px;font-weight:normal;cursor:pointer;">' +
+                        '<input type="checkbox" id="restore-delete-goals-checkbox" onchange="onRestoreDeleteGoalsToggle()" style="width:auto;min-height:20px;min-width:20px;">' +
+                        '<span>' + escapeHtml(deleteLabel) + '</span>' +
+                    '</label>' +
+                    '<div class="settings-hint settings-error" id="restore-delete-goals-warning" style="display:none;">כל נתוני היעדים הקיימים יימחקו לצמיתות בעת השחזור. לא ניתן לבטל לאחר הביצוע.</div>' +
+                '</div>') : '';
+        } else {
+            var backupGoalsCount = JSON.parse(data[GOALS_KEY]).length;
+            goalsLine = '<li>יעדים: ' + backupGoalsCount + '</li>';
+            versionNoteHtml = '';
+            deleteGoalsHtml = '';
+        }
+
         el.innerHTML = '<div class="tx-edit-form">' +
             '<div class="settings-hint">הגיבוי שנבחר יחליף את הנתונים הנוכחיים:</div>' +
+            versionNoteHtml +
             '<ul class="restore-summary-list">' +
                 '<li>תנועות: ' + itemCount + '</li>' +
                 '<li>קטגוריות: ' + catCount + '</li>' +
                 '<li>הגדרות: ' + (hasSettings ? 'כן' : 'לא') + '</li>' +
                 '<li>יומן פעילות: ' + logCount + ' רשומות</li>' +
+                goalsLine +
             '</ul>' +
+            deleteGoalsHtml +
             '<div class="tx-edit-actions">' +
-            '<button type="button" class="settings-danger-btn" onclick="confirmRestoreBackup()">כן, שחזר ודרוס נתונים קיימים</button>' +
+            '<button type="button" class="settings-danger-btn" id="restore-confirm-btn" onclick="confirmRestoreBackup()">כן, שחזר ודרוס נתונים קיימים</button>' +
             '<button type="button" class="tx-edit-cancel" onclick="cancelRestoreBackup()">ביטול</button>' +
             '</div></div>';
+    }
+
+    // Pure DOM update (no re-render, same convention as clearFieldError/setFieldError above) —
+    // makes the destructive consequence of the opt-in checkbox explicit directly on the button
+    // that actually performs the irreversible action, without needing a second confirmation step.
+    // Leaving the checkbox unchecked (the default) never touches this at all — goals stay safe.
+    function onRestoreDeleteGoalsToggle() {
+        var cb = document.getElementById('restore-delete-goals-checkbox');
+        var warn = document.getElementById('restore-delete-goals-warning');
+        var btn = document.getElementById('restore-confirm-btn');
+        if (!cb || !btn) { return; }
+        if (warn) { warn.style.display = cb.checked ? '' : 'none'; }
+        btn.textContent = cb.checked ? 'כן, שחזר ודרוס נתונים קיימים (וגם מחק את היעדים)' : 'כן, שחזר ודרוס נתונים קיימים';
     }
 
     function cancelRestoreBackup() {
@@ -5528,7 +7588,7 @@
     // silently claiming the rollback succeeded.
     function restoreFamilyFinanceSnapshot(snapshot, attemptedKeys) {
         var snapshotKeys = Object.keys(snapshot);
-        var priorityOrder = [DATA_KEY, CONFIG_KEY, SETTINGS_KEY, ACTIVITY_LOG_KEY, CATEGORY_TILE_ORDER_KEY, LOAN_BALANCE_VIEW_KEY];
+        var priorityOrder = [DATA_KEY, CONFIG_KEY, SETTINGS_KEY, ACTIVITY_LOG_KEY, GOALS_KEY, CATEGORY_TILE_ORDER_KEY, LOAN_BALANCE_VIEW_KEY];
         var orderedSnapshotKeys = priorityOrder.filter(function (k) { return snapshotKeys.indexOf(k) !== -1; })
             .concat(snapshotKeys.filter(function (k) { return priorityOrder.indexOf(k) === -1; }));
 
@@ -5564,7 +7624,33 @@
     function confirmRestoreBackup() {
         if (!pendingRestoreBackup || !isValidBackupShape(pendingRestoreBackup)) { return; }
         var data = pendingRestoreBackup.data;
-        var keys = Object.keys(data);
+        var isGoalsAwareVersion = typeof pendingRestoreBackup.schemaVersion === 'number' && pendingRestoreBackup.schemaVersion >= 2;
+
+        // Milestone 4 correction: goals-key inclusion is gated STRICTLY by schemaVersion, never by
+        // mere key presence — a non-goals-aware (Version 1) backup's data MUST NOT restore a goals
+        // key even if one happens to be present in it (defensively ignored/ never trusted; per the
+        // approved rule, "unexpected family_finance_goals data inside a Version 1 backup must be
+        // ignored and never restored"). For a goals-aware (Version 2) backup, isValidBackupShape()
+        // already guarantees the key is present and fully valid, so it always passes through as-is.
+        var effectiveData = {};
+        for (var ek in data) {
+            if (!isGoalsAwareVersion && ek === GOALS_KEY) { continue; }
+            effectiveData[ek] = data[ek];
+        }
+
+        // The explicit, opt-in "also delete current goals" checkbox (shown only for a Version 1 /
+        // non-goals-aware backup — see renderRestorePreview()). Left UNCHECKED (the default), the
+        // write loop below simply never touches GOALS_KEY at all — every goal (or, if corrupted,
+        // the exact corrupted raw value) currently on the device survives untouched, byte-for-byte,
+        // with zero special-case code. Only when explicitly checked do we add ONE extra key to the
+        // write plan, set to a valid empty array, so the SAME existing snapshot/rollback
+        // transaction below covers it identically to every other key.
+        var deleteGoalsCheckbox = document.getElementById('restore-delete-goals-checkbox');
+        if (!isGoalsAwareVersion && deleteGoalsCheckbox && deleteGoalsCheckbox.checked) {
+            effectiveData[GOALS_KEY] = '[]';
+        }
+        var keys = Object.keys(effectiveData);
+        data = effectiveData;
 
         var snapshot = snapshotFamilyFinanceStorage();
         var writeFailed = false;
