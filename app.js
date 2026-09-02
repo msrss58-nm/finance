@@ -18,7 +18,7 @@
     // included by collectAppLocalStorageBackup()'s/confirmResetAllData()'s existing prefix-sweep
     // with zero changes to either function.
     var GOALS_KEY = 'family_finance_goals';
-    var APP_VERSION = '1.3.1';
+    var APP_VERSION = '1.4.0';
 
     var PRIMARY_COLOR_OPTIONS = [
         { key: 'green', label: 'ירוק' },

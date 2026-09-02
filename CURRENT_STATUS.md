@@ -681,3 +681,25 @@
 **לא בוצע ולא נבדק**: מכשיר Android/iOS פיזי אמיתי, Vercel Preview, Production. `APP_VERSION` נשאר `'1.3.1'`, `schemaVersion` נשאר `2` — ללא שינוי. אין תלות חיצונית חדשה, אין framework, אין מסך HTML נפרד לכל מסך (SPA יחיד נשמר).
 
 **מפת דרכים**: Commit מקומי **הושלם (03/09/2026)** ← Push (ממתין לאישור מפורש) ← Production Release (ממתין לאישור מפורש).
+
+## Version 1.4.0 — שחרור מאוחד: Forecast + Goals + תזכורת + מודולריזציה + תיקוני נתיב (03/09/2026)
+
+מאחד לשחרור רשמי אחד את Milestones 3–6 (מסך תחזית, מערכת יעדי חיסכון, תזכורת חודשית, Backup schemaVersion 2) ו-Milestones 8–9 (מודולריזציה ל-3 קבצים: `index.html`/`styles.css`/`app.js`), בתוספת שני תיקונים נוספים שאושרו במפורש על ידי המשתמש **לפני** ה-push, כתוצאה מביקורת Preview/Production שבוצעה כחלק מהכנת השחרור.
+
+**רקע לביקורת**: המשתמש דיווח שראה את המילה "Preview" וביקש ביקורת read-only לפני push. הביקורת מצאה 3 עובדות מהותיות:
+
+1. **תת-כותרת "Preview" חיה בפועל**: `<div class="subtitle">Cockpit — Preview v2 · נתוני Preview</div>` הייתה קיימת **כבר ב-Production הנוכחי** (`origin/main` HEAD `c83f128`, מאומת ישירות ב-`git show origin/main:index.html` — לא שריד שהוכנס בעבודה הזו). זהו ההסבר הסביר ביותר למה שהמשתמש ראה. **תוקן** (אושר במפורש): הוחלף ל-"ניהול תקציב משפחתי".
+2. **GitHub Pages פעיל ונפרד מ-Vercel**: `gh api repos/.../pages` אישר אתר GitHub Pages **חי, ציבורי, לא-מתועד קודם** ב-CURRENT_STATUS.md, בכתובת `https://msrss58-nm.github.io/finance/` (build_type legacy, source: main branch, root), נבנה מאותו `main` ומתעדכן אוטומטית מאותו push. לא נמצא שום קובץ `.github/workflows` — ה-Pages מוגדר ישירות דרך הגדרות ה-repo (לא Actions).
+3. **Vercel Production מוגן ב-SSO**: `curl -I https://finance-nahom10.vercel.app/` (ה-alias המתועד ב-CLAUDE.md/CURRENT_STATUS.md כ-Production) מחזיר `302` להתחברות `vercel.com/sso-api` — Vercel Deployment Protection פעיל בפרויקט. **לא בוצע ולא ינוסה שום מעקף** — נבדק דרך GitHub Deployment Status API בלבד (evidence לא-אינטראקטיבי, ללא גישה לתוכן בפועל).
+
+**תיקון נתיבים ל-GitHub Pages (`/finance/` subpath) — אושר במפורש**: ביקורת ממוקדת ב-`index.html`/`manifest.webmanifest` מצאה 11 הפניות מוחלטות-משורש (`href="/manifest.webmanifest"`, 4×`href="/icons/..."` ב-`index.html`; `start_url:"/"`, `scope:"/"`, 4×`icons[].src:"/icons/..."` ב-`manifest.webmanifest`) — כולן היו שוברות (404 או scope שגוי) תחת ה-subpath `/finance/` של GitHub Pages, בעוד שעבדו נכון ב-Vercel (root domain). **תוקן**: כל ה-11 הופכו לנתיבים **יחסיים** (`manifest.webmanifest`, `icons/...`, `start_url:"."`, `scope:"."`). `styles.css`/`app.js` כבר היו יחסיים מ-Milestones 8–9 (ללא צורך בשינוי נוסף).
+
+**אימות כפול (root + subpath), Edge headless אמיתי**: שרת מקומי אחד שירת את אותם קבצים גם תחת `/` (מדמה Vercel) וגם תחת `/finance/` (מדמה GitHub Pages). בשני המצבים: `index.html`/`styles.css`/`app.js`/`manifest.webmanifest`/אייקונים — כולם 200 בנתיב הנכון (כולל `fetch()` בפועל של המניפסט מתוך הדף, לא רק בדיקת `<link>`); `manifest.json` שנטען בפועל דרך `fetch` הראה `start_url="."`,`scope="."`, `icons[0].src="icons/familyfinance-192.png"` בשני המצבים; מסך בית מוצג, 5 פקדי ניווט, CSS מוחל, `showScreen` זמינה; אפס שגיאות Console/Page, אפס בקשות כושלות בשני המצבים.
+
+**מה נשאר ללא שינוי**: `APP_VERSION` `'1.3.1'`→`'1.4.0'` (עודכן, ראו למטה); `schemaVersion` נשאר `2`; מפתחות `localStorage` ללא שינוי; פורמט נתוני Goals ללא שינוי; התנהגות תזכורת ללא שינוי; חישובי Forecast ללא שינוי; אין service worker (לא נוסף); אייקונים עצמם לא שונו (רק הנתיב אליהם).
+
+**Production נשאר בלתי-מאומת עד לבדיקת הפריסה שלאחר ה-push** — ראו סעיף הפריסה בהמשך למטה, שמתעדכן לאחר ביצוע ה-push בפועל.
+
+**אימות פיזי (Android/iOS) נשאר ממתין** — לא בוצע בסבב הזה.
+
+**מפת דרכים**: Commit מקומי + Push — בביצוע. תוצאות מדויקות (Vercel/GitHub Pages, hash-ים, ahead/behind) ב-CHANGELOG.md ובדוח הסופי שנמסר למשתמש.

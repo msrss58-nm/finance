@@ -428,3 +428,13 @@
 **לא בוצע/נבדק**: מכשיר Android/iOS פיזי, Vercel Preview, Production. `APP_VERSION` נשאר `'1.3.1'`, `schemaVersion` נשאר `2`. אין service worker (לא נוסף). אין תלות חיצונית/framework/bundler חדשים.
 
 **נשמר ב-commit מקומי** ("refactor: modularize application assets", 03/09/2026) — על גבי Milestones 3–6 + הקשחת timestamp. **טרם push, טרם Production.**
+
+## 03/09/2026 — Version 1.4.0: שחרור מאוחד (Forecast + Goals + תזכורת + מודולריזציה) + תיקוני נתיב GitHub Pages
+
+שחרור רשמי המאחד את Milestones 3–6 ו-8–9 (שני commits מקומיים קודמים, טרם push עד כה) לגרסה רשמית אחת (ללא tag Git בשלב זה), בתוספת שני תיקונים שאושרו במפורש כתוצאה מביקורת Preview/Production שבוצעה לפני ה-push (המשתמש דיווח שראה את המילה "Preview" וביקש בדיקה).
+
+**ממצאי הביקורת**: (1) תת-הכותרת בראש האפליקציה הציגה בפועל "Cockpit — Preview v2 · נתוני Preview" — כבר חי ב-Production הנוכחי לפני שחרור זה (לא שריד חדש). (2) הריפו מפרס גם ל-GitHub Pages (`https://msrss58-nm.github.io/finance/`, תת-נתיב, לא מתועד קודם) בנוסף ל-Vercel. (3) ה-alias המתועד של Vercel Production מוגן ב-Deployment Protection/SSO.
+
+**תיקונים**: תת-הכותרת הוחלפה ל-"ניהול תקציב משפחתי". `index.html`/`manifest.webmanifest` תוקנו מ-11 נתיבים מוחלטים-משורש לנתיבים יחסיים (manifest, 4 אייקונים ב-`index.html`; `start_url`/`scope`/4 `icons[].src` ב-manifest) — נתיב מוחלט הוכח שובר את הפעלת ה-PWA תחת `/finance/`; נתיב יחסי אומת עובד נכון גם שם וגם ב-Vercel (root), בבדיקת Edge headless כפולה (root+subpath).
+
+`APP_VERSION`: `'1.3.1'` → `'1.4.0'`. `schemaVersion` נשאר `2`. אין שינוי בלוגיקה עסקית/מפתחות אחסון/פורמט נתונים/service worker.
