@@ -345,6 +345,14 @@ For significant stages, report:
 
 When practical, put progress/status/verification intended for copy-paste into one code block.
 
+Per the user's explicit standing instruction (established 02/09/2026):
+- Return every progress update, answer, verification summary, and final report inside one single copyable fenced text block.
+- Begin the block with:
+  העתק דוח / תשובה
+- Do not split one report across multiple fenced blocks.
+- Keep failures, limitations, Git state, and unverified items inside the same block — nothing relevant outside it.
+- If the user later asks for a different reporting format, follow that instead — this rule reflects the user's latest stated preference, not an unconditional requirement.
+
 ## 20. Completion Criteria
 
 A task is complete only when:
@@ -358,3 +366,12 @@ A task is complete only when:
 Priority order:
 
 TRUTH → CORRECTNESS → DATA SAFETY → CONTINUITY → UX QUALITY → SPEED → TOKEN EFFICIENCY
+
+## 21. Process Safety
+
+- Never use broad process-kill commands such as `taskkill /F /IM node.exe`, `pkill node`, or `killall node`.
+- Track the exact PID(s) a task/agent started and terminate only those.
+- Never terminate unrelated user or parallel-agent processes — a broad kill command can silently abort other work running in the same session.
+- Subagents performing audits are read-only unless explicitly assigned as the sole editor of a non-overlapping file.
+- Maintain one editor for any shared application file (e.g. index.html) at a time — do not let multiple parallel agents write to the same file concurrently.
+- When context usage becomes very high, stop at a safe boundary and prepare a fresh-session handoff instead of continuing risky edits.

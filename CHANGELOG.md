@@ -389,3 +389,24 @@
 **תיקון שורש-בעיה בשחזור גיבוי (Data Restore) — פגם בעל השפעה גבוהה**: `family_finance_loan_balance_view` נשמר כמחרוזת גולמית (לא-JSON) בעוד כל שאר המפתחות מוצפני-JSON, ו-`isValidBackupShape()` דרש JSON.parse תקין לכל ערך — כתוצאה מכך כל גיבוי מכל משתמש שנגע אי-פעם בטוגל "קרן/סה\"כ" נדחה במלואו, גם כשהקובץ תקין. תוקן: `saveLoanBalanceView()` כותב `JSON.stringify`; `loadLoanBalanceView()` תומך גם בצורה החדשה וגם ב-legacy גולמי (קריאה-בלבד, ללא כתיבה מחדש); `isValidBackupShape()` קיבל חריג צר וממוקד רק למפתח הזה — שאר המפתחות ללא שינוי. **הקשחת בטיחות**: `confirmRestoreBackup()` הפך ל-best-effort transactional restore עם compensating rollback (לא אטומיות אמיתית — ל-localStorage אין עסקה על פני כמה מפתחות): snapshot לפני כתיבה, rollback מלא בכשל עם סדר-עדיפות (מפתחות פיננסיים משוחזרים ראשונים), שתי הודעות-כשל נפרדות ומדויקות ("rollback הצליח" מול "לא ניתן להבטיח שחזור מלא") — אף פעם לא reload/הצלחה כוזבת בכשל. אומת (VM + Edge/CDP אמיתי, כמה סבבים): round-trip מלא כולל `anchorBalance=0`, שני צורות ה-legacy, כשל-כתיבה-חלקי + rollback מוצלח, כשל-rollback-עצמו (עם הוכחה שסדר-העדיפות מגן על הנתונים החשובים), קבצים לא-תקינים — הכל PASS, אפס שגיאות קונסולה.
 
 `APP_VERSION`: `'1.3.0'` → `'1.3.1'`.
+
+## 02/09/2026 — Milestones 3–6: מסך תחזית, יעדי חיסכון, תזכורת חודשית, Backup schemaVersion 2
+עבודה שבוצעה ישירות על `index.html`, על גבי Version 1.3.1 (עדיין באותו commit לא-מאושר באותה עת). ראו CURRENT_STATUS.md, סעיף "Milestones 3–6", לפירוט המלא.
+
+**Milestone 3 — מסך "תחזית" (📈)**: מחליף בתוכן את "תובנות" (אותו `screen-insights`, לא מסך כפול). 30/60/90 יום, cutoff מדויק. "תחזית חודשית מורחבת" (6 חודשים, מכווץ כברירת מחדל) — מבוסס `buildCashflowSummary()` בלבד, אותו מנוע שמזין 30/60/90.
+
+**Milestone 4 — מסך "יעדים" (Goals)**: מפתח חדש `family_finance_goals`. יעד חיסכון עם רכיבים (components) בעלי מועד-יעד עצמאי משלהם; הקצאת חיסכון נצבר בין רכיבים earliest-deadline-first. Backup schemaVersion **1→2**: V2 תמיד כולל `family_finance_goals` (גם `[]`); שחזור V2 all-or-nothing; שחזור V1 משמר יעדים קיימים כברירת מחדל (checkbox מפורש למחיקה מכוונת).
+
+**Milestone 5 — תזכורת חיסכון חודשית**: פותחת אוטומטית ב/אחרי ה-2 לחודש. דחייה/Escape — session-only, ללא כתיבה. אישור מלא/מותאם-אישית כותב `confirmedTransfers` (guard נגד כתיבה כפולה). legacy `{date,amount}` ממשיך להתקבל.
+
+**Milestone 6 — ביקורת אינטגרטיבית + תיקונים** (5+ סוכני-ביקורת קריאה-בלבד מקבילים, כמה סבבים, Edge headless אמיתי, מעל 200 assertions):
+- Overflow 35px/5px ב-360/390px (מסך בית) — `.category-tile`/`.stat-tile` חסרו `min-width:0` ב-grid `repeat(3,1fr)`; תוקן ללא `overflow-x:hidden`.
+- Suppression תזכורת: בוליאני גלובלי → טוקנים per-goal/per-period (`reminderSuppressedTokens`), in-memory בלבד.
+- נגישות: כפתור דחייה 36px→44px; תגיות-סטטיסטיקה נגישות למקלדת; פוקוס משוחזר אחרי הרחבת/כיווץ כרטיס יעד.
+- **קוד מת הוסר**: `computeForecast()`+3 עוטפות (`getForecastWarning`/`getBiggestUpcomingCharge`/`getProjectedBalanceAfterUpcoming`) — הוכח call-graph מלא: אפס קריאה חיה. `isBillingActiveInMonth`/`getBillingRange` (משותפות למנוע המאוחד) נשארו.
+- ולידציית Goals הוקשחה ל-strict אמיתי (`normalizeGoal`/`normalizeComponent`/`isValidGoalsArrayStrict`): טיפוס גולמי נבדק לפני כל trim/עיגול/ברירת-מחדל; בוטלו id אוטומטי/coercion של מחרוזת-מספרית/ברירת-מחדל שקטה ל-createdAt/updatedAt חסרים; נוסף איפוס חובה בין targetAmount שמור לסכום רכיבים. אומת ללא רגרסיה על שימוש אמיתי מלא (כולל 2M קומבינציות brute-force).
+- ניגודיות WCAG: `--color-text-muted` (light) `#6b7280`→`#616774` — 2 כשלי AA אמיתיים תוקנו (מינימום 4.831:1 לאחר התיקון).
+
+**לא בוצע/נבדק**: מכשיר Android/iOS פיזי, Vercel Preview, Production. `APP_VERSION` נשאר `'1.3.1'` (ללא שינוי schema-breaking). `schemaVersion` נשאר `2`. אין service worker.
+
+**נשמר יחד עם Version 1.3.1 ב-commit מקומי אחד**: `4fc1b81d382b7e5a1024abdbf8d8e181ff1ea005` ("feat: add forecast and savings goals", 02/09/2026). **טרם push, טרם Production.** השלב הבא המתוכנן (ממתין לאישור נפרד): מודולריזציה של `index.html` לקבצים נפרדים, ללא שינוי התנהגות.
