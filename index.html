@@ -2740,6 +2740,33 @@
         return round2(n);
     }
 
+    // Milestone 7.1: canonical Goal-metadata timestamp writer/validator — deliberately SEPARATE
+    // from nowTimestampStr() (which stays completely untouched: it's shared with activityLog
+    // entries and backup.exportedAt, neither of which this correction's scope covers, and both of
+    // which intentionally use a local "YYYY-MM-DD HH:mm" display-oriented format, not this
+    // machine-readable UTC contract). Used ONLY for goal.createdAt/updatedAt and a new-format
+    // confirmedTransfer's confirmedAt — never for goal/component due dates or a transfer's own
+    // `date`, which remain local YYYY-MM-DD business dates via isValidDateStr()/todayStr(),
+    // untouched by this correction.
+    function nowIsoTimestamp() {
+        return new Date().toISOString();
+    }
+
+    // Date.prototype.toISOString() always produces exactly "YYYY-MM-DDTHH:mm:ss.sssZ" (UTC,
+    // millisecond precision, literal "Z") for any valid Date — so round-tripping a candidate
+    // string through `new Date(str).toISOString()` and comparing it back to the original string
+    // is a complete, self-contained validator: it rejects non-canonical shapes (missing "Z",
+    // wrong precision, a numeric offset instead of "Z", date-only, locale-formatted) AND
+    // impossible calendar values (an out-of-range day/month either parses to Invalid Date, or —
+    // for constructors that clamp/roll over — re-serializes to a DIFFERENT string than the input,
+    // which this comparison still catches) without needing separate regex + calendar-math logic.
+    function isValidCanonicalIsoTimestamp(str) {
+        if (typeof str !== 'string' || str === '') { return false; }
+        var d = new Date(str);
+        if (isNaN(d.getTime())) { return false; }
+        return d.toISOString() === str;
+    }
+
     // Milestone 6 correction: genuinely strict raw-shape validation, replacing the previous
     // version which silently REPAIRED several kinds of invalid input into something that looked
     // valid — auto-generating a missing id, defaulting a missing/wrong-typed createdAt/updatedAt
@@ -2777,13 +2804,14 @@
     }
 
     // One goal. Required raw types: id/title (non-empty string), dueDate (real calendar date),
-    // isArchived (actual boolean, not merely truthy), createdAt/updatedAt (non-empty string, per
-    // the app's own nowTimestampStr() contract — never silently defaulted when missing/invalid),
-    // components/confirmedTransfers (arrays). targetAmount/savedAmount must already be numbers
-    // (never numeric strings). For a goal WITH components, the stored targetAmount is additionally
-    // required to reconcile EXACTLY with round2(sum of the already-validated component amounts) —
-    // a stale/contradictory stored total is rejected outright, never silently overwritten with the
-    // recomputed sum as the previous implementation did.
+    // isArchived (actual boolean, not merely truthy), createdAt/updatedAt (Milestone 7.1: canonical
+    // ISO 8601 UTC timestamp — see isValidCanonicalIsoTimestamp() — never silently defaulted when
+    // missing/invalid, and updatedAt must not be EARLIER than createdAt), components/
+    // confirmedTransfers (arrays). targetAmount/savedAmount must already be numbers (never numeric
+    // strings). For a goal WITH components, the stored targetAmount is additionally required to
+    // reconcile EXACTLY with round2(sum of the already-validated component amounts) — a stale/
+    // contradictory stored total is rejected outright, never silently overwritten with the
+    // recomputed sum as an earlier implementation did.
     function normalizeGoal(raw) {
         if (!raw || typeof raw !== 'object' || Array.isArray(raw)) { return null; }
         if (typeof raw.id !== 'string' || !raw.id) { return null; }
@@ -2792,8 +2820,9 @@
         if (!title) { return null; }
         if (!isValidDateStr(raw.dueDate)) { return null; }
         if (typeof raw.isArchived !== 'boolean') { return null; }
-        if (typeof raw.createdAt !== 'string' || !raw.createdAt) { return null; }
-        if (typeof raw.updatedAt !== 'string' || !raw.updatedAt) { return null; }
+        if (!isValidCanonicalIsoTimestamp(raw.createdAt)) { return null; }
+        if (!isValidCanonicalIsoTimestamp(raw.updatedAt)) { return null; }
+        if (new Date(raw.updatedAt).getTime() < new Date(raw.createdAt).getTime()) { return null; } // updatedAt must not precede createdAt
         if (!Array.isArray(raw.components)) { return null; }
         if (!Array.isArray(raw.confirmedTransfers)) { return null; }
 
@@ -2822,35 +2851,41 @@
         if (typeof raw.savedAmount !== 'number' || !isFinite(raw.savedAmount) || raw.savedAmount < 0) { return null; }
         var savedAmount = round2(raw.savedAmount);
 
+        // Milestone 7.1: a confirmedTransfers entry must be EITHER a true legacy record (exactly
+        // `date`+`amount`, none of the 4 Milestone-5 fields present) OR a COMPLETE new-format
+        // reminder record (ALL 4 of id/confirmedAt/reminderPeriod/source present and individually
+        // valid) — a "partial hybrid" (some but not all of the 4 present) is never reinterpreted
+        // as legacy and rejects the whole dataset, same as any other malformed shape here.
         var confirmedTransfers = [];
         for (var k = 0; k < raw.confirmedTransfers.length; k++) {
             var ct = raw.confirmedTransfers[k];
             if (!ct || typeof ct !== 'object' || Array.isArray(ct)) { return null; }
-            // date/amount are the only two REQUIRED fields — a true legacy {date, amount}-only
-            // record (predating Milestone 5) is fully valid on its own, exactly as before.
+            // date/amount are the only two fields common to both shapes.
             if (typeof ct.amount !== 'number' || !isFinite(ct.amount) || ct.amount <= 0) { return null; }
             if (typeof ct.date !== 'string' || !isValidDateStr(ct.date)) { return null; }
-            var normalizedCt = { date: ct.date, amount: round2(ct.amount) };
-            // Milestone 5's 4 extended ledger fields: OPTIONAL, kept only when present AND
-            // individually well-formed. Present-but-wrong-shape rejects the whole dataset — same
-            // "no partial trust" rule as every other check here.
-            if (ct.id !== undefined) {
+
+            var hasId = ct.id !== undefined;
+            var hasConfirmedAt = ct.confirmedAt !== undefined;
+            var hasReminderPeriod = ct.reminderPeriod !== undefined;
+            var hasSource = ct.source !== undefined;
+            var newFieldCount = (hasId ? 1 : 0) + (hasConfirmedAt ? 1 : 0) + (hasReminderPeriod ? 1 : 0) + (hasSource ? 1 : 0);
+
+            if (newFieldCount === 0) {
+                // True legacy record (predates Milestone 5) — fully valid on its own.
+                confirmedTransfers.push({ date: ct.date, amount: round2(ct.amount) });
+            } else if (newFieldCount === 4) {
                 if (typeof ct.id !== 'string' || !ct.id) { return null; }
-                normalizedCt.id = ct.id;
-            }
-            if (ct.confirmedAt !== undefined) {
-                if (typeof ct.confirmedAt !== 'string' || !ct.confirmedAt) { return null; }
-                normalizedCt.confirmedAt = ct.confirmedAt;
-            }
-            if (ct.reminderPeriod !== undefined) {
+                if (!isValidCanonicalIsoTimestamp(ct.confirmedAt)) { return null; }
                 if (typeof ct.reminderPeriod !== 'string' || !/^\d{4}-\d{2}$/.test(ct.reminderPeriod)) { return null; }
-                normalizedCt.reminderPeriod = ct.reminderPeriod;
+                if (ct.reminderPeriod !== ct.date.slice(0, 7)) { return null; } // must match the transfer date's own YYYY-MM
+                if (ct.source !== 'goals_reminder') { return null; } // exact match — the only source this app's own writer ever produces
+                confirmedTransfers.push({
+                    date: ct.date, amount: round2(ct.amount),
+                    id: ct.id, confirmedAt: ct.confirmedAt, reminderPeriod: ct.reminderPeriod, source: ct.source
+                });
+            } else {
+                return null; // partial hybrid — never accepted, never reinterpreted as legacy
             }
-            if (ct.source !== undefined) {
-                if (typeof ct.source !== 'string' || !ct.source) { return null; }
-                normalizedCt.source = ct.source;
-            }
-            confirmedTransfers.push(normalizedCt);
         }
 
         return {
@@ -4420,7 +4455,7 @@
 
         if (!valid) { return; }
 
-        var now = nowTimestampStr();
+        var now = nowIsoTimestamp();
         goals.push({
             id: generateGoalsId('goal'), title: title, dueDate: dueDate, targetAmount: amount,
             savedAmount: saved, components: [], isArchived: false, createdAt: now, updatedAt: now,
@@ -4471,7 +4506,7 @@
         goal.dueDate = dueDate;
         goal.savedAmount = saved;
         if (!hasComponents) { goal.targetAmount = amount; }
-        goal.updatedAt = nowTimestampStr();
+        goal.updatedAt = nowIsoTimestamp();
         saveGoals();
         goalEditingId = null;
         renderGoalsScreenFromRealData();
@@ -4548,7 +4583,7 @@
         // and only place goal.targetAmount is derived from components; it is never independently
         // user-editable once components exist (see buildGoalFormHtml()).
         goal.targetAmount = goalTargetAmount(goal);
-        goal.updatedAt = nowTimestampStr();
+        goal.updatedAt = nowIsoTimestamp();
         saveGoals();
         goalComponentFormFor = null;
         renderGoalsScreenFromRealData();
@@ -4565,7 +4600,7 @@
         comp.amount = fields.amount;
         comp.dueDate = fields.dueDate;
         goal.targetAmount = goalTargetAmount(goal);
-        goal.updatedAt = nowTimestampStr();
+        goal.updatedAt = nowIsoTimestamp();
         saveGoals();
         goalComponentFormFor = null;
         goalComponentEditingId = null;
@@ -4597,7 +4632,7 @@
             // the goal isn't left with an undefined/zero target; the edit form's amount field
             // becomes directly editable again from this point since components.length is now 0.
             if (goal.components.length > 0) { goal.targetAmount = goalTargetAmount(goal); }
-            goal.updatedAt = nowTimestampStr();
+            goal.updatedAt = nowIsoTimestamp();
             saveGoals();
         }
         goalRemoveComponentConfirm = null;
@@ -4619,7 +4654,7 @@
         var goal = findGoalById(id);
         if (goal) {
             goal.isArchived = !goal.isArchived;
-            goal.updatedAt = nowTimestampStr();
+            goal.updatedAt = nowIsoTimestamp();
             saveGoals();
         }
         goalArchiveConfirmId = null;
@@ -4885,7 +4920,7 @@
 
         var period = getCurrentReminderPeriod();
         var todayD = todayStr();
-        var nowTs = nowTimestampStr();
+        var nowIso = nowIsoTimestamp();
 
         var proposed;
         try { proposed = JSON.parse(JSON.stringify(goals)); } catch (e) { return { ok: false, error: 'שגיאה בהכנת הנתונים לשמירה.' }; }
@@ -4902,11 +4937,11 @@
                 id: generateGoalsId('ct'),
                 amount: round2(alloc.amount),
                 date: todayD,
-                confirmedAt: nowTs,
+                confirmedAt: nowIso,
                 reminderPeriod: period,
                 source: 'goals_reminder'
             });
-            target.updatedAt = nowTs;
+            target.updatedAt = nowIso;
             touchedAny = true;
         }
         if (!touchedAny) { return { ok: false, error: 'לא נמצא סכום חיובי לרישום.' }; }

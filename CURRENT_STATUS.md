@@ -603,7 +603,7 @@
 
 ### Version 1.3.1 — Patch Release Preparation (01/09/2026)
 
-**רקע**: מאז שחרור Version 1.3.0 ל-Production, בוצעו על גבי הענף שתי חבילות עבודה נוספות שטרם שוחררו:
+**רקע**: מאז שחרור Version 1.3.0 ל-Production, בוצעו על גבי הענף שתי חבילות עבודה נוספות. **תיקון עובדתי (02/09/2026, Milestone 7.1)**: בניגוד לניסוח המקורי כאן ("טרם שוחררו") — אומת ב-Git שהשתיים **כבר נמצאות ב-`origin/main`** (ולפיכך ב-Production, בהנחת דיפלוי אוטומטי דרך אינטגרציית Git שמתועדת למעלה), כ-commits נפרדים שקדמו לתחילת השיחה הנוכחית: `bb6d8cd` ("feat: improve category installment summaries and collapse state") ו-`3b93d86` ("fix: restore backups safely in Version 1.3.1"), שניהם אבות-קדמונים של `c83f12834f04ec6654f4709b777e248f5c0096c1` (ה-baseline שאומת בתחילת השיחה). התיעוד כאן פשוט לא עודכן בזמן אמת כשזה קרה. `APP_VERSION` ב-`c83f128` הוא כבר `'1.3.1'`.
 
 **1. שיפורי UI בעמודי קטגוריה** (uncommitted עד לשלב זה):
 - **סיכום כרטיס מכווץ להלוואות**: תחת התאריך הקיים — "תשלום X/Y" (תשלומים ששולמו מתוך הסך הכל) + "יתרה ₪Z" (יתרת הלוואה נותרת). הסכום החודשי האדום, הכותרת, התאריך והתנהגות הקליק נשארו ללא שינוי לחלוטין. X/Y מבוסס `parseDatesAndGetLeft()` הקיים; Z מבוסס פונקציה חדשה `getLoanRemainingBalance(it)` שחולצה **מתוך** הנוסחה הקיימת של `getLoansBalanceSummary()` (ללא שכפול לוגיקה עסקית, אומת equivalence מלא לפני/אחרי).
@@ -619,7 +619,7 @@
 
 **3. הכנת שחרור Version 1.3.1**: `APP_VERSION` עודכן מ-`'1.3.0'` ל-`'1.3.1'` (patch release — תיקון פגם בעל השפעה גבוהה + שיפורי UI, ללא שינוי schema/מפתחות localStorage/APP_VERSION-breaking).
 
-**עדכון (02/09/2026)**: Version 1.3.1 נשמרה ב-commit מקומי `4fc1b81d382b7e5a1024abdbf8d8e181ff1ea005` ("feat: add forecast and savings goals"), **יחד עם** כל עבודת Milestones 3–6 שנבנתה על גביה לפני ה-commit (ראו הסעיף החדש למטה) — commit יחיד, כי כל השינויים ישבו יחד ב-`index.html` הלא-committed עד לנקודה הזו. **Production נשאר במצב Version 1.3.0 שנפרש קודם** — לא בוצע push ולא deploy.
+**תיקון עובדתי (02/09/2026, Milestone 7.1)**: הניסוח הקודם כאן טען ש-Version 1.3.1 "נשמרה" יחד עם Milestones 3–6 באותו commit מקומי, וש-Production נשאר ב-Version 1.3.0 — **שגוי בשני הפרטים**. כפי שתוקן למעלה: Version 1.3.1 (כולל תיקון השחזור ותקציר הקטגוריות) **כבר הייתה חלק מ-`origin/main`/Production לפני תחילת השיחה** (`c83f128`, `APP_VERSION='1.3.1'`, `schemaVersion:1`, **ללא** Goals). commit `4fc1b81d382b7e5a1024abdbf8d8e181ff1ea005` ("feat: add forecast and savings goals") מכיל **רק** את עבודת Milestones 3–6 (תחזית/יעדים/תזכורת/Backup schemaVersion 2/נגישות/ניגודיות) שנבנתה *על גבי* אותו baseline שכבר-1.3.1 — זהו החלק שעדיין מקומי ולא-נדחף. **מצב Production הנוכחי (הידוע-אחרון): APP_VERSION 1.3.1, schemaVersion 1, ללא מסך יעדים/Forecast/תזכורת** — Milestones 3–6 טרם הגיעו ל-Production.
 
 ## Milestones 3–6 — מסך תחזית, מערכת יעדי חיסכון, תזכורת חודשית, Backup schemaVersion 2 (02/09/2026, ישירות על `index.html`, נשמר ב-commit `4fc1b81d382b7e5a1024abdbf8d8e181ff1ea005`)
 

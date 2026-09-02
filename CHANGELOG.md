@@ -391,7 +391,9 @@
 `APP_VERSION`: `'1.3.0'` → `'1.3.1'`.
 
 ## 02/09/2026 — Milestones 3–6: מסך תחזית, יעדי חיסכון, תזכורת חודשית, Backup schemaVersion 2
-עבודה שבוצעה ישירות על `index.html`, על גבי Version 1.3.1 (עדיין באותו commit לא-מאושר באותה עת). ראו CURRENT_STATUS.md, סעיף "Milestones 3–6", לפירוט המלא.
+**הערה עובדתית (Milestone 7.1)**: הרשומה מ-01/09/2026 למעלה ("Version 1.3.0 היא הגרסה החיה הנוכחית ב-Production") הייתה נכונה **באותו תאריך** ונשארת כתועדת-היסטוריה, אך מאז הצטרפו ל-`origin/main`/Production שני commits נוספים ("Version 1.3.1" — תיקון שחזור-גיבוי + תקציר קטגוריות) שקדמו לעבודה המתוארת ברשומה הזו — **Production הידוע-אחרון נכון להיום הוא `APP_VERSION 1.3.1`**, לא 1.3.0. ראו CURRENT_STATUS.md לפירוט המלא.
+
+עבודה שבוצעה ישירות על `index.html`, על גבי Version 1.3.1 (כבר חלק מ-`origin/main` לפני תחילת השיחה — לא באותו commit כמו העבודה הזו). ראו CURRENT_STATUS.md, סעיף "Milestones 3–6", לפירוט המלא.
 
 **Milestone 3 — מסך "תחזית" (📈)**: מחליף בתוכן את "תובנות" (אותו `screen-insights`, לא מסך כפול). 30/60/90 יום, cutoff מדויק. "תחזית חודשית מורחבת" (6 חודשים, מכווץ כברירת מחדל) — מבוסס `buildCashflowSummary()` בלבד, אותו מנוע שמזין 30/60/90.
 
@@ -409,4 +411,4 @@
 
 **לא בוצע/נבדק**: מכשיר Android/iOS פיזי, Vercel Preview, Production. `APP_VERSION` נשאר `'1.3.1'` (ללא שינוי schema-breaking). `schemaVersion` נשאר `2`. אין service worker.
 
-**נשמר יחד עם Version 1.3.1 ב-commit מקומי אחד**: `4fc1b81d382b7e5a1024abdbf8d8e181ff1ea005` ("feat: add forecast and savings goals", 02/09/2026). **טרם push, טרם Production.** השלב הבא המתוכנן (ממתין לאישור נפרד): מודולריזציה של `index.html` לקבצים נפרדים, ללא שינוי התנהגות.
+**נשמר ב-commit מקומי**: `4fc1b81d382b7e5a1024abdbf8d8e181ff1ea005` ("feat: add forecast and savings goals", 02/09/2026) — Milestones 3–6 בלבד, על גבי Version 1.3.1 שכבר הייתה ב-`origin/main` (ראו הערה עובדתית למעלה). **טרם push, טרם Production.** השלב הבא המתוכנן (ממתין לאישור נפרד): מודולריזציה של `index.html` לקבצים נפרדים, ללא שינוי התנהגות.
