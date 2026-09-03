@@ -28,9 +28,12 @@
     <!-- ===== מסך 1: בית (Cockpit) ===== -->
     <div class="screen active" id="screen-home">
         <div class="hero-gauge">
-            <div class="hero-label">התזרים הצפוי היום</div>
+            <div class="hero-label">יתרה צפויה להיום</div>
             <div class="hero-amount" id="hero-amount"></div>
             <div class="status-pill" id="hero-status"></div>
+            <!-- Version 1.4.2: safe navigation to the one-time opening-balance Settings form —
+                 populated only in the unconfigured state (see renderHomeScreenFromRealData()). -->
+            <div id="hero-action-area"></div>
         </div>
 
         <div class="snapshot-grid">
@@ -96,21 +99,29 @@
              the unified cashflow-event source (generateCashflowEvents()), never a stored balance. -->
         <div id="cashflow-summary-feed"></div>
 
-        <div class="preview-forecast-box">
-            <div class="section-title" style="margin:0 0 4px;">📈 תזרים מצטבר מתחילת החודש — <span id="forecast-month-label"></span></div>
-            <div class="insight-note" style="margin-bottom:8px;">תזרים מזומנים מתוכנן מתחילת החודש, לא יתרת הבנק שלך.</div>
-            <div class="preview-forecast-chart-wrap" id="forecast-period-chart-wrap">
-                <svg id="forecast-period-svg" viewBox="0 0 300 170" preserveAspectRatio="xMidYMid meet" role="img"></svg>
-            </div>
-            <div class="insight-note" id="forecast-period-chart-summary"></div>
-        </div>
+        <!-- Version 1.4.2: shown ONLY when no valid opening balance is configured yet — see
+             renderMonthlyCashflowForecast(). No graph/table is ever rendered in this state (no
+             fabricated figures before an opening balance exists). -->
+        <div id="forecast-unconfigured-notice"></div>
 
-        <!-- Version 1.4.1: full calendar-month daily table — one row per day, always the whole
-             month, expandable per-row event details. Built and re-rendered entirely by
-             renderMonthlyCashflowTable()/toggleForecastDayRow() in app.js. -->
-        <div class="preview-forecast-box">
-            <div class="section-title" style="margin:0 0 10px;">📋 פירוט יומי</div>
-            <div id="forecast-daily-table"></div>
+        <div id="forecast-configured-area">
+            <div class="preview-forecast-box">
+                <div class="section-title" style="margin:0 0 4px;">📈 יתרה יומית צפויה — <span id="forecast-month-label"></span></div>
+                <div class="insight-note" style="margin-bottom:8px;">החישוב מבוסס על יתרת ההתחלה ועל התנועות המתוכננות באפליקציה. הוא אינו מחובר לחשבון הבנק.</div>
+                <div class="preview-forecast-chart-wrap" id="forecast-period-chart-wrap">
+                    <svg id="forecast-period-svg" viewBox="0 0 300 170" preserveAspectRatio="xMidYMid meet" role="img"></svg>
+                </div>
+                <div class="insight-note" id="forecast-period-chart-summary"></div>
+            </div>
+
+            <!-- Version 1.4.1: full calendar-month daily table — one row per day, always the whole
+                 month, expandable per-row event details. Built and re-rendered entirely by
+                 renderMonthlyCashflowTable()/toggleForecastDayRow() in app.js. Version 1.4.2: rows
+                 before the opening date show "אין נתון לפני יתרת ההתחלה" instead of a value. -->
+            <div class="preview-forecast-box">
+                <div class="section-title" style="margin:0 0 10px;">📋 פירוט יומי</div>
+                <div id="forecast-daily-table"></div>
+            </div>
         </div>
 
         <!-- Version 1.4.1 correction: the anchor-dependent 6-month "תחזית חודשית מורחבת" chart/

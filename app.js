@@ -18,7 +18,7 @@
     // included by collectAppLocalStorageBackup()'s/confirmResetAllData()'s existing prefix-sweep
     // with zero changes to either function.
     var GOALS_KEY = 'family_finance_goals';
-    var APP_VERSION = '1.4.1';
+    var APP_VERSION = '1.4.2';
 
     var PRIMARY_COLOR_OPTIONS = [
         { key: 'green', label: 'ירוק' },
@@ -55,16 +55,29 @@
         { key: 'appearance', icon: '🎨', label: 'מראה', desc: 'ערכת נושא, צבעים וגודל גופן', build: function () { return buildAppearanceSectionHtml(); } },
         { key: 'notifications', icon: '🔔', label: 'התראות', desc: 'התראות בתוך האפליקציה', build: function () { return buildNotificationsSectionHtml(); } },
         { key: 'data', icon: '💾', label: 'נתונים', desc: 'גיבוי, שחזור וייצוא', build: function () { return buildDataSectionHtml(); } },
+        // Version 1.4.2: one-time local opening balance for the projected daily balance engine —
+        // see buildProjectedBalanceSeries()/getProjectedBalanceOpeningConfig() below. Deliberately
+        // its own topic (not folded into 'data') — it is a calculation input, not a backup/export
+        // concern.
+        { key: 'openingBalance', icon: '⚖️', label: 'יתרת התחלה לחישוב', desc: 'נקודת התחלה לחישוב היתרה הצפויה', build: function () { return buildOpeningBalanceSectionHtml(); } },
         { key: 'activityLog', icon: '🕒', label: 'יומן פעילות', desc: 'היסטוריית פעולות', build: function () { return buildActivityLogSectionHtml(); } },
         { key: 'experimental', icon: '🧪', label: 'אפשרויות ניסיוניות', desc: 'פיצ\'רים עתידיים', build: function () { return buildExperimentalSectionHtml(); } },
         { key: 'about', icon: 'ℹ️', label: 'אודות', desc: 'גרסה ומה חדש', build: function () { return buildAboutSectionHtml(); } }
     ];
 
+    // Version 1.4.2 correction: 'dated' added as a built-in default (key === baseType, matching
+    // the existing income/fixed/variable/loan convention) — previously there was NO default
+    // 'dated' category at all, so the "חיוב חד-פעמי"/"הוצאה מתוארכת" add-flow was disabled for
+    // every user until they manually created a custom category for it first (a real, confirmed
+    // product gap, not introduced by this correction). Deliberately named/labeled distinctly from
+    // any pre-existing user-created "כרטיסי אשראי" category — this key is never reused, renamed,
+    // or migrated into/out of anything the user already has.
     var DEFAULT_CATEGORY_CONFIG_JSON = JSON.stringify({
         income: { label: "💰 הכנסות", baseType: "income" },
         fixed: { label: "🏡 הוצאות קבועות", baseType: "fixed" },
         variable: { label: "🛒 תשלומים שונים", baseType: "variable" },
-        loan: { label: "🏦 הלוואות", baseType: "loan" }
+        loan: { label: "🏦 הלוואות", baseType: "loan" },
+        dated: { label: "💳 חיוב כרטיס אשראי", baseType: "dated" }
     });
 
     // ===== Stage B: screen structure + static UI, fed only by MOCK_DATA below. No business logic, no calculations. =====
@@ -440,12 +453,40 @@
         return !!(goalsScreenEl && goalsScreenEl.classList.contains('active'));
     }
 
+    // Version 1.4.2: the Categories screen's own add-category FAB context (screen-categories,
+    // separate from screen-transactions' category-FILTER page above, despite the similar name).
+    function isOnCategoriesScreen() {
+        var el = document.getElementById('screen-categories');
+        return !!(el && el.classList.contains('active'));
+    }
+
+    // Version 1.4.2 correction: Home is now also a valid FAB context — required so the newly
+    // approved "🏧 משיכת מזומן" quick action (and every existing Quick Actions entry) has a
+    // visible trigger on Home at all. Before this correction updateFabVisibility() never showed
+    // the FAB on Home (a pre-existing gap: Home's Quick Actions sheet was only reachable by
+    // calling toggleQuickActions() directly, never via a visible button) — handleFabClick()'s own
+    // `else` branch already called toggleQuickActions() correctly, only visibility was wrong.
+    function isOnHomeScreen() {
+        var el = document.getElementById('screen-home');
+        return !!(el && el.classList.contains('active'));
+    }
+
     function updateFabVisibility() {
         var fabEl = document.getElementById('fab-button');
+        if (!fabEl) { return; }
         // Milestone 4 correction: the FAB's "add goal" action is unavailable while the local
         // Goals dataset is invalid (goalsState.valid false) — every Goals mutation is blocked
         // during that state, so there is nothing useful for it to do.
-        if (fabEl) { fabEl.style.display = (isOnCategoryPage() || (isOnGoalsScreen() && goalsState.valid)) ? 'flex' : 'none'; }
+        var onGoals = isOnGoalsScreen() && goalsState.valid;
+        var onCategories = isOnCategoriesScreen();
+        var onCategoryFilter = isOnCategoryPage();
+        var onHome = isOnHomeScreen();
+        fabEl.style.display = (onHome || onCategoryFilter || onCategories || onGoals) ? 'flex' : 'none';
+        // Version 1.4.2: the shared FAB previously had no accessible name at all in any of its
+        // contexts (just a bare "+" glyph) — set explicitly per context rather than leaving a
+        // stale/wrong label from whichever screen was active before.
+        var label = onCategories ? 'הוסף קטגוריה' : (onGoals ? 'הוסף יעד' : (onCategoryFilter ? 'הוסף תנועה' : 'הוסף'));
+        fabEl.setAttribute('aria-label', label);
     }
 
     // ===== Transactions filter toggle — visual only, does not filter the mock list =====
@@ -493,6 +534,10 @@
             startPreviewAddForCategory(currentCategoryFilterKey);
         } else if (isOnGoalsScreen() && goalsState.valid) {
             startGoalCreate();
+        } else if (isOnCategoriesScreen()) {
+            // Version 1.4.2: replaces the removed textual "+ הוסף קטגוריה" toggle button — same
+            // startPreviewAddCategory()/existing form+save logic, only the trigger changed.
+            startPreviewAddCategory();
         } else {
             toggleQuickActions();
         }
@@ -1153,7 +1198,7 @@
     // timeline UI. Income is listed before expenses on a shared day so a day that nets
     // positive never *appears* to dip first; expense types are then ordered fixed → loan →
     // dated (arbitrary but fixed), with itemId as the final tiebreak.
-    var CASHFLOW_TYPE_ORDER = { income: 0, fixed: 1, loan: 2, dated: 3 };
+    var CASHFLOW_TYPE_ORDER = { income: 0, fixed: 1, loan: 2, dated: 3, cashWithdrawal: 4 };
     function compareCashflowEvents(a, b) {
         var dCompare = a.date.getTime() - b.date.getTime();
         if (dCompare !== 0) { return dCompare; }
@@ -1184,7 +1229,7 @@
     // Generates every cash-flow event across `monthsCount` consecutive calendar months
     // starting at `rangeStartMonth` (a Date already normalized to the 1st of its month) for
     // non-archived income/fixed/loan/dated items — unfiltered by any "today" boundary (that
-    // filtering, where needed, happens in the caller, e.g. buildMonthlyDailySeries()/
+    // filtering, where needed, happens in the caller, e.g. buildProjectedBalanceSeries()/
     // getNextCashflowEvent()). One event per monthly occurrence for
     // income/fixed; one event per active billing month for loans (per-month range test, not
     // the left>0 gate); at most one event for dated items. `rangeStartMonth` may be in the
@@ -1229,6 +1274,17 @@
                 if (dd && dd >= horizonStart && dd <= horizonEnd) {
                     events.push({ date: dd, amount: -item.amount, itemId: item.id, type: 'dated', title: item.title });
                 }
+            } else if (item.type === 'cashWithdrawal') {
+                // Version 1.4.2: a bank-balance movement, deliberately its OWN event type (not
+                // 'dated') so it is structurally excluded from every dated/credit-card aggregation
+                // in this file (getCategoryMonthlyTotals/getMonthSnapshot/getDatedMonthOverMonth
+                // Change all switch strictly on item.type — a type they never match is automatically
+                // never summed by them, no separate exclusion filter needed anywhere). One-time
+                // event on its own exact date, same date-window/clamping convention as 'dated'.
+                var dw = item.start ? parseLocalDateStr(item.start) : null;
+                if (dw && dw >= horizonStart && dw <= horizonEnd) {
+                    events.push({ date: dw, amount: -item.amount, itemId: item.id, type: 'cashWithdrawal', title: item.title });
+                }
             }
             // 'variable' and any unrecognized type: no event (see contract comment above).
         }
@@ -1237,68 +1293,18 @@
         return events;
     }
 
-    // ===== Version 1.4.1: calendar-month DAILY cashflow series — replaces the retired      =====
-    // ===== balance-anchor forecast (buildPeriodCashflowForecast, removed) entirely. Reuses  =====
-    // ===== generateCashflowEvents() directly — the SAME unified event source every other     =====
-    // ===== forecast number in this file is built from — and never reads/writes the balance   =====
-    // ===== anchor. cumulative always starts at ₪0 on day 1 of the displayed month: a planned  =====
-    // ===== cash-flow CHANGE since the start of the month, never a bank balance, never labeled =====
-    // ===== as one anywhere this is displayed (Home hero, Forecast graph, Forecast table).     =====
+    // ===== Version 1.4.1 calendar-month bounds helper — still used by Version 1.4.2's          =====
+    // ===== buildProjectedBalanceMonthView() below to determine which days to display. The       =====
+    // ===== Version 1.4.1 buildMonthlyDailySeries() function that used to sit here (cumulative   =====
+    // ===== reset to ₪0 every month) was REMOVED in Version 1.4.2 — replaced by the continuously- =====
+    // ===== carried buildProjectedBalanceSeries()/buildProjectedBalanceMonthView() further below, =====
+    // ===== which is now the only day-level series Home/Forecast read.                           =====
     // =====================================================================================
 
     function getCalendarMonthBounds(refDate) {
         var y = refDate.getFullYear(), m = refDate.getMonth();
         var daysInMonth = new Date(y, m + 1, 0).getDate();
         return { year: y, month: m, daysInMonth: daysInMonth, monthStart: new Date(y, m, 1) };
-    }
-
-    // One entry per calendar day of the month containing `refDate` (defaults to today) — every
-    // day of the month is present, including past days and days with no events. income/expenses
-    // are same-day sums (day-atomic, same convention as generateCashflowEvents()'s callers
-    // elsewhere in this file — no invented intraday ordering). `events` carries every raw event
-    // for that day, for the daily table's expandable detail rows.
-    function buildMonthlyDailySeries(refDate, itemsOverride) {
-        var sourceItems = Array.isArray(itemsOverride) ? itemsOverride : items;
-        var ref = (refDate instanceof Date) ? refDate : new Date();
-        var bounds = getCalendarMonthBounds(ref);
-        var monthEvents = generateCashflowEvents(sourceItems, bounds.monthStart, 1);
-
-        var byDay = {};
-        for (var i = 0; i < monthEvents.length; i++) {
-            var ev = monthEvents[i];
-            var day = ev.date.getDate();
-            if (!byDay[day]) { byDay[day] = []; }
-            byDay[day].push(ev);
-        }
-
-        var days = [];
-        var cumulative = 0;
-        for (var d = 1; d <= bounds.daysInMonth; d++) {
-            var dayEvents = byDay[d] || [];
-            var income = 0, expenses = 0;
-            for (var j = 0; j < dayEvents.length; j++) {
-                if (dayEvents[j].amount >= 0) { income += dayEvents[j].amount; } else { expenses += -dayEvents[j].amount; }
-            }
-            var net = round2(income - expenses);
-            cumulative = round2(cumulative + net);
-            days.push({
-                date: new Date(bounds.year, bounds.month, d),
-                day: d,
-                income: round2(income),
-                expenses: round2(expenses),
-                net: net,
-                cumulative: cumulative,
-                events: dayEvents
-            });
-        }
-
-        return {
-            year: bounds.year,
-            month: bounds.month,
-            monthLabel: bounds.monthStart.toLocaleDateString('he-IL', { month: 'long', year: 'numeric' }),
-            daysInMonth: bounds.daysInMonth,
-            days: days
-        };
     }
 
     // The single "האירוע הכספי הבא" card everywhere it appears (Home + Forecast) — strictly
@@ -1316,6 +1322,152 @@
         future.sort(compareCashflowEvents);
         return future.length ? future[0] : null;
     }
+
+    // =====================================================================================
+    // ===== Version 1.4.2: authoritative projected-DAILY-BALANCE engine. Replaces the        =====
+    // ===== Version 1.4.1 "cumulative since month start, resets to ₪0 every month" model with a  =====
+    // ===== continuously-carried balance seeded from ONE locally-stored opening amount/date      =====
+    // ===== (settings.projectedBalanceOpeningAmount/projectedBalanceOpeningDate — see            =====
+    // ===== getProjectedBalanceOpeningConfig() near saveAppSettings() below). Reuses             =====
+    // ===== generateCashflowEvents() verbatim as its ONLY event source — no new event type is    =====
+    // ===== invented, and 'variable' items still never generate an event here (Version 1.3       =====
+    // ===== product decision, unchanged: they remain tracking-only, see the EVENT CONTRACT        =====
+    // ===== comment above generateCashflowEvents()). This is the ONE calculation path Home and    =====
+    // ===== the Forecast graph/table all read from — none of them may recompute a balance         =====
+    // ===== independently.                                                                        =====
+    // =====================================================================================
+
+    // Walks every LOCAL calendar day from openingDateStr through throughDate (both inclusive),
+    // carrying a running balance forward. Returns null only for a structurally invalid
+    // openingDateStr (callers are expected to have already validated via
+    // getProjectedBalanceOpeningConfig(), so this is a defensive guard, not the primary check).
+    // When throughDate is BEFORE the opening date, returns an empty days[] — the caller (never
+    // this function) decides how to label dates that precede the opening date; this function only
+    // ever walks forward.
+    function buildProjectedBalanceSeries(openingAmount, openingDateStr, throughDate, itemsOverride, includedWithdrawalIds) {
+        var openingDate = parseLocalDateStr(openingDateStr);
+        if (!openingDate || typeof openingAmount !== 'number' || !isFinite(openingAmount)) { return null; }
+        var openingZero = cashflowDateOnly(openingDate);
+        var through = cashflowDateOnly(throughDate);
+        if (through < openingZero) { return { openingAmount: round2(openingAmount), openingDateStr: openingDateStr, days: [] }; }
+        // Version 1.4.2 correction: `null` (never captured — legacy, or explicitly not supplied)
+        // means the original blanket rule below applies to cash withdrawals too, same as every
+        // other opening-date event type. A real array (possibly empty) enables the precise per-id
+        // rule for cash withdrawals specifically — see getProjectedBalanceOpeningConfig().
+        var includedIds = Array.isArray(includedWithdrawalIds) ? includedWithdrawalIds : null;
+
+        var rangeStartMonth = new Date(openingZero.getFullYear(), openingZero.getMonth(), 1);
+        var monthsCount = (through.getFullYear() - rangeStartMonth.getFullYear()) * 12 + (through.getMonth() - rangeStartMonth.getMonth()) + 1;
+        var events = generateCashflowEvents(Array.isArray(itemsOverride) ? itemsOverride : items, rangeStartMonth, monthsCount);
+
+        var byDay = {};
+        for (var i = 0; i < events.length; i++) {
+            var key = cashflowDateKey(events[i].date);
+            if (!byDay[key]) { byDay[key] = []; }
+            byDay[key].push(events[i]);
+        }
+
+        var days = [];
+        var runningBalance = round2(openingAmount);
+        var cursor = new Date(openingZero.getFullYear(), openingZero.getMonth(), openingZero.getDate());
+        var isOpeningDay = true;
+        while (cursor <= through) {
+            var dateKey = cashflowDateKey(cursor);
+            var dayEvents = byDay[dateKey] || [];
+            var income = 0, expenses = 0, appliedNet = 0;
+            var annotatedEvents = [];
+            for (var j = 0; j < dayEvents.length; j++) {
+                var ev = dayEvents[j];
+                if (ev.amount >= 0) { income += ev.amount; } else { expenses += -ev.amount; }
+                // Rule: an opening-date event is already reflected in the opening amount (it
+                // represents the actual balance AFTER everything already posted that day) — EXCEPT
+                // a cash withdrawal whose id is not in the captured snapshot list, which means it
+                // was entered AFTER the snapshot was taken and must still reduce the balance on
+                // this same day. Every other event type keeps the original unconditional rule.
+                var alreadyIncluded = true;
+                if (isOpeningDay && ev.type === 'cashWithdrawal') {
+                    alreadyIncluded = (includedIds === null) ? true : (includedIds.indexOf(ev.itemId) !== -1);
+                }
+                if (!isOpeningDay || !alreadyIncluded) { appliedNet += ev.amount; }
+                annotatedEvents.push({ date: ev.date, amount: ev.amount, itemId: ev.itemId, type: ev.type, title: ev.title, alreadyIncludedInOpeningSnapshot: isOpeningDay ? alreadyIncluded : false });
+            }
+            income = round2(income); expenses = round2(expenses);
+            var net = round2(income - expenses);
+            appliedNet = round2(appliedNet);
+            if (isOpeningDay) {
+                runningBalance = round2(openingAmount + appliedNet);
+            } else {
+                runningBalance = round2(runningBalance + net);
+            }
+            days.push({
+                date: new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate()),
+                dateKey: dateKey, income: income, expenses: expenses, net: net,
+                projectedBalance: runningBalance, events: annotatedEvents, isOpeningDay: isOpeningDay
+            });
+            isOpeningDay = false;
+            cursor.setDate(cursor.getDate() + 1);
+        }
+
+        return { openingAmount: round2(openingAmount), openingDateStr: openingDateStr, days: days };
+    }
+
+    // Current-calendar-month view for the Forecast graph/table — one entry for every day of the
+    // month containing refDate, always (including days before the opening date, and days before
+    // today). A day strictly before the opening date carries no computed figures at all
+    // (availability: 'unavailable') — never back-calculated, never fabricated (approved
+    // requirement: dates before the opening balance must show "אין נתון לפני יתרת ההתחלה", not a
+    // guessed number). Returns { configured:false, ... } with no days[] figures when no valid
+    // opening balance exists yet.
+    function buildProjectedBalanceMonthView(refDate, itemsOverride) {
+        var bounds = getCalendarMonthBounds(refDate);
+        var base = { year: bounds.year, month: bounds.month, monthLabel: bounds.monthStart.toLocaleDateString('he-IL', { month: 'long', year: 'numeric' }), daysInMonth: bounds.daysInMonth };
+        var opening = getProjectedBalanceOpeningConfig();
+        if (!opening) { base.configured = false; base.days = []; return base; }
+
+        var openingZero = cashflowDateOnly(parseLocalDateStr(opening.dateStr));
+        var monthEnd = new Date(bounds.year, bounds.month, bounds.daysInMonth);
+        var series = (openingZero <= monthEnd) ? buildProjectedBalanceSeries(opening.amount, opening.dateStr, monthEnd, itemsOverride, opening.includedWithdrawalIds) : null;
+        var seriesByKey = {};
+        if (series) { for (var i = 0; i < series.days.length; i++) { seriesByKey[series.days[i].dateKey] = series.days[i]; } }
+
+        var days = [];
+        for (var d = 1; d <= bounds.daysInMonth; d++) {
+            var date = new Date(bounds.year, bounds.month, d);
+            var dateKey = cashflowDateKey(date);
+            if (date < openingZero) {
+                days.push({ date: date, day: d, dateKey: dateKey, availability: 'unavailable', income: null, expenses: null, net: null, projectedBalance: null, events: [] });
+            } else {
+                var rec = seriesByKey[dateKey];
+                days.push({
+                    date: date, day: d, dateKey: dateKey,
+                    availability: rec.isOpeningDay ? 'opening' : 'available',
+                    income: rec.income, expenses: rec.expenses, net: rec.net,
+                    projectedBalance: rec.projectedBalance, events: rec.events
+                });
+            }
+        }
+
+        base.configured = true;
+        base.openingAmount = opening.amount;
+        base.openingDateStr = opening.dateStr;
+        base.days = days;
+        return base;
+    }
+
+    // Home's "יתרה צפויה להיום" — the SAME buildProjectedBalanceSeries() engine as the Forecast
+    // screen, just walked through today instead of through the displayed month's last day. Never a
+    // second/independent balance calculation.
+    function getProjectedBalanceToday(itemsOverride) {
+        var opening = getProjectedBalanceOpeningConfig();
+        if (!opening) { return { configured: false }; }
+        var todayZero = cashflowDateOnly(new Date());
+        var openingZero = cashflowDateOnly(parseLocalDateStr(opening.dateStr));
+        if (todayZero < openingZero) { return { configured: true, state: 'future', openingDateStr: opening.dateStr }; }
+        var series = buildProjectedBalanceSeries(opening.amount, opening.dateStr, todayZero, itemsOverride, opening.includedWithdrawalIds);
+        var last = series.days[series.days.length - 1];
+        return { configured: true, state: 'available', projectedBalance: last.projectedBalance, isOpeningDay: last.isOpeningDay };
+    }
+
     // =====================================================================================
     // ===== Stage D.2 (originally Preview-only, now Stage 4.4 candidate): read-only          =====
     // ===== connection to the app's own localStorage data. Reads ONLY DATA_KEY/CONFIG_KEY —  =====
@@ -1347,15 +1499,27 @@
             parsed = null;
         }
         var isPlainObject = parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed);
-        if (isPlainObject) { return parsed; }
-        // Safe fallback: missing key, corrupt JSON, or wrong type (array/null/primitive) falls
-        // back to DEFAULT_CATEGORY_CONFIG_JSON — the real app's own known-good default shape,
-        // not Stage C's mock data.
-        try {
-            return JSON.parse(DEFAULT_CATEGORY_CONFIG_JSON);
-        } catch (e2) {
-            return {};
+        var defaults;
+        try { defaults = JSON.parse(DEFAULT_CATEGORY_CONFIG_JSON); } catch (e2) { defaults = {}; }
+        if (!isPlainObject) {
+            // Safe fallback: missing key, corrupt JSON, or wrong type (array/null/primitive) falls
+            // back to DEFAULT_CATEGORY_CONFIG_JSON — the real app's own known-good default shape,
+            // not Stage C's mock data.
+            return defaults;
         }
+        // Version 1.4.2 correction: backfill any built-in default key that is entirely ABSENT
+        // from an already-stored config (e.g. 'dated', newly added to DEFAULT_CATEGORY_CONFIG_JSON
+        // after this user's config was first saved) — in-memory only, never overwrites an
+        // existing key of the same name (a user's own pre-existing category, whatever its key, is
+        // always left exactly as stored), never calls localStorage.setItem from inside a loader
+        // (same "load never writes" convention loadAppSettings() already follows). Idempotent by
+        // construction: recomputed fresh from the current stored object on every load, so it can
+        // never duplicate — it persists automatically the next time any category mutation calls
+        // savePreviewCategoryConfig() and writes the full (now-merged) object back.
+        for (var dk in defaults) {
+            if (parsed[dk] === undefined) { parsed[dk] = defaults[dk]; }
+        }
+        return parsed;
     }
 
     // =====================================================================================
@@ -1384,6 +1548,24 @@
             currentBalance: null,
             anchorBalance: null,
             anchorDate: null,
+            // Version 1.4.2: one-time, user-entered opening balance for the projected daily
+            // balance engine — a wholly separate, newly-introduced concept from the retired
+            // anchorBalance/anchorDate above (never reactivated, never auto-adopted from them; a
+            // rejected legacy value must not silently reappear here). null/null = unconfigured.
+            // See getProjectedBalanceOpeningConfig()/saveProjectedBalanceOpening() below for the
+            // validation contract.
+            projectedBalanceOpeningAmount: null,
+            projectedBalanceOpeningDate: null,
+            // Version 1.4.2 correction: the snapshot-boundary list — cash-withdrawal item ids
+            // already reflected in the opening amount at the moment it was (most recently) saved,
+            // rebuilt from scratch on every save/replace (see saveProjectedBalanceOpening()).
+            // `null` (the default, and what any settings blob saved by the ORIGINAL 1.4.2 code
+            // before this correction will have) means "never captured" — buildProjectedBalanceSeries()
+            // then falls back to the original blanket rule (every opening-date event, cash
+            // withdrawals included, already reflected) so a legacy opening balance's behavior does
+            // not change until the user next saves/replaces it. Once populated, it is always a real
+            // array (possibly empty) and the precise per-id rule applies.
+            projectedBalanceOpeningIncludedWithdrawalIds: null,
             notifications: { upcomingPayment: true, upcomingIncome: true, completedObligation: true },
             experimentalFlags: {}
         };
@@ -1446,6 +1628,17 @@
     function sanitizeNonNegativeAmount(raw) {
         var n = parseFloat(raw);
         if (!isFinite(n) || n < 0) { return null; }
+        return round2(n);
+    }
+
+    // Any-sign finite amount parse — Version 1.4.2 projected-balance opening amount, which may
+    // legitimately be positive, zero, OR negative (an already-overdrawn real bank balance). Unlike
+    // sanitizePositiveAmount/sanitizeNonNegativeAmount above, the only values rejected here are
+    // NaN/Infinity/non-numeric input — never coerced, never defaulted to 0.
+    function sanitizeFiniteAmount(raw) {
+        var n = parseFloat(raw);
+        if (typeof raw === 'string' && raw.trim() === '') { return null; }
+        if (!isFinite(n)) { return null; }
         return round2(n);
     }
 
@@ -2044,6 +2237,55 @@
         try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(appSettings)); } catch (e) { console.log('שגיאה בשמירת הגדרות'); }
     }
 
+    // Version 1.4.2: strict, all-or-nothing accessor for the projected-balance opening balance —
+    // same "never partially trust" convention as normalizeGoal()/isValidGoalsArrayStrict(). A
+    // malformed stored value (wrong type, NaN/Infinity, an invalid calendar date) is treated as
+    // fully unconfigured, never coerced/repaired and never partially applied. This is the ONLY
+    // function anywhere in this file that reads projectedBalanceOpeningAmount/
+    // projectedBalanceOpeningDate — every engine/render function goes through it.
+    function getProjectedBalanceOpeningConfig() {
+        var amt = appSettings.projectedBalanceOpeningAmount;
+        var dateStr = appSettings.projectedBalanceOpeningDate;
+        if (typeof amt !== 'number' || !isFinite(amt)) { return null; }
+        if (!isValidDateStr(dateStr)) { return null; }
+        // Version 1.4.2 correction: defensive read of the snapshot-boundary list — malformed
+        // (wrong type) or absent (legacy) falls back to `null` (blanket-conservative), never to an
+        // empty array (which would mean something different — "captured, zero withdrawals existed
+        // at save time"). Non-numeric/non-finite entries are dropped rather than trusted; a
+        // duplicate id is harmless (only ever membership-tested via indexOf, never iterated to
+        // subtract), so no dedup is needed for correctness.
+        var rawIncluded = appSettings.projectedBalanceOpeningIncludedWithdrawalIds;
+        var includedWithdrawalIds = null;
+        if (Array.isArray(rawIncluded)) {
+            includedWithdrawalIds = rawIncluded.filter(function (x) { return typeof x === 'number' && isFinite(x); });
+        }
+        return { amount: round2(amt), dateStr: dateStr, includedWithdrawalIds: includedWithdrawalIds };
+    }
+
+    // Single write path for the opening balance — always writes amount+date+the snapshot-boundary
+    // list together, so a partially-configured state can never exist on disk. Returns false (no
+    // write attempted) for structurally invalid input; callers must validate with
+    // sanitizeFiniteAmount()/isValidDateStr() before calling this, same convention as
+    // commitConfirmedTransfers()'s caller-validates-first contract. The included-withdrawal-ids
+    // list is always rebuilt FRESH from the current `items` here (never merged with a prior list)
+    // — every cash-withdrawal already dated on `dateStr` at the moment of this call is captured as
+    // "already reflected in the amount just entered"; anything added afterward on the same date is
+    // therefore correctly treated as new.
+    function saveProjectedBalanceOpening(amount, dateStr) {
+        if (typeof amount !== 'number' || !isFinite(amount)) { return false; }
+        if (!isValidDateStr(dateStr)) { return false; }
+        var includedIds = [];
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            if (it.type === 'cashWithdrawal' && it.start === dateStr && !it.isArchived) { includedIds.push(it.id); }
+        }
+        appSettings.projectedBalanceOpeningAmount = round2(amount);
+        appSettings.projectedBalanceOpeningDate = dateStr;
+        appSettings.projectedBalanceOpeningIncludedWithdrawalIds = includedIds;
+        saveAppSettings();
+        return true;
+    }
+
     function loadActivityLog() {
         var raw = null;
         try { raw = localStorage.getItem(ACTIVITY_LOG_KEY); } catch (e) { raw = null; }
@@ -2117,6 +2359,12 @@
     var lastAutoArchivedTitles = [];
     var appBackgroundedAt = null;
     var settingsPinFormMode = null;
+    // Version 1.4.2: opening-balance Settings form state. pendingReplace holds a validated,
+    // not-yet-confirmed {amount, dateStr} while the "this will change every projected balance"
+    // warning is shown — cleared (never written) by cancelOpeningBalanceForm(), the single close
+    // function Back/Escape/Cancel and a successful save all funnel through.
+    var settingsOpeningBalanceFormOpen = false;
+    var settingsOpeningBalancePendingReplace = null;
     var pendingRestoreBackup = null;
     var resetConfirmMode = false;
     var restorePasteMode = false;
@@ -2268,7 +2516,9 @@
     // typed as 'loan' there.
     var PREVIEW_CUSTOM_CATEGORY_TYPE_OPTIONS = [
         { value: 'fixed', label: 'הוצאה קבועה (סכום קבוע חודשי/שנתי)' },
-        { value: 'variable', label: 'תשלומים שונים (עסקאות עם תשלומים ותאריך סיום)' },
+        // Version 1.4.2: clarified — was 'תשלומים שונים (עסקאות עם תשלומים ותאריך סיום)', easy to
+        // misread as an ordinary tracked expense. Same baseType/behavior, label only.
+        { value: 'variable', label: 'עסקה בתשלומים — מעקב יתרה בלבד (אינו מופחת שוב בתחזית)' },
         { value: 'income', label: 'הכנסה (מוסיף לתזרים הפנוי)' },
         { value: 'dated', label: 'חיוב חד-פעמי (תאריך וסכום בלבד, למשל כרטיס אשראי)' }
     ];
@@ -2345,7 +2595,7 @@
     // already established elsewhere in this file for the same base types (DEFAULT_CATEGORY_CONFIG_JSON,
     // MOCK_DATA.categories) — 'dated' has no built-in category in the real app, so it gets the
     // same 📅 already used for a dated-like entry in Stage B's MOCK_DATA.recentActivity.
-    var HOME_ITEM_ICON_BY_TYPE = { income: '💰', fixed: '🏡', variable: '🛒', loan: '🏦', dated: '📅' };
+    var HOME_ITEM_ICON_BY_TYPE = { income: '💰', fixed: '🏡', variable: '🛒', loan: '🏦', dated: '📅', cashWithdrawal: '🏧' };
 
     // Adapts one real item[] entry into the exact {icon,title,date,amount,type} shape that the
     // existing renderTxList()/tx-row markup already expects (unchanged since Stage B) — no HTML,
@@ -2404,37 +2654,37 @@
         return { icon: icon, title: title, date: date, amount: amount, type: cssType, id: item.id, isArchived: !!item.isArchived, installmentProgress: installmentProgress, installmentBalance: installmentBalance };
     }
 
-    // Version 1.4.1: Home's hero no longer shows "כמה פנוי לי להוציא החודש" (a value that looked
-    // like a bank balance but never was one) — it shows today's own planned cash-flow change,
-    // from the exact same day-level series the Forecast screen uses (buildMonthlyDailySeries()),
-    // never a separate/competing calculation. hero-status (previously an untouched status pill)
-    // is reused for the required supporting line.
+    // Version 1.4.2: Home's hero shows the projected daily BALANCE (getProjectedBalanceToday(),
+    // itself built on buildProjectedBalanceSeries() — the same authoritative engine the Forecast
+    // screen uses), not a movement/net figure — see Version 1.4.2 documentation in
+    // CURRENT_STATUS.md for why this replaces the Version 1.4.1 "today's planned net cashflow"
+    // hero. hero-status (previously an untouched status pill) is reused for the required
+    // supporting line; hero-action-area is populated only in the unconfigured state.
     function renderHomeScreenFromRealData() {
-        var todaySeries = buildMonthlyDailySeries(new Date());
-        var todayZero = cashflowDateOnly(new Date());
-        var todayEntry = null;
-        for (var i = 0; i < todaySeries.days.length; i++) {
-            if (todaySeries.days[i].day === todayZero.getDate()) { todayEntry = todaySeries.days[i]; break; }
-        }
-        var todayNet = todayEntry ? todayEntry.net : 0;
-        var hasEventsToday = !!(todayEntry && todayEntry.events.length > 0);
-
         var heroLabelEl = document.querySelector('#screen-home .hero-label');
         var heroAmountEl = document.getElementById('hero-amount');
         var heroStatusEl = document.getElementById('hero-status');
-        if (heroLabelEl) { heroLabelEl.textContent = 'התזרים הצפוי היום'; }
-        if (heroAmountEl) {
-            heroAmountEl.classList.remove('positive-amount', 'negative-amount', 'neutral-amount');
-            if (todayNet === 0) {
-                heroAmountEl.textContent = '₪0';
-                heroAmountEl.classList.add('neutral-amount');
-            } else {
-                heroAmountEl.textContent = formatSignedCurrency(todayNet);
-                heroAmountEl.classList.add(todayNet > 0 ? 'positive-amount' : 'negative-amount');
+        var heroActionEl = document.getElementById('hero-action-area');
+        if (heroLabelEl) { heroLabelEl.textContent = 'יתרה צפויה להיום'; }
+        if (heroAmountEl) { heroAmountEl.classList.remove('positive-amount', 'negative-amount', 'neutral-amount'); }
+        if (heroActionEl) { heroActionEl.innerHTML = ''; }
+
+        var projected = getProjectedBalanceToday();
+        if (!projected.configured) {
+            if (heroAmountEl) { heroAmountEl.textContent = 'לא הוגדרה'; heroAmountEl.classList.add('neutral-amount'); }
+            if (heroStatusEl) { heroStatusEl.textContent = 'כדי לחשב יתרה יומית יש להגדיר יתרת התחלה פעם אחת.'; }
+            if (heroActionEl) { heroActionEl.innerHTML = '<button type="button" class="cat-add-toggle" onclick="goToOpeningBalanceSettings()">הגדר יתרת התחלה</button>'; }
+        } else if (projected.state === 'future') {
+            var futureDateLabel = parseLocalDateStr(projected.openingDateStr).toLocaleDateString('he-IL');
+            if (heroAmountEl) { heroAmountEl.textContent = '—'; heroAmountEl.classList.add('neutral-amount'); }
+            if (heroStatusEl) { heroStatusEl.textContent = 'החישוב יתחיל בתאריך ' + futureDateLabel + '.'; }
+        } else {
+            var bal = projected.projectedBalance;
+            if (heroAmountEl) {
+                heroAmountEl.textContent = formatHomeCurrency(bal);
+                heroAmountEl.classList.add(bal > 0 ? 'positive-amount' : (bal < 0 ? 'negative-amount' : 'neutral-amount'));
             }
-        }
-        if (heroStatusEl) {
-            heroStatusEl.textContent = hasEventsToday ? 'הכנסות והוצאות המתוכננות להיום' : 'אין תנועות צפויות היום';
+            if (heroStatusEl) { heroStatusEl.textContent = 'מחושב לפי יתרת ההתחלה והתנועות המתוכננות עד היום — אינה יתרת בנק מאומתת.'; }
         }
 
         // snapshot-income/snapshot-expenses stay the existing monthly-total tiles (getMonthSnapshot)
@@ -2526,11 +2776,10 @@
     }
 
     // =====================================================================================
-    // ===== Version 1.4.1: the calendar-month daily cashflow graph + table — replaces the   =====
-    // ===== retired 30/60/90-day balance-anchor Forecast section entirely. ONE               =====
-    // ===== buildMonthlyDailySeries() call per render feeds both the graph and the table, so  =====
-    // ===== they can never disagree (same requirement the old period section already          =====
-    // ===== satisfied for its own graph/stats/timeline, now satisfied here instead).          =====
+    // ===== Version 1.4.2: the calendar-month projected-daily-balance graph + table. ONE      =====
+    // ===== buildProjectedBalanceMonthView() call per render feeds both the graph and the      =====
+    // ===== table, so they can never disagree — same requirement the Version 1.4.1 section      =====
+    // ===== this replaces already satisfied for its own graph/table pair.                      =====
     // =====================================================================================
 
     // UI-only: which single day-row (by 'YYYY-MM-DD' key) is currently expanded in the daily
@@ -2538,47 +2787,77 @@
     // in-memory-only UI flag in this file.
     var expandedForecastDayKey = null;
 
+    // Version 1.4.2: driven by buildProjectedBalanceMonthView() (the authoritative
+    // buildProjectedBalanceSeries()-based engine) instead of the retired cumulative-since-month-
+    // start model. When no opening balance is configured yet, the graph/table area is hidden
+    // entirely and an honest "לא ניתן לחשב..." notice is shown instead — never a fabricated ₪0.
     function renderMonthlyCashflowForecast() {
-        var series = buildMonthlyDailySeries(new Date());
+        var view = buildProjectedBalanceMonthView(new Date());
         var monthLabelEl = document.getElementById('forecast-month-label');
-        if (monthLabelEl) { monthLabelEl.textContent = series.monthLabel; }
-        renderMonthlyCashflowChart(series);
-        renderMonthlyCashflowTable(series);
+        if (monthLabelEl) { monthLabelEl.textContent = view.monthLabel; }
+        var unconfiguredEl = document.getElementById('forecast-unconfigured-notice');
+        var configuredAreaEl = document.getElementById('forecast-configured-area');
+
+        if (!view.configured) {
+            if (configuredAreaEl) { configuredAreaEl.style.display = 'none'; }
+            if (unconfiguredEl) {
+                unconfiguredEl.innerHTML = '<div class="insight-note">לא ניתן לחשב יתרה יומית לפני הגדרת יתרת התחלה.</div>' +
+                    '<div class="tx-edit-actions"><button type="button" class="tx-edit-save" onclick="goToOpeningBalanceSettings()">הגדר יתרת התחלה</button></div>';
+            }
+            return;
+        }
+        if (unconfiguredEl) { unconfiguredEl.innerHTML = ''; }
+        if (configuredAreaEl) { configuredAreaEl.style.display = ''; }
+        renderMonthlyCashflowChart(view);
+        renderMonthlyCashflowTable(view);
     }
 
-    // Cumulative-since-month-start step chart, same "flat between events, jumps exactly on the
-    // day it changes" convention (and the same held-rectangle + staircase-outline drawing
-    // technique) as the retired period chart it replaces — only the x-axis changed, from a
-    // rolling day-offset-from-today to a fixed day-of-month 0..daysInMonth.
-    function renderMonthlyCashflowChart(series) {
+    // Projected-daily-balance step chart — same held-rectangle + staircase-outline drawing
+    // technique as the retired cumulative chart, now plotting projectedBalance and skipping any
+    // day before the opening date entirely (no invented point exists for it). If the opening date
+    // falls entirely after the displayed month (every day 'unavailable'), the chart is left empty
+    // with an honest textual explanation rather than a misleading blank/zero graph.
+    function renderMonthlyCashflowChart(view) {
         var svg = document.getElementById('forecast-period-svg');
         var summaryEl = document.getElementById('forecast-period-chart-summary');
         if (!svg) { return; }
 
+        var plottable = [];
+        for (var pi = 0; pi < view.days.length; pi++) { if (view.days[pi].availability !== 'unavailable') { plottable.push(view.days[pi]); } }
+        if (plottable.length === 0) {
+            svg.innerHTML = '';
+            var emptyMsg = 'אין נתון להצגה בחודש זה — יתרת ההתחלה חלה מתאריך ' + view.openingDateStr + '.';
+            svg.setAttribute('aria-label', emptyMsg);
+            if (summaryEl) { summaryEl.textContent = emptyMsg; }
+            return;
+        }
+
         var W = 300, H = 170, padL = 40, padR = 8, padT = 14, padB = 20;
         var innerW = W - padL - padR, innerH = H - padT - padB;
 
-        var values = [0];
-        for (var vi = 0; vi < series.days.length; vi++) { values.push(series.days[vi].cumulative); }
+        var values = [];
+        for (var vi = 0; vi < plottable.length; vi++) { values.push(plottable[vi].projectedBalance); }
         var minV = Math.min.apply(null, values);
         var maxV = Math.max.apply(null, values);
         var range = (maxV - minV) || 1;
 
-        function xOf(day) { return padL + (day / series.daysInMonth) * innerW; }
+        function xOf(day) { return padL + (day / view.daysInMonth) * innerW; }
         function yOf(v) { return padT + innerH - ((v - minV) / range) * innerH; }
-        var zeroY = yOf(0);
+        var baselineY = (minV <= 0 && maxV >= 0) ? yOf(0) : yOf(minV);
 
         var parts = [];
-        parts.push('<line x1="' + padL + '" y1="' + zeroY + '" x2="' + (W - padR) + '" y2="' + zeroY + '" stroke="var(--color-border)" stroke-width="1" stroke-dasharray="3,3"></line>');
+        if (minV <= 0 && maxV >= 0) {
+            parts.push('<line x1="' + padL + '" y1="' + baselineY + '" x2="' + (W - padR) + '" y2="' + baselineY + '" stroke="var(--color-border)" stroke-width="1" stroke-dasharray="3,3"></line>');
+        }
 
-        var prevX = xOf(0), prevY = yOf(0);
+        var prevX = xOf(plottable[0].day), prevY = yOf(plottable[0].projectedBalance);
         var strokePts = [prevX + ',' + prevY];
-        for (var i = 0; i < series.days.length; i++) {
-            var day = series.days[i];
+        for (var i = 0; i < plottable.length; i++) {
+            var day = plottable[i];
             var x = xOf(day.day);
-            var y = yOf(day.cumulative);
-            var fill = (day.cumulative >= 0) ? 'var(--color-success)' : 'var(--color-danger)';
-            parts.push('<rect x="' + Math.min(prevX, x) + '" y="' + Math.min(prevY, zeroY) + '" width="' + Math.max(1, Math.abs(x - prevX)) + '" height="' + Math.max(1, Math.abs(zeroY - prevY)) + '" fill="' + fill + '" fill-opacity="0.16"></rect>');
+            var y = yOf(day.projectedBalance);
+            var fill = (day.projectedBalance >= 0) ? 'var(--color-success)' : 'var(--color-danger)';
+            parts.push('<rect x="' + Math.min(prevX, x) + '" y="' + Math.min(y, baselineY) + '" width="' + Math.max(1, Math.abs(x - prevX)) + '" height="' + Math.max(1, Math.abs(baselineY - y)) + '" fill="' + fill + '" fill-opacity="0.16"></rect>');
             strokePts.push(x + ',' + prevY);
             strokePts.push(x + ',' + y);
             prevX = x; prevY = y;
@@ -2587,28 +2866,44 @@
 
         parts.push('<text x="' + padL + '" y="' + (padT - 2) + '" font-size="7" fill="var(--color-text-muted)">' + escapeHtml(formatHomeCurrency(maxV)) + '</text>');
         parts.push('<text x="' + padL + '" y="' + (H - padB + 12) + '" font-size="7" fill="var(--color-text-muted)">' + escapeHtml(formatHomeCurrency(minV)) + '</text>');
-        parts.push('<text x="' + padL + '" y="' + (H - 4) + '" font-size="7" fill="var(--color-text-muted)">1</text>');
-        parts.push('<text x="' + (W - padR) + '" y="' + (H - 4) + '" font-size="7" fill="var(--color-text-muted)" text-anchor="end">' + series.daysInMonth + '</text>');
+        parts.push('<text x="' + padL + '" y="' + (H - 4) + '" font-size="7" fill="var(--color-text-muted)">' + plottable[0].day + '</text>');
+        parts.push('<text x="' + (W - padR) + '" y="' + (H - 4) + '" font-size="7" fill="var(--color-text-muted)" text-anchor="end">' + view.daysInMonth + '</text>');
 
         svg.innerHTML = parts.join('');
 
-        var lastDay = series.days[series.days.length - 1];
-        var a11ySummary = 'תזרים מצטבר מתחילת החודש (' + series.monthLabel + '), מ-₪0: ' +
-            'בסוף החודש ' + formatSignedCurrency(lastDay.cumulative) + '. זהו תזרים מזומנים מתוכנן, לא יתרת הבנק שלך.';
+        var lastDay = plottable[plottable.length - 1];
+        var a11ySummary = 'יתרה יומית צפויה (' + view.monthLabel + '): בסוף הטווח המוצג ' + formatHomeCurrency(lastDay.projectedBalance) + '. ' +
+            'החישוב מבוסס על יתרת ההתחלה ועל התנועות המתוכננות באפליקציה, הוא אינו מחובר לחשבון הבנק.';
         svg.setAttribute('aria-label', a11ySummary);
         if (summaryEl) { summaryEl.textContent = a11ySummary; }
     }
 
     function buildForecastDayDetailsHtml(day) {
         if (!day.events || day.events.length === 0) {
-            return '<div class="insight-note">אין תנועות מתוכננות ביום זה.</div>';
+            return '<div class="insight-note">' + (day.availability === 'opening' ? 'אין תנועות רשומות ביום יתרת ההתחלה.' : 'אין תנועות מתוכננות ביום זה.') + '</div>';
         }
         var html = '';
+        // Version 1.4.2 correction: labeling is now PER-EVENT (ev.alreadyIncludedInOpeningSnapshot),
+        // not a single blanket day-level message — a cash withdrawal entered after the opening
+        // snapshot was saved is genuinely NOT already included, even on the opening date itself,
+        // and must not be mislabeled as such.
+        if (day.availability === 'opening') {
+            var anyAlready = false, anyNew = false;
+            for (var k = 0; k < day.events.length; k++) {
+                if (day.events[k].alreadyIncludedInOpeningSnapshot) { anyAlready = true; } else { anyNew = true; }
+            }
+            if (anyAlready && !anyNew) {
+                html += '<div class="insight-note">התנועות הבאות כבר כלולות ביתרת ההתחלה ואינן מופחתות שוב:</div>';
+            } else if (anyAlready && anyNew) {
+                html += '<div class="insight-note">חלק מהתנועות ביום זה כבר כלולות ביתרת ההתחלה (מסומנות); האחרות מופחתות עכשיו לראשונה.</div>';
+            }
+        }
         for (var i = 0; i < day.events.length; i++) {
             var ev = day.events[i];
             var cls = ev.amount >= 0 ? 'positive-amount' : 'negative-amount';
+            var alreadyTag = (day.availability === 'opening' && ev.alreadyIncludedInOpeningSnapshot) ? ' <span class="insight-note">(כלול ביתרת ההתחלה)</span>' : '';
             html += '<div class="forecast-day-event">' +
-                '<span class="forecast-day-event-title">' + escapeHtml(ev.title || '') + '</span>' +
+                '<span class="forecast-day-event-title">' + escapeHtml(ev.title || '') + alreadyTag + '</span>' +
                 '<span class="forecast-day-event-amount ' + cls + '">' + escapeHtml(formatSignedCurrency(ev.amount)) + '</span>' +
             '</div>';
         }
@@ -2619,40 +2914,66 @@
     // with no events) — never a filtered/paged subset. Each row's summary is a single
     // touch/click/Enter/Space-activatable control with a real aria-expanded state and an
     // explicit accessible name, so its expand/collapse state is never conveyed by color alone.
-    function renderMonthlyCashflowTable(series) {
+    // Version 1.4.2: a day before the opening date renders as an explicit unavailable row ("—" /
+    // "אין נתון לפני יתרת ההתחלה") — never a calculated value. The opening date itself is tagged
+    // "יתרת התחלה" and its balance is exactly the configured opening amount.
+    function renderMonthlyCashflowTable(view) {
         var container = document.getElementById('forecast-daily-table');
         if (!container) { return; }
         var todayZero = cashflowDateOnly(new Date());
-        var isCurrentMonth = (series.year === todayZero.getFullYear() && series.month === todayZero.getMonth());
+        var isCurrentMonth = (view.year === todayZero.getFullYear() && view.month === todayZero.getMonth());
 
         var rows = '<div class="forecast-day-row forecast-day-header" aria-hidden="true">' +
             '<div class="forecast-day-cell">תאריך</div>' +
             '<div class="forecast-day-cell">הכנסות</div>' +
             '<div class="forecast-day-cell">הוצאות</div>' +
             '<div class="forecast-day-cell">שינוי יומי</div>' +
-            '<div class="forecast-day-cell">מצטבר מתחילת החודש</div>' +
+            '<div class="forecast-day-cell">יתרה צפויה</div>' +
         '</div>';
 
-        for (var i = 0; i < series.days.length; i++) {
-            var day = series.days[i];
-            var dateKey = cashflowDateKey(day.date);
+        for (var i = 0; i < view.days.length; i++) {
+            var day = view.days[i];
+            var dateKey = day.dateKey;
             var isToday = isCurrentMonth && day.day === todayZero.getDate();
             var rowId = 'forecast-day-row-' + dateKey;
             var expanded = (expandedForecastDayKey === dateKey);
-            var netClass = day.net > 0 ? 'positive-amount' : (day.net < 0 ? 'negative-amount' : 'neutral-amount');
-            var cumClass = day.cumulative > 0 ? 'positive-amount' : (day.cumulative < 0 ? 'negative-amount' : 'neutral-amount');
             var dateLabel = day.date.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' });
-            var a11yLabel = dateLabel + ', שינוי יומי ' + formatSignedCurrency(day.net) + ', מצטבר מתחילת החודש ' + formatSignedCurrency(day.cumulative);
+
+            if (day.availability === 'unavailable') {
+                var unavailA11y = dateLabel + ', אין נתון לפני יתרת ההתחלה';
+                rows += '<div class="forecast-day-row' + (isToday ? ' is-today' : '') + '" id="' + rowId + '">' +
+                    '<div class="forecast-day-summary" role="button" tabindex="0" aria-expanded="' + (expanded ? 'true' : 'false') + '" ' +
+                        'aria-controls="' + rowId + '-details" aria-label="' + escapeHtml(unavailA11y) + '" ' +
+                        'onclick="toggleForecastDayRow(\'' + dateKey + '\')" onkeydown="handleForecastDayRowKeydown(event, \'' + dateKey + '\')">' +
+                        '<div class="forecast-day-cell forecast-day-date" data-label="תאריך">' + escapeHtml(dateLabel) + '</div>' +
+                        '<div class="forecast-day-cell neutral-amount" data-label="הכנסות">—</div>' +
+                        '<div class="forecast-day-cell neutral-amount" data-label="הוצאות">—</div>' +
+                        '<div class="forecast-day-cell neutral-amount" data-label="שינוי יומי">—</div>' +
+                        '<div class="forecast-day-cell neutral-amount" data-label="יתרה צפויה">—</div>' +
+                    '</div>' +
+                    '<div class="forecast-day-details" id="' + rowId + '-details" style="display:' + (expanded ? 'block' : 'none') + ';">' +
+                        '<div class="insight-note">אין נתון לפני יתרת ההתחלה.</div>' +
+                    '</div>' +
+                '</div>';
+                continue;
+            }
+
+            var isOpening = (day.availability === 'opening');
+            var netClass = day.net > 0 ? 'positive-amount' : (day.net < 0 ? 'negative-amount' : 'neutral-amount');
+            var balClass = day.projectedBalance > 0 ? 'positive-amount' : (day.projectedBalance < 0 ? 'negative-amount' : 'neutral-amount');
+            var balText = formatHomeCurrency(day.projectedBalance) + (day.projectedBalance < 0 ? ' ⚠' : '');
+            var dateCellLabel = dateLabel + (isOpening ? ' · יתרת התחלה' : '');
+            var a11yLabel = dateLabel + (isOpening ? ', יתרת התחלה' : ', שינוי יומי ' + formatSignedCurrency(day.net)) + ', יתרה צפויה ' + formatHomeCurrency(day.projectedBalance);
 
             rows += '<div class="forecast-day-row' + (isToday ? ' is-today' : '') + '" id="' + rowId + '">' +
                 '<div class="forecast-day-summary" role="button" tabindex="0" aria-expanded="' + (expanded ? 'true' : 'false') + '" ' +
                     'aria-controls="' + rowId + '-details" aria-label="' + escapeHtml(a11yLabel) + '" ' +
                     'onclick="toggleForecastDayRow(\'' + dateKey + '\')" onkeydown="handleForecastDayRowKeydown(event, \'' + dateKey + '\')">' +
-                    '<div class="forecast-day-cell forecast-day-date" data-label="תאריך">' + escapeHtml(dateLabel) + '</div>' +
+                    '<div class="forecast-day-cell forecast-day-date" data-label="תאריך">' + escapeHtml(dateCellLabel) + '</div>' +
                     '<div class="forecast-day-cell positive-amount" data-label="הכנסות">' + (day.income > 0 ? escapeHtml(formatSignedCurrency(day.income)) : '₪0') + '</div>' +
                     '<div class="forecast-day-cell negative-amount" data-label="הוצאות">' + (day.expenses > 0 ? escapeHtml(formatSignedCurrency(-day.expenses)) : '₪0') + '</div>' +
-                    '<div class="forecast-day-cell ' + netClass + '" data-label="שינוי יומי">' + escapeHtml(formatSignedCurrency(day.net)) + '</div>' +
-                    '<div class="forecast-day-cell ' + cumClass + '" data-label="מצטבר">' + escapeHtml(formatSignedCurrency(day.cumulative)) + '</div>' +
+                    '<div class="forecast-day-cell ' + netClass + '" data-label="שינוי יומי">' + (isOpening ? '—' : escapeHtml(formatSignedCurrency(day.net))) + '</div>' +
+                    '<div class="forecast-day-cell ' + balClass + '" data-label="יתרה צפויה">' + escapeHtml(balText) + '</div>' +
                 '</div>' +
                 '<div class="forecast-day-details" id="' + rowId + '-details" style="display:' + (expanded ? 'block' : 'none') + ';">' +
                     buildForecastDayDetailsHtml(day) +
@@ -4164,7 +4485,13 @@
             var key = order[i];
             var cfg = categoryConfig[key];
             if (!cfg) { continue; }
-            var amount = formatHomeCurrency(totals[key] || 0);
+            var rawTotal = totals[key] || 0;
+            // Version 1.4.2 correction: a one-time/dated-type category (e.g. the default "💳 חיוב
+            // כרטיס אשראי") with nothing charged this month shows no tile at all, rather than a
+            // permanent ₪0 — scoped strictly to baseType 'dated' (every other category's existing
+            // ₪0 empty-state tile is unchanged; this is not a general zero-hiding rule).
+            if (cfg.baseType === 'dated' && !rawTotal) { continue; }
+            var amount = formatHomeCurrency(rawTotal);
             var safeKey = escapeHtml(key);
             var label = getHomeTileDisplayLabel(key, cfg);
             html += '<div class="category-tile" data-category-key="' + safeKey + '">' +
@@ -4628,6 +4955,19 @@
             return html;
         }
 
+        if (item.type === 'cashWithdrawal') {
+            // Version 1.4.2: no title field (fixed "משיכת מזומן" title, not user-editable) and no
+            // category field — mirrors the 'dated' early-return pattern above, minus those two.
+            html += '<div class="tx-edit-group"><label>סכום</label><input type="number" id="edit-amount-' + id + '" value="' + item.amount + '"></div>' +
+                '<div class="tx-edit-group"><label>תאריך</label><input type="date" id="edit-date-' + id + '" value="' + (item.start || '') + '"></div>' +
+                '<div class="tx-edit-group"><label>הערה (אופציונלי)</label><input type="text" id="edit-notes-cash-' + id + '" value="' + escapeHtml(item.notes || '') + '"></div>';
+            html += '<div class="tx-edit-actions">' +
+                '<button type="button" class="tx-edit-save" onclick="savePreviewInlineEdit(' + id + ')">💾 שמור שינויים</button>' +
+                '<button type="button" class="tx-edit-cancel" onclick="cancelPreviewEdit()">ביטול</button>' +
+                '</div></div>';
+            return html;
+        }
+
         html += '<div class="tx-edit-group"><label>שם / כותרת</label><input type="text" id="edit-title-' + id + '" value="' + escapeHtml(item.title || '') + '"></div>';
 
         if (item.type === 'fixed') {
@@ -4785,6 +5125,29 @@
             return;
         }
 
+        if (item.type === 'cashWithdrawal') {
+            var wdEditAmount = sanitizePositiveAmount(document.getElementById('edit-amount-' + id).value);
+            var wdEditDate = document.getElementById('edit-date-' + id).value;
+            var wdEditNotes = document.getElementById('edit-notes-cash-' + id).value;
+            if (wdEditAmount === null || !isValidDateStr(wdEditDate)) {
+                alert('נא להזין תאריך וסכום תקינים (סכום גדול מאפס)');
+                return;
+            }
+            var wdEditOpening = getProjectedBalanceOpeningConfig();
+            if (wdEditOpening && cashflowDateOnly(parseLocalDateStr(wdEditDate)) < cashflowDateOnly(parseLocalDateStr(wdEditOpening.dateStr))) {
+                alert('לא ניתן להזין משיכת מזומן בתאריך שלפני יתרת ההתחלה (' + wdEditOpening.dateStr + ').');
+                return;
+            }
+            item.amount = wdEditAmount;
+            item.start = wdEditDate;
+            item.notes = wdEditNotes;
+            previewEditingId = null;
+            savePreviewItems();
+            renderAllPreviewScreens();
+            consumeTransient('txInline');
+            return;
+        }
+
         var titleVal = document.getElementById('edit-title-' + id).value.trim();
         var amountVal = parseFloat(document.getElementById('edit-amount-' + id).value);
 
@@ -4923,6 +5286,15 @@
     // convention of never trusting rendered UI state blindly (e.g. handleRowMenuAction() re-checks
     // live data rather than trusting the button's own label).
     function chooseExpenseAddType(baseType) {
+        // Version 1.4.2: a cash withdrawal deliberately has NO category (never a Home tile, never
+        // counted in any category total) — it does not go through getDefaultCategoryKeyForBaseType()
+        // at all, unlike every other type here.
+        if (baseType === 'cashWithdrawal') {
+            previewAddMode = 'cashWithdrawal';
+            previewAddCategoryKey = null;
+            renderAddFormArea();
+            return;
+        }
         var defaultKey = getDefaultCategoryKeyForBaseType(baseType);
         if (!defaultKey) { return; }
         previewAddMode = baseType;
@@ -4966,12 +5338,16 @@
             var html = '<div class="tx-edit-form">';
             html += '<div class="tx-edit-group"><label>איזה סוג הוצאה?</label></div>';
             html += '<button type="button" class="expense-type-btn" onclick="chooseExpenseAddType(\'fixed\')">🏡 הוצאה קבועה</button>';
-            html += '<button type="button" class="expense-type-btn" onclick="chooseExpenseAddType(\'variable\')">🛒 הוצאה משתנה</button>';
             if (datedDisabled) {
                 html += '<button type="button" class="expense-type-btn disabled" disabled title="קודם צור קטגוריה מסוג \'חיוב חד-פעמי\' במסך הקטגוריות">📅 הוצאה מתוארכת</button>';
             } else {
                 html += '<button type="button" class="expense-type-btn" onclick="chooseExpenseAddType(\'dated\')">📅 הוצאה מתוארכת</button>';
             }
+            // Version 1.4.2: cash withdrawal — a bank-balance movement, never a category/consumer-
+            // spending item — positioned between the dated/credit-card choice and the tracking-only
+            // installment choice, matching the approved Quick Actions ordering.
+            html += '<button type="button" class="expense-type-btn" onclick="chooseExpenseAddType(\'cashWithdrawal\')">🏧 משיכת מזומן</button>';
+            html += '<button type="button" class="expense-type-btn" onclick="chooseExpenseAddType(\'variable\')">🛒 עסקה בתשלומים — מעקב יתרה בלבד</button>';
             html += '<div class="tx-edit-actions"><button type="button" class="tx-edit-cancel" onclick="cancelPreviewAdd()">ביטול</button></div>';
             html += '</div>';
             return html;
@@ -5014,6 +5390,7 @@
                 '<div class="tx-edit-group"><label>תאריך לקיחה / פתיחה</label><input type="date" id="add-loan-start"></div>';
         } else if (previewAddMode === 'variable') {
             html += categoryPickerHtml +
+                '<div class="settings-hint">מיועד למעקב אחר יתרת תשלומים ואינו מופחת שוב בתחזית.</div>' +
                 '<div class="tx-edit-group"><label>שם התשלום</label><input type="text" id="add-var-title"></div>' +
                 '<div class="tx-edit-group"><label>סכום מקור (סך כל העסקה המקורית)</label><input type="number" id="add-var-original" placeholder="₪"></div>' +
                 '<div class="tx-edit-group"><label>עלות חודשית</label><input type="number" id="add-var-amount" placeholder="₪"></div>' +
@@ -5034,6 +5411,14 @@
                 '<div class="tx-edit-group"><label>שם ההוצאה</label><input type="text" id="add-dated-title" placeholder="לדוגמה: קניות בסופר"></div>' +
                 '<div class="tx-edit-group"><label>סכום</label><input type="number" id="add-dated-amount" placeholder="₪"></div>' +
                 '<div class="tx-edit-group"><label>תאריך החיוב</label><input type="date" id="add-dated-date" value="' + todayStr() + '"></div>';
+        } else if (previewAddMode === 'cashWithdrawal') {
+            // Version 1.4.2: no category picker — a cash withdrawal is never assigned to a
+            // category (never a Home tile, never counted in consumer-spending/category totals).
+            html += '<div class="settings-row-label" style="margin-bottom:4px;">משיכת מזומן</div>' +
+                '<div class="settings-hint">מפחיתה את היתרה הצפויה בבנק, אך אינה נספרת כהוצאת צריכה רגילה.</div>' +
+                '<div class="tx-edit-group"><label>סכום</label><input type="number" id="add-cash-amount" placeholder="₪"></div>' +
+                '<div class="tx-edit-group"><label>תאריך המשיכה</label><input type="date" id="add-cash-date" value="' + todayStr() + '"></div>' +
+                '<div class="tx-edit-group"><label>הערה (אופציונלי)</label><input type="text" id="add-cash-notes" placeholder="למשל: כספומט"></div>';
         }
 
         html += '<div class="tx-edit-actions">' +
@@ -5053,6 +5438,25 @@
     // confirms #preview-add-form-area starts empty (it already is, in the static HTML).
     renderAddFormArea();
 
+    // Version 1.4.2 correction: plain Date.now() (used unconditionally as `obj.id` below, still
+    // true for every OTHER item type — deliberately unchanged) is not collision-resistant against
+    // a rapid double-submit/double-click creating two records in the same millisecond. This
+    // matters specifically for cash withdrawals because projectedBalanceOpeningIncludedWithdrawalIds
+    // identifies records strictly by id — a collision could misclassify two distinct withdrawals
+    // as one. Kept as a plain NUMBER on purpose, not a string/UUID: handleRowMenuAction()/
+    // handleDeleteMenuAction() parse `data-item-id` via parseInt(...,10), and
+    // savePreviewInlineEdit()'s onclick embeds the id as an unquoted numeric literal — both are
+    // generic, used by every item type, and assume a number project-wide. Introducing a string id
+    // for only this one type would require touching those unrelated generic mechanisms, which is a
+    // larger and riskier change than the actual problem (collision resistance) requires. Checked
+    // against every existing item id (any type, not just cash withdrawals) before being accepted,
+    // so it can never collide with anything already in `items`.
+    function generateCashWithdrawalId() {
+        var id = Date.now();
+        while (items.some(function (it) { return it.id === id; })) { id++; }
+        return id;
+    }
+
     // Literal, branch-for-branch copy of index.html's own addNewItem() — same object shape, same
     // required-field checks, same exact alert() messages, same cardLast4 4-digit validation. The
     // only structural difference: `baseType`/`catKey` come from previewAddMode/previewAddCategoryKey
@@ -5066,9 +5470,12 @@
 
         var baseType = previewAddMode;
         var catKey = previewAddCategoryKey;
-        if (!catKey) { return; }
+        // Version 1.4.2: a cash withdrawal is the one type with deliberately NO category — never a
+        // Home tile, never a category total.
+        if (baseType !== 'cashWithdrawal' && !catKey) { return; }
 
-        var obj = { id: Date.now(), type: baseType, displayCategory: catKey, isArchived: false };
+        var obj = { id: Date.now(), type: baseType, isArchived: false };
+        if (baseType !== 'cashWithdrawal') { obj.displayCategory = catKey; }
 
         if (baseType === 'income') {
             obj.title = document.getElementById('add-inc-title').value.trim();
@@ -5112,6 +5519,22 @@
             obj.start = document.getElementById('add-dated-date').value;
             obj.amount = parseFloat(document.getElementById('add-dated-amount').value);
             if (!obj.title || !obj.start || isNaN(obj.amount)) { alert('מלא שם, תאריך וסכום'); return; }
+        } else if (baseType === 'cashWithdrawal') {
+            var wdAmount = sanitizePositiveAmount(document.getElementById('add-cash-amount').value);
+            var wdDateStr = document.getElementById('add-cash-date').value;
+            var wdNotes = document.getElementById('add-cash-notes').value;
+            if (wdAmount === null) { alert('נא להזין סכום תקין (גדול מאפס)'); return; }
+            if (!isValidDateStr(wdDateStr)) { alert('נא להזין תאריך תקין'); return; }
+            var wdOpening = getProjectedBalanceOpeningConfig();
+            if (wdOpening && cashflowDateOnly(parseLocalDateStr(wdDateStr)) < cashflowDateOnly(parseLocalDateStr(wdOpening.dateStr))) {
+                alert('לא ניתן להזין משיכת מזומן בתאריך שלפני יתרת ההתחלה (' + wdOpening.dateStr + ').');
+                return;
+            }
+            obj.id = generateCashWithdrawalId();
+            obj.title = 'משיכת מזומן';
+            obj.amount = wdAmount;
+            obj.start = wdDateStr;
+            obj.notes = wdNotes;
         }
 
         items.push(obj);
@@ -5571,7 +5994,11 @@
 
     function buildPreviewCategoryAddAreaHtml() {
         if (!previewCategoryAddOpen) {
-            return '<button type="button" class="cat-add-toggle" onclick="startPreviewAddCategory()">+ הוסף קטגוריה</button>';
+            // Version 1.4.2: the textual "+ הוסף קטגוריה" toggle button is removed — the shared
+            // circular FAB (#fab-button, visible on this screen via updateFabVisibility()'s new
+            // isOnCategoriesScreen() context) now opens the exact same startPreviewAddCategory()
+            // form. The accessible name "הוסף קטגוריה" is preserved on the FAB itself, not deleted.
+            return '';
         }
         // The type <select>'s first <option> (from PREVIEW_CUSTOM_CATEGORY_TYPE_OPTIONS) is always
         // the browser's initial selection, so the day field's initial label/visibility must match
@@ -6015,6 +6442,41 @@
     // this fix); anything else for this one key is still rejected. Every other family_finance_*
     // key keeps the original strict "must be JSON.parse-able" rule unchanged — this is a narrow,
     // key-specific exception, not a general relaxation of backup validation.
+    // Version 1.4.2 correction: validates family_finance_data specifically to protect
+    // cash-withdrawal records against a malformed or colliding id inside a restored backup —
+    // handleRowMenuAction()/handleDeleteMenuAction()/savePreviewInlineEdit() and the
+    // opening-snapshot's projectedBalanceOpeningIncludedWithdrawalIds list all identify a
+    // cash-withdrawal strictly by item.id, so a collision or malformed value could silently
+    // misidentify, merge, or corrupt the wrong record. Deliberately narrow: a collision between
+    // two ORDINARY (non-cash-withdrawal) legacy items is NOT newly rejected here — that
+    // protection never existed before this correction and stays out of scope, so an existing
+    // backup that was previously accepted (however imperfect) is still accepted unless a
+    // cash-withdrawal is one of the colliding parties.
+    function isValidItemsArrayForRestore(itemsArr) {
+        if (!Array.isArray(itemsArr)) { return false; }
+        var idCounts = {};
+        for (var i = 0; i < itemsArr.length; i++) {
+            var raw = itemsArr[i];
+            if (!raw || typeof raw !== 'object' || Array.isArray(raw)) { return false; }
+            if (typeof raw.id === 'number' && isFinite(raw.id)) {
+                idCounts[raw.id] = (idCounts[raw.id] || 0) + 1;
+            }
+        }
+        for (var j = 0; j < itemsArr.length; j++) {
+            var it = itemsArr[j];
+            if (it.type !== 'cashWithdrawal') { continue; }
+            var id = it.id;
+            if (typeof id !== 'number' || !Number.isSafeInteger(id) || id <= 0) { return false; }
+            if ((idCounts[id] || 0) > 1) { return false; } // collides with ANY other item (any type) sharing this exact id
+            if (typeof it.amount !== 'number' || !isFinite(it.amount) || it.amount <= 0) { return false; }
+            if (!isValidDateStr(it.start)) { return false; }
+            if (typeof it.title !== 'string' || !it.title) { return false; }
+            if (it.notes !== undefined && typeof it.notes !== 'string') { return false; }
+            if (typeof it.isArchived !== 'boolean') { return false; }
+        }
+        return true;
+    }
+
     function isValidBackupShape(obj) {
         if (!obj || typeof obj !== 'object') { return false; }
         if (!obj.data || typeof obj.data !== 'object' || Array.isArray(obj.data)) { return false; }
@@ -6033,7 +6495,7 @@
             try { JSON.parse(obj.data[k]); } catch (e) { return false; }
         }
         try {
-            if (obj.data[DATA_KEY] !== undefined && !Array.isArray(JSON.parse(obj.data[DATA_KEY]))) { return false; }
+            if (obj.data[DATA_KEY] !== undefined && !isValidItemsArrayForRestore(JSON.parse(obj.data[DATA_KEY]))) { return false; }
             if (obj.data[CONFIG_KEY] !== undefined) {
                 var cfg = JSON.parse(obj.data[CONFIG_KEY]);
                 if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) { return false; }
@@ -6452,6 +6914,105 @@
             try { localStorage.removeItem(keysToRemove[j]); } catch (e) { }
         }
         location.reload();
+    }
+
+    // ----- Version 1.4.2: one-time projected-balance opening balance (Settings) -----------
+
+    function buildOpeningBalanceSectionHtml() {
+        var opening = getProjectedBalanceOpeningConfig();
+        var html = '<div class="settings-hint">היתרה משמשת נקודת התחלה חד־פעמית לחישוב היתרה הצפויה. ' +
+            'לאחר מכן ההכנסות וההוצאות מתווספות ומופחתות אוטומטית לפי התאריך שלהן.</div>';
+
+        if (settingsOpeningBalanceFormOpen) {
+            if (settingsOpeningBalancePendingReplace) {
+                html += '<div class="goal-inline-confirm">שינוי יתרת ההתחלה ישנה את כל חישובי היתרה הצפויה מתאריך זה ואילך.' +
+                    '<div class="tx-edit-actions">' +
+                    '<button type="button" class="settings-danger-btn" onclick="confirmReplaceOpeningBalance()">אישור שינוי</button>' +
+                    '<button type="button" class="tx-edit-cancel" onclick="cancelOpeningBalanceForm()">ביטול</button>' +
+                    '</div></div>';
+            } else {
+                var defaultAmount = opening ? String(opening.amount) : '';
+                var defaultDate = opening ? opening.dateStr : todayStr();
+                html += '<div class="tx-edit-form">' +
+                    '<div class="tx-edit-group"><label>סכום יתרת התחלה</label>' +
+                    '<input type="number" step="0.01" id="opening-balance-amount-input" value="' + escapeHtml(defaultAmount) + '"></div>' +
+                    '<div class="tx-edit-group"><label>תאריך יתרת התחלה</label>' +
+                    '<input type="date" id="opening-balance-date-input" value="' + escapeHtml(defaultDate) + '"></div>' +
+                    '<div class="tx-edit-actions">' +
+                    '<button type="button" class="tx-edit-save" onclick="submitOpeningBalanceForm()">שמור יתרת התחלה</button>' +
+                    '<button type="button" class="tx-edit-cancel" onclick="cancelOpeningBalanceForm()">ביטול</button>' +
+                    '</div></div>';
+            }
+        } else if (opening) {
+            html += '<div class="settings-row"><div class="settings-row-label">סכום</div><div>' + escapeHtml(formatHomeCurrency(opening.amount)) + '</div></div>' +
+                '<div class="settings-row"><div class="settings-row-label">תאריך</div><div>' + escapeHtml(opening.dateStr) + '</div></div>' +
+                '<button type="button" class="cat-add-toggle" onclick="openOpeningBalanceForm()">תקן יתרת התחלה</button>';
+        } else {
+            html += '<button type="button" class="cat-add-toggle" onclick="openOpeningBalanceForm()">+ הגדר יתרת התחלה</button>';
+        }
+        return html;
+    }
+
+    function openOpeningBalanceForm() {
+        settingsOpeningBalanceFormOpen = true;
+        settingsOpeningBalancePendingReplace = null;
+        refreshSettingsUI();
+        pushTransientState('openingBalanceForm', cancelOpeningBalanceForm);
+    }
+
+    // The single close function — visible "ביטול" on both the form and the replace-confirmation,
+    // AND the Back/Escape onClose. Never writes. Closing from the confirmation step discards the
+    // whole in-progress edit (not just the confirmation) — a deliberate simplification of the
+    // spec's "close the form or confirmation first" into one flat transient, since this is a
+    // strictly linear two-step flow with no sibling states to preserve underneath it (unlike
+    // goalInline/categoryInline, which dispatch between several independent open forms).
+    function cancelOpeningBalanceForm() {
+        settingsOpeningBalanceFormOpen = false;
+        settingsOpeningBalancePendingReplace = null;
+        refreshSettingsUI();
+        consumeTransient('openingBalanceForm');
+    }
+
+    function submitOpeningBalanceForm() {
+        var amountInput = document.getElementById('opening-balance-amount-input');
+        var dateInput = document.getElementById('opening-balance-date-input');
+        var amount = sanitizeFiniteAmount(amountInput ? amountInput.value : '');
+        var dateStr = dateInput ? dateInput.value : '';
+        if (amount === null) { alert('יש להזין סכום תקין (מספר בלבד)'); return; }
+        if (!isValidDateStr(dateStr)) { alert('יש להזין תאריך תקין'); return; }
+
+        var existing = getProjectedBalanceOpeningConfig();
+        if (existing) {
+            // Replacing an already-configured opening balance — requires the explicit
+            // confirmation below before anything is written (approved requirement: this changes
+            // every downstream projected-balance figure from this date onward).
+            settingsOpeningBalancePendingReplace = { amount: amount, dateStr: dateStr };
+            refreshSettingsUI();
+            return;
+        }
+        saveProjectedBalanceOpening(amount, dateStr);
+        renderAllPreviewScreens();
+        settingsOpeningBalanceFormOpen = false;
+        refreshSettingsUI();
+        consumeTransient('openingBalanceForm');
+    }
+
+    function confirmReplaceOpeningBalance() {
+        if (!settingsOpeningBalancePendingReplace) { return; }
+        saveProjectedBalanceOpening(settingsOpeningBalancePendingReplace.amount, settingsOpeningBalancePendingReplace.dateStr);
+        settingsOpeningBalancePendingReplace = null;
+        settingsOpeningBalanceFormOpen = false;
+        renderAllPreviewScreens();
+        refreshSettingsUI();
+        consumeTransient('openingBalanceForm');
+    }
+
+    // Safe navigation target for the unconfigured-state action on Home/Forecast — reuses the
+    // existing, already-tested openSettingsTopic() screen transition, then opens the same
+    // transient form a manual "תקן/הגדר יתרת התחלה" click would.
+    function goToOpeningBalanceSettings() {
+        openSettingsTopic('openingBalance');
+        openOpeningBalanceForm();
     }
 
     function buildDataSectionHtml() {
