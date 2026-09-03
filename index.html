@@ -27,13 +27,18 @@
 
     <!-- ===== מסך 1: בית (Cockpit) ===== -->
     <div class="screen active" id="screen-home">
-        <div class="hero-gauge">
+        <!-- Home balance-card correction: the whole card opens/closes the opening-balance form
+             (handleHeroBalanceClick() — first tap open, second tap close). event.stopPropagation()
+             on #hero-action-area keeps taps on the form's own inputs/save/cancel buttons (once
+             open) from also re-triggering this same click, the same pattern already used for
+             .quick-actions-sheet/.reminder-card in this file. -->
+        <div class="hero-gauge" onclick="handleHeroBalanceClick()">
             <div class="hero-label">יתרה צפויה להיום</div>
             <div class="hero-amount" id="hero-amount"></div>
             <div class="status-pill" id="hero-status"></div>
-            <!-- Version 1.4.2: safe navigation to the one-time opening-balance Settings form —
-                 populated only in the unconfigured state (see renderHomeScreenFromRealData()). -->
-            <div id="hero-action-area"></div>
+            <!-- Populated by renderHomeScreenFromRealData(): the unconfigured-state CTA, or the
+                 opening-balance form/replace-confirmation when opened from this card. -->
+            <div id="hero-action-area" onclick="event.stopPropagation()"></div>
         </div>
 
         <div class="snapshot-grid">
@@ -212,11 +217,10 @@
 </div>
 
 <!-- ===== כפתור הוספה צף ===== -->
-<!-- Version 1.1, Stage 2: hidden on the Home screen only (showScreen() toggles this); style="display:
-     none" here matches the default active screen (Home) in the static markup above — every other
-     screen shows it via showScreen(). handleFabClick() below decides whether a click opens the
-     normal Quick Actions sheet or, when a category filter is active on the Transactions screen,
-     the existing add-transaction form pre-filled for that category. -->
+<!-- Version 1.1, Stage 2 / Home quick-action removal: visibility is controlled entirely by
+     updateFabVisibility() (a category filter page, Categories, or Goals) — Home is deliberately
+     NOT a context for this button (its own balance card opens the opening-balance form instead).
+     style="display:none" here matches that (Home is the default active screen above). -->
 <button type="button" class="fab" id="fab-button" style="display:none;" onclick="handleFabClick()">+</button>
 
 <!-- Version 1.1, Stage 4.0.2.2: non-blocking, self-dismissing notice for the automatic end-of-
@@ -245,23 +249,6 @@
      content is rendered by renderGoalsReminderOverlay() — see the Milestone 5 JS section. -->
 <div class="reminder-overlay" id="goals-reminder-overlay" role="dialog" aria-modal="true" aria-labelledby="goals-reminder-title">
     <div class="reminder-card" id="goals-reminder-card" onclick="event.stopPropagation()"></div>
-</div>
-
-<!-- ===== חלונית פעולות מהירות (חזותי בלבד בשלב זה) ===== -->
-<div class="quick-actions-overlay" id="quick-actions-overlay" onclick="toggleQuickActions(false)">
-    <div class="quick-actions-sheet" onclick="event.stopPropagation()">
-        <h3>הוספת תנועה</h3>
-        <button type="button" class="quick-action-btn" onclick="startPreviewAdd('expense-picker')">
-            <span class="qa-icon">💸</span><span class="qa-label">הוצאה חדשה</span>
-        </button>
-        <button type="button" class="quick-action-btn" onclick="startPreviewAdd('income')">
-            <span class="qa-icon">💰</span><span class="qa-label">הכנסה חדשה</span>
-        </button>
-        <button type="button" class="quick-action-btn" onclick="startPreviewAdd('loan')">
-            <span class="qa-icon">🏦</span><span class="qa-label">הלוואה חדשה</span>
-        </button>
-        <button type="button" class="quick-action-close" onclick="toggleQuickActions(false)">ביטול</button>
-    </div>
 </div>
 
 <script src="app.js"></script>

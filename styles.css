@@ -119,6 +119,7 @@
         padding: 26px 20px;
         text-align: center;
         box-shadow: var(--shadow);
+        cursor: pointer;
     }
     .hero-gauge .hero-label { font-size: 13px; opacity: .85; }
     /* Stage F.1 follow-up: same bidi isolation as .tx-amount — negative balances rendered as
@@ -300,7 +301,7 @@
        yet in this stage to toggle it) will control visibility. z-index:10 is enough to paint
        above sibling .tx-row elements (which set no z-index of their own) without competing with,
        or needing to be reasoned about alongside, the page-chrome scale already established
-       elsewhere in this file (.bottom-nav:50, .fab:60, .quick-actions-overlay:70) — a per-row
+       elsewhere in this file (.bottom-nav:50, .fab:60) — a per-row
        menu is page content, not global chrome, so it intentionally stays well under those. No
        ancestor of .tx-row (.screen, .app-shell, body) sets overflow:hidden anywhere in this
        file, so this dropdown cannot be clipped regardless of which row it opens from — including
@@ -364,17 +365,6 @@
     }
     .tx-edit-save { background: var(--color-primary); color: #fff; }
     .tx-edit-cancel { background: var(--color-bg); color: var(--color-text); border: 1px solid var(--color-border); }
-
-    /* ===== Stage G.5: expense-type picker buttons — shown inside the add-transaction form area
-       (#preview-add-form-area) when "הוצאה חדשה" is chosen, before a specific expense type
-       (fixed/variable/dated) is picked. The picker itself reuses .tx-edit-form as its wrapping
-       card (no new wrapper class); only these 2 rules are new. */
-    .expense-type-btn {
-        display: block; width: 100%; text-align: right; margin-bottom: 8px;
-        padding: 12px 14px; border-radius: 10px; border: 1px solid var(--color-border);
-        background: var(--color-bg); font-size: 14px; cursor: pointer; font-family: inherit;
-    }
-    .expense-type-btn.disabled { opacity: .55; cursor: not-allowed; }
 
     /* ===== Transactions screen: search + filter (visual only) ===== */
     .search-bar input {
@@ -675,44 +665,15 @@
 
     /* Version 1.1, Stage 4.0.2.2: non-blocking auto-archive notice — fixed at the TOP of the
        viewport (not the bottom, where .fab/.bottom-nav already live) so it never overlaps them.
-       z-index 80 is intentionally above .quick-actions-overlay's 70 (the highest existing layer)
-       so it's still visible if a sweep result happens to coincide with that sheet being open, but
-       it never captures clicks/taps of its own (JS only toggles display:none/block; no onclick) —
-       "no blocking Popup" per the approved requirement. */
+       z-index 80 is intentionally above .fab's 60 (the highest remaining page-chrome layer) so
+       it's still visible if a sweep result happens to coincide with another overlay, but it never
+       captures clicks/taps of its own (JS only toggles display:none/block; no onclick) — "no
+       blocking Popup" per the approved requirement. */
     .auto-archive-toast {
         position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
         max-width: calc(100% - 32px); background: var(--color-primary); color: #fff;
         padding: 10px 18px; border-radius: 10px; font-size: 13px; font-weight: 600;
         text-align: center; box-shadow: var(--shadow); z-index: 80;
-    }
-
-    /* ===== Quick actions sheet ===== */
-    .quick-actions-overlay {
-        position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 70; display: none;
-    }
-    .quick-actions-overlay.open { display: block; }
-    .quick-actions-sheet {
-        position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
-        width: 100%; max-width: 560px; background: var(--color-surface);
-        border-radius: 20px 20px 0 0; padding: 20px; box-shadow: 0 -4px 20px rgba(0,0,0,.15);
-    }
-    .quick-actions-sheet h3 { margin: 0 0 14px; font-size: 15px; text-align: center; }
-    .quick-action-btn {
-        width: 100%; display: flex; align-items: center; gap: 12px; padding: 14px;
-        border-radius: 12px; border: 1px solid var(--color-border); background: var(--color-bg);
-        margin-bottom: 10px; font-size: 14px; cursor: pointer; font-family: inherit;
-    }
-    .quick-action-btn .qa-icon { font-size: 18px; }
-    /* Stage F.1 fix: these 3 actions aren't wired to any save logic yet (clicking them today
-       just closes the sheet) — this visual treatment makes that clear instead of looking like a
-       fully working button. Matches the existing "עריכה (בקרוב)" convention already used in the
-       Settings category list for the same "not active yet" concept. */
-    .quick-action-btn.disabled { opacity: .55; cursor: not-allowed; }
-    .quick-action-btn .qa-label { flex: 1; }
-    .quick-action-btn .qa-soon { font-size: 11.5px; color: var(--color-text-muted); }
-    .quick-action-close {
-        width: 100%; text-align: center; padding: 10px; background: none; border: none;
-        color: var(--color-text-muted); font-size: 13px; margin-top: 4px; cursor: pointer; font-family: inherit;
     }
 
     /* ===== Version 1.1, Stage 4.0.3: Settings screen ===== */

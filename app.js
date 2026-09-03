@@ -397,8 +397,8 @@
         // row is ever left expanded when the user leaves a category (to Home/Insights/Settings/a
         // different category) or returns to one. UI state only — no data, no localStorage, no
         // calculation touched. Already a safe no-op everywhere this was implicitly true before
-        // (e.g. startPreviewAdd() already cleared previewEditingId itself before its own
-        // showScreen('transactions') call) — this just makes it hold unconditionally everywhere.
+        // (e.g. startPreviewAddForCategory() already clears previewEditingId itself) — this just
+        // makes it hold unconditionally everywhere.
         // Version 1.4.1 correction: consumeTransient() below is a defensive no-op safety net for
         // the case where the user navigates screens directly (bottom-nav, a category tile) while
         // the 'txInline' transient is open, instead of via its own Cancel/Back path — never leaves
@@ -406,10 +406,26 @@
         // so cancelCurrentTxInlineState() (if it were ever reached — it isn't here, since this is a
         // direct-navigation discard, not a Back-triggered close) would still see accurate state;
         // in practice consumeTransient() only pops bookkeeping here, it never calls that dispatcher.
-        // previewAddMode is intentionally NOT cleared here: startPreviewAdd() itself calls
-        // showScreen('transactions') AFTER already setting previewAddMode to the form it is about
-        // to open, so clearing it here would erase that same call's own new value before its form
-        // ever renders.
+        //
+        // Android-back correction: every OTHER open transient (settings sub-forms, goalInline,
+        // categoryInline, the Goals reminder, rowMenu, etc.) must ALSO be closed here, via its own real
+        // onClose() this time — not just popped — because a direct navigation away (bottom-nav,
+        // a category tile) never goes through that transient's own Cancel/Back path either. Left
+        // stale, its entry would still sit in transientStack under whatever screen entry this
+        // showScreen() call is about to push; the NEXT real Back press would then hit
+        // handleNavPopState()'s unconditional "transientStack not empty" check FIRST, silently
+        // consuming that real Back press to close the (already invisible) stale overlay instead of
+        // showing the screen the browser actually navigated back to — the screen and the real
+        // history position fall out of sync, and each further Back press burns one more real
+        // history entry without the visible screen ever catching up, eventually exhausting history
+        // and exiting the app even though in-app screens the user never saw remain unvisited.
+        // 'txInline' keeps its existing pop-only handling below and is deliberately excluded here:
+        // it is the one type callable while sharing this exact screen (Transactions), so a stale
+        // entry cannot hide behind a screen switch the way every other type's can.
+        while (transientStack.length > 0 && transientStack[transientStack.length - 1].type !== 'txInline') {
+            var staleTransient = transientStack.pop();
+            try { staleTransient.onClose(); } catch (e) { /* a transient's onClose must already be safe to call from Back; same guarantee here */ }
+        }
         consumeTransient('txInline');
         previewEditingId = null;
 
@@ -460,17 +476,6 @@
         return !!(el && el.classList.contains('active'));
     }
 
-    // Version 1.4.2 correction: Home is now also a valid FAB context — required so the newly
-    // approved "🏧 משיכת מזומן" quick action (and every existing Quick Actions entry) has a
-    // visible trigger on Home at all. Before this correction updateFabVisibility() never showed
-    // the FAB on Home (a pre-existing gap: Home's Quick Actions sheet was only reachable by
-    // calling toggleQuickActions() directly, never via a visible button) — handleFabClick()'s own
-    // `else` branch already called toggleQuickActions() correctly, only visibility was wrong.
-    function isOnHomeScreen() {
-        var el = document.getElementById('screen-home');
-        return !!(el && el.classList.contains('active'));
-    }
-
     function updateFabVisibility() {
         var fabEl = document.getElementById('fab-button');
         if (!fabEl) { return; }
@@ -480,8 +485,9 @@
         var onGoals = isOnGoalsScreen() && goalsState.valid;
         var onCategories = isOnCategoriesScreen();
         var onCategoryFilter = isOnCategoryPage();
-        var onHome = isOnHomeScreen();
-        fabEl.style.display = (onHome || onCategoryFilter || onCategories || onGoals) ? 'flex' : 'none';
+        // Home is deliberately NOT a FAB context (removed — see the Home quick-action-removal
+        // correction; Home's own balance card now opens the opening-balance form directly).
+        fabEl.style.display = (onCategoryFilter || onCategories || onGoals) ? 'flex' : 'none';
         // Version 1.4.2: the shared FAB previously had no accessible name at all in any of its
         // contexts (just a bare "+" glyph) — set explicitly per context rather than leaving a
         // stale/wrong label from whichever screen was active before.
@@ -503,32 +509,13 @@
         renderTransactionsScreenFromRealData(name);
     }
 
-    // ===== Quick actions sheet open/close (visual only — no save logic yet) =====
-    function toggleQuickActions(forceState) {
-        var overlay = document.getElementById('quick-actions-overlay');
-        var isOpen = overlay.classList.contains('open');
-        var shouldOpen = (typeof forceState === 'boolean') ? forceState : !isOpen;
-        if (shouldOpen === isOpen) { return; }
-        if (shouldOpen) {
-            overlay.classList.add('open');
-            // Version 1.4.1: one Back press (or the overlay's own background-click/"ביטול", which
-            // routes through this same else-branch) closes this sheet — never navigates a screen,
-            // never confirms anything.
-            pushTransientState('quickActions', function () { overlay.classList.remove('open'); });
-        } else {
-            overlay.classList.remove('open');
-            consumeTransient('quickActions');
-        }
-    }
-
-    // Version 1.1, Stage 2: the single FAB now has two behaviors depending on context. While
+    // Version 1.1, Stage 2: the single FAB has three behaviors depending on context. While
     // actually looking at a category's filtered transaction list (Transactions screen +
-    // currentCategoryFilterKey set — i.e. a "category view"), it skips the generic Quick Actions
-    // sheet entirely and opens the existing add-transaction form directly for that category
-    // (startPreviewAddForCategory() below, defined once startPreviewAdd()/buildPreviewAddFormHtml()
-    // exist further down — safe due to function hoisting, same pattern used throughout this file).
-    // Everywhere else (Transactions screen with no category filter, Insights, Settings) it falls
-    // back to the original toggleQuickActions() behavior, unchanged.
+    // currentCategoryFilterKey set — i.e. a "category view"), it opens the existing add-transaction
+    // form directly for that category (startPreviewAddForCategory() below, defined further down —
+    // safe due to function hoisting, same pattern used throughout this file). On Goals/Categories
+    // it opens that screen's own create form. The Home Quick Actions sheet this FAB used to also
+    // open there was removed — Home is no longer a FAB context at all (see updateFabVisibility()).
     function handleFabClick() {
         if (isOnCategoryPage()) {
             startPreviewAddForCategory(currentCategoryFilterKey);
@@ -538,8 +525,6 @@
             // Version 1.4.2: replaces the removed textual "+ הוסף קטגוריה" toggle button — same
             // startPreviewAddCategory()/existing form+save logic, only the trigger changed.
             startPreviewAddCategory();
-        } else {
-            toggleQuickActions();
         }
     }
 
@@ -2365,6 +2350,14 @@
     // function Back/Escape/Cancel and a successful save all funnel through.
     var settingsOpeningBalanceFormOpen = false;
     var settingsOpeningBalancePendingReplace = null;
+    // Home balance-card correction: which mount point currently owns the (single, shared) open
+    // form — 'settingsTopic' (Settings > topic) or 'home' (the hero card's own inline toggle).
+    // null when closed. Lets buildOpeningBalanceSectionHtml() (Settings) and
+    // renderHomeScreenFromRealData() (Home) each render the form ONLY at its own opened-from
+    // location, so the two mount points can never both hold a live copy — and therefore never
+    // collide on the shared input ids (opening-balance-amount-input/opening-balance-date-input) —
+    // at the same time.
+    var openingBalanceFormOpenedFrom = null;
     var pendingRestoreBackup = null;
     var resetConfirmMode = false;
     var restorePasteMode = false;
@@ -2397,12 +2390,11 @@
     var previewEditingId = null;
 
     // Stage G.5: tracks the add-transaction form currently open (if any) at the top of the
-    // Transactions screen. null = closed. 'expense-picker' = the intermediate fixed/variable/dated
-    // chooser (no category chosen yet). 'income'/'loan'/'fixed'/'variable'/'dated' = that type's
-    // full form is open. previewAddCategoryKey holds the categoryConfig key the new item will be
-    // saved under (displayCategory) — only meaningful once a concrete type (not 'expense-picker')
-    // is selected. Both are visual-only state, mirroring previewEditingId: never persisted, always
-    // reset to null on page load.
+    // Transactions screen. null = closed. 'income'/'loan'/'fixed'/'variable'/'dated'/
+    // 'cashWithdrawal' = that type's full form is open. previewAddCategoryKey holds the
+    // categoryConfig key the new item will be saved under (displayCategory) — only meaningful for
+    // the types that have one (cashWithdrawal deliberately never does). Both are visual-only
+    // state, mirroring previewEditingId: never persisted, always reset to null on page load.
     var previewAddMode = null;
     var previewAddCategoryKey = null;
 
@@ -2673,7 +2665,7 @@
         if (!projected.configured) {
             if (heroAmountEl) { heroAmountEl.textContent = 'לא הוגדרה'; heroAmountEl.classList.add('neutral-amount'); }
             if (heroStatusEl) { heroStatusEl.textContent = 'כדי לחשב יתרה יומית יש להגדיר יתרת התחלה פעם אחת.'; }
-            if (heroActionEl) { heroActionEl.innerHTML = '<button type="button" class="cat-add-toggle" onclick="goToOpeningBalanceSettings()">הגדר יתרת התחלה</button>'; }
+            if (heroActionEl) { heroActionEl.innerHTML = '<button type="button" class="cat-add-toggle" onclick="handleHeroBalanceClick()">הגדר יתרת התחלה</button>'; }
         } else if (projected.state === 'future') {
             var futureDateLabel = parseLocalDateStr(projected.openingDateStr).toLocaleDateString('he-IL');
             if (heroAmountEl) { heroAmountEl.textContent = '—'; heroAmountEl.classList.add('neutral-amount'); }
@@ -2685,6 +2677,17 @@
                 heroAmountEl.classList.add(bal > 0 ? 'positive-amount' : (bal < 0 ? 'negative-amount' : 'neutral-amount'));
             }
             if (heroStatusEl) { heroStatusEl.textContent = 'מחושב לפי יתרת ההתחלה והתנועות המתוכננות עד היום — אינה יתרת בנק מאומתת.'; }
+        }
+
+        // Home balance-card correction: tapping the (now clickable) hero card opens the same
+        // shared opening-balance form/confirmation right here, overriding whichever CTA/nothing
+        // the block above just set — reuses buildOpeningBalanceFormFieldsHtml()/
+        // buildOpeningBalancePendingReplaceHtml() verbatim (the exact same markup Settings' own
+        // detail screen renders), never a second editor. Only rendered when this form was opened
+        // FROM Home (openingBalanceFormOpenedFrom==='home') — if it happens to be open from
+        // Settings instead, Home stays exactly as the block above already rendered it.
+        if (heroActionEl && settingsOpeningBalanceFormOpen && openingBalanceFormOpenedFrom === 'home') {
+            heroActionEl.innerHTML = settingsOpeningBalancePendingReplace ? buildOpeningBalancePendingReplaceHtml() : buildOpeningBalanceFormFieldsHtml();
         }
 
         // snapshot-income/snapshot-expenses stay the existing monthly-total tiles (getMonthSnapshot)
@@ -4486,12 +4489,15 @@
             var cfg = categoryConfig[key];
             if (!cfg) { continue; }
             var rawTotal = totals[key] || 0;
-            // Version 1.4.2 correction: a one-time/dated-type category (e.g. the default "💳 חיוב
-            // כרטיס אשראי") with nothing charged this month shows no tile at all, rather than a
-            // permanent ₪0 — scoped strictly to baseType 'dated' (every other category's existing
-            // ₪0 empty-state tile is unchanged; this is not a general zero-hiding rule).
-            if (cfg.baseType === 'dated' && !rawTotal) { continue; }
-            var amount = formatHomeCurrency(rawTotal);
+            // Credit-card tile correction: the default "💳 חיוב כרטיס אשראי" category (built-in key
+            // 'dated' specifically — never the user's own separately-created "כרטיסי אשראי"
+            // category, which keeps the rule below unchanged) always shows a tile, with an honest
+            // "הזן חיוב" placeholder instead of a permanent ₪0 when nothing was charged yet — never
+            // hidden. Any OTHER dated-baseType category (the user's own, or a future custom one)
+            // keeps the prior Version 1.4.2 behavior: no tile at all when nothing was charged this
+            // month, rather than a permanent ₪0.
+            if (key !== 'dated' && cfg.baseType === 'dated' && !rawTotal) { continue; }
+            var amount = (key === 'dated' && !rawTotal) ? 'הזן חיוב' : formatHomeCurrency(rawTotal);
             var safeKey = escapeHtml(key);
             var label = getHomeTileDisplayLabel(key, cfg);
             html += '<div class="category-tile" data-category-key="' + safeKey + '">' +
@@ -5049,9 +5055,9 @@
         var idx = items.findIndex(function (i) { return i.id === id; });
         if (idx === -1) return;
         // Stage G.5: enforce "only one form open at a time" in both directions — opening an inline
-        // edit discards any in-progress (unsaved) add-transaction form, mirroring startPreviewAdd()'s
-        // own symmetric handling of an open inline edit. No data is touched by this discard (pure
-        // no-op on `items`, same as cancelPreviewAdd()).
+        // edit discards any in-progress (unsaved) add-transaction form, mirroring
+        // startPreviewAddForCategory()'s own symmetric handling of an open inline edit. No data is
+        // touched by this discard (pure no-op on `items`, same as cancelPreviewAdd()).
         previewAddMode = null;
         previewAddCategoryKey = null;
         renderAddFormArea();
@@ -5198,15 +5204,15 @@
     }
 
     // =====================================================================================
-    // ===== Stage G.5: adding a new income/expense/loan — Transactions screen only, via the =====
-    // ===== FAB's Quick Actions sheet. Three separate routes (income / expense-with-a-type-  =====
-    // ===== picker / loan), a dedicated form area at the top of the Transactions screen       =====
-    // ===== (#preview-add-form-area), and the same field-by-field validation/logic as         =====
-    // ===== index.html's own addNewItem() (copied literally per branch below). Only one form   =====
-    // ===== — add OR inline-edit — can be open at a time (enforced from both directions:       =====
-    // ===== startPreviewAdd() below discards an open edit, handleTxRowClick() above             =====
-    // ===== discards an open add). All writes go through the existing savePreviewItems()/       =====
-    // ===== renderAllPreviewScreens() (DATA_KEY only) — no new persistence path.                =====
+    // ===== Stage G.5: adding a new income/expense/loan — Transactions screen only, via a    =====
+    // ===== category tile's own filtered page (startPreviewAddForCategory() below). A         =====
+    // ===== dedicated form area at the top of the Transactions screen (#preview-add-form-area),=====
+    // ===== and the same field-by-field validation/logic as index.html's own addNewItem()      =====
+    // ===== (copied literally per branch below). Only one form — add OR inline-edit — can be   =====
+    // ===== open at a time (enforced from both directions: starting an add discards an open    =====
+    // ===== edit, handleTxRowClick() above discards an open add). All writes go through the    =====
+    // ===== existing savePreviewItems()/renderAllPreviewScreens() (DATA_KEY only) — no new      =====
+    // ===== persistence path.                                                                  =====
     // =====================================================================================
 
     // Copied verbatim from index.html — used only to pre-fill the "dated" add-form's date field
@@ -5229,47 +5235,12 @@
         return keys;
     }
 
-    // Default category for a freshly chosen expense type: prefers the built-in key with the same
-    // name as the baseType itself (e.g. 'fixed'/'variable' — always present, never deletable via
-    // the Settings UI in index.html), falling back to the first custom category with a matching
-    // baseType (relevant mainly for 'dated', which has no built-in key at all — see the picker's
-    // disabled-state handling below). Returns null only when no category matches at all.
-    function getDefaultCategoryKeyForBaseType(baseType) {
-        var keys = getCategoryKeysForBaseType(baseType);
-        if (keys.indexOf(baseType) !== -1) { return baseType; }
-        return keys.length > 0 ? keys[0] : null;
-    }
-
-    // Opens the add-transaction form area for 'income'/'loan' (a full form immediately) or
-    // 'expense-picker' (the fixed/variable/dated chooser). 'income'/'loan' always have exactly one
-    // built-in categoryConfig key (never deletable/duplicable via index.html's own Settings UI —
-    // its custom-category form offers only fixed/variable/income/dated as types, never loan), so
-    // previewAddCategoryKey is set directly here rather than going through
-    // getDefaultCategoryKeyForBaseType().
-    function startPreviewAdd(mode) {
-        // Enforce "only one form open at a time": discards any open inline edit (no save, no
-        // mutation of `items` — same no-op semantics as cancelPreviewEdit()).
-        previewEditingId = null;
-
-        previewAddMode = mode;
-        previewAddCategoryKey = (mode === 'income') ? 'income' : (mode === 'loan') ? 'loan' : null;
-
-        toggleQuickActions(false);
-        showScreen('transactions');
-        renderTransactionsScreenFromRealData(getCurrentTxFilterName());
-        renderAddFormArea();
-        ensureTxInlineTransient();
-    }
-
-    // Version 1.1, Stage 2: opens the SAME add-transaction form as startPreviewAdd()/
-    // chooseExpenseAddType() — no new add mechanism — but goes straight to the concrete baseType
-    // form for the given category (skipping both the Quick Actions sheet and the fixed/variable/
-    // dated picker, since the category already tells us the type). previewAddCategoryKey is
-    // pre-set to `key`, so buildPreviewAddFormHtml()'s existing category <select> (shown only when
-    // more than one category shares that baseType) opens with this category already selected —
-    // the user can still change it via that same existing dropdown, exactly as before. Called only
-    // while already on the Transactions screen showing this category's filtered list (see
-    // handleFabClick() above), so no navigation here. Unknown key is a strict no-op.
+    // Opens the add-transaction form area directly for the given category's baseType —
+    // previewAddCategoryKey is pre-set to `key`, so buildPreviewAddFormHtml()'s existing category
+    // <select> (shown only when more than one category shares that baseType) opens with this
+    // category already selected — the user can still change it via that same existing dropdown.
+    // Called only while already on the Transactions screen showing this category's filtered list
+    // (see handleFabClick() above), so no navigation here. Unknown key is a strict no-op.
     function startPreviewAddForCategory(key) {
         if (!categoryConfig[key]) { return; }
         previewEditingId = null;
@@ -5277,29 +5248,6 @@
         previewAddCategoryKey = key;
         renderAddFormArea();
         ensureTxInlineTransient();
-    }
-
-    // Called from the expense-type picker's 3 buttons. A baseType with no matching category
-    // (only possible for 'dated' — see buildPreviewAddFormHtml()'s picker markup, which disables
-    // that button entirely in this case) is a strict no-op: the picker's own disabled state should
-    // already prevent this call, but this guard is kept anyway, matching this file's existing
-    // convention of never trusting rendered UI state blindly (e.g. handleRowMenuAction() re-checks
-    // live data rather than trusting the button's own label).
-    function chooseExpenseAddType(baseType) {
-        // Version 1.4.2: a cash withdrawal deliberately has NO category (never a Home tile, never
-        // counted in any category total) — it does not go through getDefaultCategoryKeyForBaseType()
-        // at all, unlike every other type here.
-        if (baseType === 'cashWithdrawal') {
-            previewAddMode = 'cashWithdrawal';
-            previewAddCategoryKey = null;
-            renderAddFormArea();
-            return;
-        }
-        var defaultKey = getDefaultCategoryKeyForBaseType(baseType);
-        if (!defaultKey) { return; }
-        previewAddMode = baseType;
-        previewAddCategoryKey = defaultKey;
-        renderAddFormArea();
     }
 
     // No-argument, mirroring cancelPreviewEdit()'s own convention — there is only ever one add
@@ -5312,11 +5260,11 @@
         consumeTransient('txInline');
     }
 
-    // Builds the markup for whatever previewAddMode currently is: '' when closed, the
-    // expense-type picker, or one of the 5 full add forms (income/loan/variable/fixed/dated) —
-    // each a literal field-for-field copy of index.html's own static #form-income/#form-loan/
-    // #form-variable/#form-fixed/#form-dated blocks, using new "add-*" element ids (distinct from
-    // both index.html's own ids and this file's "edit-*-<id>" inline-edit ids, so none can ever
+    // Builds the markup for whatever previewAddMode currently is: '' when closed, or one of the
+    // full add forms (income/loan/variable/fixed/dated/cashWithdrawal) — each a literal
+    // field-for-field copy of index.html's own static #form-income/#form-loan/#form-variable/
+    // #form-fixed/#form-dated blocks, using new "add-*" element ids (distinct from both
+    // index.html's own ids and this file's "edit-*-<id>" inline-edit ids, so none can ever
     // collide). Reuses the existing .tx-edit-form/.tx-edit-group/.tx-edit-actions/.tx-edit-save/
     // .tx-edit-cancel classes (Stage G.4) as-is — no visual reason for a separate class set, since
     // the layout is identical to the inline edit form. A category picker (<select>) is shown for
@@ -5325,33 +5273,6 @@
     // option) reasoning already used elsewhere in this file.
     function buildPreviewAddFormHtml() {
         if (previewAddMode === null) { return ''; }
-
-        if (previewAddMode === 'expense-picker') {
-            // 'dated' has no built-in categoryConfig key in either index.html or this file — a
-            // dated item can only ever be saved under a custom category the user created with
-            // baseType 'dated' via the Settings screen. Per approved product decision: if no such
-            // category exists yet, the button is disabled (native `disabled` attribute — no
-            // onclick at all, not just a visual treatment) with a hint, rather than inventing a
-            // generic fallback category that index.html itself has no concept of.
-            var datedKeys = getCategoryKeysForBaseType('dated');
-            var datedDisabled = datedKeys.length === 0;
-            var html = '<div class="tx-edit-form">';
-            html += '<div class="tx-edit-group"><label>איזה סוג הוצאה?</label></div>';
-            html += '<button type="button" class="expense-type-btn" onclick="chooseExpenseAddType(\'fixed\')">🏡 הוצאה קבועה</button>';
-            if (datedDisabled) {
-                html += '<button type="button" class="expense-type-btn disabled" disabled title="קודם צור קטגוריה מסוג \'חיוב חד-פעמי\' במסך הקטגוריות">📅 הוצאה מתוארכת</button>';
-            } else {
-                html += '<button type="button" class="expense-type-btn" onclick="chooseExpenseAddType(\'dated\')">📅 הוצאה מתוארכת</button>';
-            }
-            // Version 1.4.2: cash withdrawal — a bank-balance movement, never a category/consumer-
-            // spending item — positioned between the dated/credit-card choice and the tracking-only
-            // installment choice, matching the approved Quick Actions ordering.
-            html += '<button type="button" class="expense-type-btn" onclick="chooseExpenseAddType(\'cashWithdrawal\')">🏧 משיכת מזומן</button>';
-            html += '<button type="button" class="expense-type-btn" onclick="chooseExpenseAddType(\'variable\')">🛒 עסקה בתשלומים — מעקב יתרה בלבד</button>';
-            html += '<div class="tx-edit-actions"><button type="button" class="tx-edit-cancel" onclick="cancelPreviewAdd()">ביטול</button></div>';
-            html += '</div>';
-            return html;
-        }
 
         var categoryPickerHtml = '';
         if (previewAddMode === 'fixed' || previewAddMode === 'variable' || previewAddMode === 'dated') {
@@ -5466,7 +5387,7 @@
     // and nothing is saved or re-rendered — the form stays open exactly as the user left it, same
     // as index.html's own addNewItem() and this file's own savePreviewInlineEdit() (Stage G.4).
     function addPreviewItem() {
-        if (previewAddMode === null || previewAddMode === 'expense-picker') { return; }
+        if (previewAddMode === null) { return; }
 
         var baseType = previewAddMode;
         var catKey = previewAddCategoryKey;
@@ -6918,31 +6839,44 @@
 
     // ----- Version 1.4.2: one-time projected-balance opening balance (Settings) -----------
 
+    // Shared markup pieces — used verbatim by BOTH mount points (Settings' detail screen and, via
+    // the Home balance-card correction below, Home's own #hero-action-area). openingBalanceFormOpenedFrom
+    // guarantees only ONE of the two ever renders these at a time, so the shared input ids
+    // (opening-balance-amount-input/-date-input) can never collide in the live DOM.
+    function buildOpeningBalanceFormFieldsHtml() {
+        var opening = getProjectedBalanceOpeningConfig();
+        var defaultAmount = opening ? String(opening.amount) : '';
+        var defaultDate = opening ? opening.dateStr : todayStr();
+        return '<div class="tx-edit-form">' +
+            '<div class="tx-edit-group"><label>סכום יתרת התחלה</label>' +
+            '<input type="number" step="0.01" id="opening-balance-amount-input" value="' + escapeHtml(defaultAmount) + '"></div>' +
+            '<div class="tx-edit-group"><label>תאריך יתרת התחלה</label>' +
+            '<input type="date" id="opening-balance-date-input" value="' + escapeHtml(defaultDate) + '"></div>' +
+            '<div class="tx-edit-actions">' +
+            '<button type="button" class="tx-edit-save" onclick="submitOpeningBalanceForm()">שמור יתרת התחלה</button>' +
+            '<button type="button" class="tx-edit-cancel" onclick="cancelOpeningBalanceForm()">ביטול</button>' +
+            '</div></div>';
+    }
+
+    function buildOpeningBalancePendingReplaceHtml() {
+        return '<div class="goal-inline-confirm">שינוי יתרת ההתחלה ישנה את כל חישובי היתרה הצפויה מתאריך זה ואילך.' +
+            '<div class="tx-edit-actions">' +
+            '<button type="button" class="settings-danger-btn" onclick="confirmReplaceOpeningBalance()">אישור שינוי</button>' +
+            '<button type="button" class="tx-edit-cancel" onclick="cancelOpeningBalanceForm()">ביטול</button>' +
+            '</div></div>';
+    }
+
     function buildOpeningBalanceSectionHtml() {
         var opening = getProjectedBalanceOpeningConfig();
         var html = '<div class="settings-hint">היתרה משמשת נקודת התחלה חד־פעמית לחישוב היתרה הצפויה. ' +
             'לאחר מכן ההכנסות וההוצאות מתווספות ומופחתות אוטומטית לפי התאריך שלהן.</div>';
 
-        if (settingsOpeningBalanceFormOpen) {
-            if (settingsOpeningBalancePendingReplace) {
-                html += '<div class="goal-inline-confirm">שינוי יתרת ההתחלה ישנה את כל חישובי היתרה הצפויה מתאריך זה ואילך.' +
-                    '<div class="tx-edit-actions">' +
-                    '<button type="button" class="settings-danger-btn" onclick="confirmReplaceOpeningBalance()">אישור שינוי</button>' +
-                    '<button type="button" class="tx-edit-cancel" onclick="cancelOpeningBalanceForm()">ביטול</button>' +
-                    '</div></div>';
-            } else {
-                var defaultAmount = opening ? String(opening.amount) : '';
-                var defaultDate = opening ? opening.dateStr : todayStr();
-                html += '<div class="tx-edit-form">' +
-                    '<div class="tx-edit-group"><label>סכום יתרת התחלה</label>' +
-                    '<input type="number" step="0.01" id="opening-balance-amount-input" value="' + escapeHtml(defaultAmount) + '"></div>' +
-                    '<div class="tx-edit-group"><label>תאריך יתרת התחלה</label>' +
-                    '<input type="date" id="opening-balance-date-input" value="' + escapeHtml(defaultDate) + '"></div>' +
-                    '<div class="tx-edit-actions">' +
-                    '<button type="button" class="tx-edit-save" onclick="submitOpeningBalanceForm()">שמור יתרת התחלה</button>' +
-                    '<button type="button" class="tx-edit-cancel" onclick="cancelOpeningBalanceForm()">ביטול</button>' +
-                    '</div></div>';
-            }
+        // Home balance-card correction: this screen renders the interactive form ONLY when it was
+        // opened FROM here — if the shared form is currently open from Home instead, this section
+        // falls back to the plain read-only/CTA view below exactly as if nothing were open, so the
+        // two mount points never both show the (same-id) inputs at once.
+        if (settingsOpeningBalanceFormOpen && openingBalanceFormOpenedFrom !== 'home') {
+            html += settingsOpeningBalancePendingReplace ? buildOpeningBalancePendingReplaceHtml() : buildOpeningBalanceFormFieldsHtml();
         } else if (opening) {
             html += '<div class="settings-row"><div class="settings-row-label">סכום</div><div>' + escapeHtml(formatHomeCurrency(opening.amount)) + '</div></div>' +
                 '<div class="settings-row"><div class="settings-row-label">תאריך</div><div>' + escapeHtml(opening.dateStr) + '</div></div>' +
@@ -6956,7 +6890,24 @@
     function openOpeningBalanceForm() {
         settingsOpeningBalanceFormOpen = true;
         settingsOpeningBalancePendingReplace = null;
+        openingBalanceFormOpenedFrom = 'settingsTopic';
         refreshSettingsUI();
+        pushTransientState('openingBalanceForm', cancelOpeningBalanceForm);
+    }
+
+    // Home balance-card correction: the hero card's own open/close trigger — first tap opens the
+    // exact same shared form (openingBalanceFormOpenedFrom = 'home' instead of 'settingsTopic'),
+    // second tap closes it via the same cancelOpeningBalanceForm() Settings' own "ביטול" already
+    // uses. No second editor, no second save/calculation path — only the mount point differs.
+    function handleHeroBalanceClick() {
+        if (settingsOpeningBalanceFormOpen) {
+            if (openingBalanceFormOpenedFrom === 'home') { cancelOpeningBalanceForm(); }
+            return;
+        }
+        settingsOpeningBalanceFormOpen = true;
+        settingsOpeningBalancePendingReplace = null;
+        openingBalanceFormOpenedFrom = 'home';
+        renderHomeScreenFromRealData();
         pushTransientState('openingBalanceForm', cancelOpeningBalanceForm);
     }
 
@@ -6969,13 +6920,15 @@
     function cancelOpeningBalanceForm() {
         settingsOpeningBalanceFormOpen = false;
         settingsOpeningBalancePendingReplace = null;
-        refreshSettingsUI();
+        var openedFrom = openingBalanceFormOpenedFrom;
+        openingBalanceFormOpenedFrom = null;
+        if (openedFrom === 'home') { renderHomeScreenFromRealData(); } else { refreshSettingsUI(); }
         consumeTransient('openingBalanceForm');
     }
 
     // Closes a SUCCESSFULLY saved/replaced opening-balance form and lands on Home — unlike
     // cancelOpeningBalanceForm() (also this transient's Back/onClose target), which only ever
-    // returns to wherever Settings already was. Reuses history.replaceState() rather than
+    // returns to wherever it was opened from. Reuses history.replaceState() rather than
     // consumeTransient()'s history.back(): back() resolves its target asynchronously when the
     // browser actually processes it, so a synchronous pushState (from showScreen('home')) issued
     // right after it would move the current index first and send that already-scheduled back() to
@@ -6983,8 +6936,11 @@
     // entry in one synchronous step — no dangling entry for Back to land on, so it can never
     // reopen this completed form — then isRestoringNavFromHistory suppresses showScreen()'s own
     // pushState (the same existing flag handleNavPopState() uses to sync the DOM to a history
-    // entry that already reflects reality, exactly the case here).
+    // entry that already reflects reality, exactly the case here). Landing on Home is correct
+    // regardless of whether the form was opened from Settings or from Home's own balance card —
+    // a successful save always makes Home's the value that matters.
     function closeOpeningBalanceFormToHome() {
+        openingBalanceFormOpenedFrom = null;
         if (transientStack.length > 0 && transientStack[transientStack.length - 1].type === 'openingBalanceForm') {
             transientStack.pop();
         }
@@ -7007,12 +6963,18 @@
             // confirmation below before anything is written (approved requirement: this changes
             // every downstream projected-balance figure from this date onward).
             settingsOpeningBalancePendingReplace = { amount: amount, dateStr: dateStr };
-            refreshSettingsUI();
+            if (openingBalanceFormOpenedFrom === 'home') { renderHomeScreenFromRealData(); } else { refreshSettingsUI(); }
             return;
         }
         saveProjectedBalanceOpening(amount, dateStr);
-        renderAllPreviewScreens();
+        // Flip the flags OFF before any render: renderAllPreviewScreens() below renders Home
+        // (renderHomeScreenFromRealData()), which — since the Home balance-card correction —
+        // shows the open form for as long as settingsOpeningBalanceFormOpen stays true. Flipping
+        // it after that render (the original Settings-only order) left Home's #hero-action-area
+        // stuck showing the form after a successful save, since nothing re-renders Home again
+        // afterward (showScreen() only toggles which screen is visible, it never re-renders one).
         settingsOpeningBalanceFormOpen = false;
+        renderAllPreviewScreens();
         refreshSettingsUI();
         closeOpeningBalanceFormToHome();
     }
