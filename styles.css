@@ -18,6 +18,12 @@
         /* Version 1.3, Phase 2C: approved danger token, mirrors --color-warning-bg's role for
            a per-card "this number is negative" tone (cash-flow insight cards only). */
         --color-danger-bg: #fdecea;
+        /* Version 1.4.1: fixed semantic "income" green — deliberately independent of
+           --color-primary-text (which varies with the user's chosen accent color across all 6
+           palettes) and reused for the Home hero, "מה דורש תשומת לב", the Forecast next-event
+           card, and the new daily cashflow table/details. Income must always read as green
+           regardless of accent color; --color-primary-text must not be (mis)used for that. */
+        --color-success: #0a7d3d;
         --radius: 14px;
         --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
     }
@@ -56,6 +62,7 @@
         --color-warning: #e0a84f;
         --color-warning-bg: #3a2f18;
         --color-danger-bg: #3a1f1c;
+        --color-success: #3ddc84;
     }
     :root[data-theme="dark"][data-color="green"] { --color-primary-text: #3ddc84; --color-insight-card-bg: #16311f; }
     :root[data-theme="dark"][data-color="blue"] { --color-primary-text: #6fa8f5; --color-insight-card-bg: #16233a; }
@@ -438,6 +445,50 @@
     .preview-forecast-table-wrap th { color: var(--color-text-muted); font-weight: 500; font-size: 11.5px; }
     .preview-forecast-positive { color: var(--color-primary-text); font-weight: 700; }
     .preview-forecast-negative { color: var(--color-danger); font-weight: 700; }
+
+    /* ===== Version 1.4.1: semantic income/expense colors — fixed green/red regardless of the
+       user's chosen accent color (--color-primary-text varies per palette and must not be used
+       for this). Reused by the Home hero, "מה דורש תשומת לב", the Forecast next-event card, and
+       the daily cashflow table/details below. ===== */
+    .positive-amount { color: var(--color-success); }
+    .negative-amount { color: var(--color-danger); }
+    .neutral-amount { color: var(--color-text); }
+
+    /* ===== Version 1.4.1: calendar-month daily cashflow table. Wide layout is a 5-column row per
+       day; narrow viewports (media query below) switch each row to a labeled 2-column card so no
+       value ever overflows or loses its label. ===== */
+    .forecast-day-row { border-bottom: 1px solid var(--color-border); }
+    .forecast-day-row.forecast-day-header {
+        display: flex; padding: 6px 4px; font-size: 11.5px; font-weight: 600; color: var(--color-text-muted);
+    }
+    .forecast-day-row.forecast-day-header .forecast-day-cell { flex: 1; text-align: center; }
+    .forecast-day-summary {
+        display: flex; align-items: center; cursor: pointer; padding: 10px 4px; min-height: 44px;
+        border-radius: 8px;
+    }
+    .forecast-day-summary:hover { background: var(--color-bg); }
+    .forecast-day-summary:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+    .forecast-day-row.is-today .forecast-day-summary { background: var(--color-insight-card-bg); }
+    .forecast-day-cell {
+        flex: 1; text-align: center; font-size: 12.5px; direction: ltr; unicode-bidi: isolate;
+        overflow-wrap: break-word;
+    }
+    .forecast-day-cell.forecast-day-date { font-weight: 600; direction: rtl; }
+    .forecast-day-details { padding: 4px 12px 10px; background: var(--color-bg); }
+    .forecast-day-event { display: flex; justify-content: space-between; padding: 4px 0; font-size: 12.5px; }
+    .forecast-day-event-amount { direction: ltr; unicode-bidi: isolate; font-weight: 700; }
+
+    /* Narrow viewports: a labeled 2-column card per day instead of a cramped 5-column row — every
+       value keeps its own visible label, nothing is solved by hiding overflow. */
+    @media (max-width: 480px) {
+        .forecast-day-row.forecast-day-header { display: none; }
+        .forecast-day-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
+        .forecast-day-cell { text-align: right; }
+        .forecast-day-cell::before {
+            content: attr(data-label); display: block; font-size: 10px; color: var(--color-text-muted); font-weight: 500;
+        }
+        .forecast-day-cell.forecast-day-date { grid-column: 1 / -1; }
+    }
 
     /* ===== Goals (Milestone 4) — approved reference: Design/forecast-goals-milestone2-preview.html.
        Card/spacing language matches the rest of the app (var(--radius-adjacent) 12px, var(--shadow),

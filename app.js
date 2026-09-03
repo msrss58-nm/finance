@@ -18,7 +18,7 @@
     // included by collectAppLocalStorageBackup()'s/confirmResetAllData()'s existing prefix-sweep
     // with zero changes to either function.
     var GOALS_KEY = 'family_finance_goals';
-    var APP_VERSION = '1.4.0';
+    var APP_VERSION = '1.4.1';
 
     var PRIMARY_COLOR_OPTIONS = [
         { key: 'green', label: 'ירוק' },
@@ -277,6 +277,105 @@
     // screen name that was already working before this stage.
     var SCREEN_NAV_ALIAS = { transactions: 'categories', 'settings-detail': 'settings' };
 
+    // =====================================================================================
+    // ===== Version 1.4.1: Android/browser system Back support via the real History API.  =====
+    // ===== Two independent mechanisms share one popstate handler:                          =====
+    // =====  (1) SCREEN navigation — every showScreen() call pushes {screen:name}, so Back    =====
+    // =====      steps through actual prior screens exactly like real browser history.       =====
+    // =====  (2) TRANSIENT overlays (quick actions, the Goals reminder, the reset-all-data    =====
+    // =====      confirmation) — pushTransientState() marks one history entry per open        =====
+    // =====      overlay; the ONE function that makes each overlay invisible (already the     =====
+    // =====      single choke point every existing close path already called) also calls      =====
+    // =====      consumeTransient() at the end. That means a manual close (its own button,     =====
+    // =====      Escape, a successful confirm) and a real Back press consume the exact SAME    =====
+    // =====      history entry through the exact SAME close function — Back can never diverge  =====
+    // =====      from "click cancel/postpone," and can never reach a save/delete/confirm path  =====
+    // =====      because it always calls the same non-destructive close function that already  =====
+    // =====      existed. No financial data is ever touched by any of this.                    =====
+    // =====================================================================================
+    var NAV_STATE_VERSION = 1;
+    var transientStack = []; // { type: string, onClose: function }
+    var isRestoringNavFromHistory = false;
+    var navHistoryInitialized = false;
+
+    function isStandaloneDisplayMode() {
+        try {
+            if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) { return true; }
+        } catch (e) { /* matchMedia unsupported — treat as normal browser tab */ }
+        return !!(window.navigator && window.navigator.standalone); // iOS Safari "Add to Home Screen"
+    }
+
+    // Called once, very early (before any overlay/reminder can possibly open), so the base
+    // 'home' entry always exists at the bottom of the stack before anything else pushes on top
+    // of it. Standalone (installed PWA) mode gets one extra permanent "boundary" entry beneath
+    // it — see handleNavPopState()'s boundary branch for why. A normal browser tab gets none,
+    // so its own prior-page Back history is never trapped or hidden.
+    function initNavHistory() {
+        try {
+            if (isStandaloneDisplayMode()) {
+                history.replaceState({ v: NAV_STATE_VERSION, boundary: true }, '');
+                history.pushState({ v: NAV_STATE_VERSION, screen: 'home' }, '');
+            } else {
+                history.replaceState({ v: NAV_STATE_VERSION, screen: 'home' }, '');
+            }
+        } catch (e) { /* History API unavailable — screens still work, only Back integration is lost */ }
+        navHistoryInitialized = true;
+    }
+
+    // Opens one transient overlay: records how to close it (onClose) and pushes exactly one
+    // history entry tagged with `type`. `onClose` must be the SAME function every visible
+    // close/cancel/postpone control for this overlay already calls — Back must never be able to
+    // do anything an existing button couldn't already do.
+    function pushTransientState(type, onClose) {
+        transientStack.push({ type: type, onClose: onClose });
+        try { history.pushState({ v: NAV_STATE_VERSION, transient: type }, ''); } catch (e) { }
+    }
+
+    // Called at the END of the one real "make this overlay invisible" function for `type`, on
+    // EVERY path that reaches it (its own button, Escape, a successful confirm, or Back itself).
+    // If the matching transient entry is still on top of the in-memory stack, this close did NOT
+    // originate from Back — pop the bookkeeping and consume the matching history entry so the
+    // two stay balanced. If Back already popped it (onClose is being called BY the popstate
+    // handler below), the stack is already empty here and this is a safe no-op — it never closes
+    // twice, never double-navigates, and never calls onClose itself.
+    function consumeTransient(type) {
+        if (transientStack.length > 0 && transientStack[transientStack.length - 1].type === type) {
+            transientStack.pop();
+            try { history.back(); } catch (e) { }
+        }
+    }
+
+    function handleNavPopState(e) {
+        var state = e.state;
+        // A popstate event's `state` is always the DESTINATION entry being navigated TO — it
+        // never carries the transient marker of the entry being LEFT. So "a transient overlay
+        // was just closed by Back" can only be detected from our OWN in-memory stack, never from
+        // e.state itself. Whenever a transient is tracked as open, a popstate can only mean we
+        // are leaving it (nothing else can be pushed above an open transient), so this check must
+        // come first, unconditionally, before looking at e.state at all.
+        if (transientStack.length > 0) {
+            var top = transientStack.pop();
+            try { top.onClose(); } catch (err) { }
+            return;
+        }
+        if (state && state.boundary) {
+            // Standalone-only Home boundary: re-establish the exact same one-entry boundary
+            // instead of letting Back fall through to whatever hosted the installed PWA (a blank
+            // page, the OS launcher, etc.) — bounded depth, never grows, never blocks a real
+            // OS-level close/task-switch (those bypass JavaScript entirely).
+            try { history.pushState({ v: NAV_STATE_VERSION, screen: 'home' }, ''); } catch (err) { }
+            isRestoringNavFromHistory = true;
+            try { showScreen('home'); } finally { isRestoringNavFromHistory = false; }
+            return;
+        }
+        var screenName = (state && state.screen) ? state.screen : 'home';
+        if (!document.getElementById('screen-' + screenName)) { screenName = 'home'; }
+        isRestoringNavFromHistory = true;
+        try { showScreen(screenName); } finally { isRestoringNavFromHistory = false; }
+    }
+
+    window.addEventListener('popstate', handleNavPopState);
+
     function showScreen(name) {
         // Collapse-on-leave: showScreen() is the single choke point for every screen change in
         // this app, including a category-tile click (filterTransactionsByCategory() always calls
@@ -287,6 +386,18 @@
         // calculation touched. Already a safe no-op everywhere this was implicitly true before
         // (e.g. startPreviewAdd() already cleared previewEditingId itself before its own
         // showScreen('transactions') call) — this just makes it hold unconditionally everywhere.
+        // Version 1.4.1 correction: consumeTransient() below is a defensive no-op safety net for
+        // the case where the user navigates screens directly (bottom-nav, a category tile) while
+        // the 'txInline' transient is open, instead of via its own Cancel/Back path — never leaves
+        // a stale, unbalanced history entry behind. It must run BEFORE previewEditingId is cleared
+        // so cancelCurrentTxInlineState() (if it were ever reached — it isn't here, since this is a
+        // direct-navigation discard, not a Back-triggered close) would still see accurate state;
+        // in practice consumeTransient() only pops bookkeeping here, it never calls that dispatcher.
+        // previewAddMode is intentionally NOT cleared here: startPreviewAdd() itself calls
+        // showScreen('transactions') AFTER already setting previewAddMode to the form it is about
+        // to open, so clearing it here would erase that same call's own new value before its form
+        // ever renders.
+        consumeTransient('txInline');
         previewEditingId = null;
 
         var screens = document.querySelectorAll('.screen');
@@ -299,6 +410,17 @@
         if (navBtn) { navBtn.classList.add('active'); }
 
         updateFabVisibility();
+
+        // Version 1.4.1: keep the browser/Android history stack in sync with every screen change,
+        // except when THIS call is itself restoring a state popstate already made current (that
+        // state IS the current history entry — pushing again would create a duplicate entry for
+        // the same screen, breaking the "no duplicate history entries" requirement).
+        if (!isRestoringNavFromHistory) {
+            var currentNavState = history.state;
+            if (!currentNavState || currentNavState.screen !== name) {
+                try { history.pushState({ v: NAV_STATE_VERSION, screen: name }, ''); } catch (e) { }
+            }
+        }
     }
 
     // Version 1.1, Stage 3: a category is now a full "page" (the Transactions screen filtered by
@@ -345,7 +467,17 @@
         var overlay = document.getElementById('quick-actions-overlay');
         var isOpen = overlay.classList.contains('open');
         var shouldOpen = (typeof forceState === 'boolean') ? forceState : !isOpen;
-        if (shouldOpen) { overlay.classList.add('open'); } else { overlay.classList.remove('open'); }
+        if (shouldOpen === isOpen) { return; }
+        if (shouldOpen) {
+            overlay.classList.add('open');
+            // Version 1.4.1: one Back press (or the overlay's own background-click/"ביטול", which
+            // routes through this same else-branch) closes this sheet — never navigates a screen,
+            // never confirms anything.
+            pushTransientState('quickActions', function () { overlay.classList.remove('open'); });
+        } else {
+            overlay.classList.remove('open');
+            consumeTransient('quickActions');
+        }
     }
 
     // Version 1.1, Stage 2: the single FAB now has two behaviors depending on context. While
@@ -775,12 +907,12 @@
     // single live consumer of buildNarrative()'s output (renderInsightsScreenFromRealData(), which
     // reads only narrativeResult.creditCardTotal/.loansRemaining — see buildNarrative() below).
     // computeForecast() itself is removed for the same reason (see its own former location, just
-    // above the unified cash-flow engine section) — the six-month "תחזית חודשית מורחבת" UI these
-    // three functions' names might suggest they feed was, in fact, already sourced exclusively
-    // from the unified engine's buildCashflowSummary() (see renderForecast()), since Phase 2C —
-    // computeForecast()'s output never reached any screen. isBillingActiveInMonth()/
-    // getBillingRange() (which these functions also used) are NOT removed: the unified engine
-    // reuses them directly (see its own header comment) and remains fully live.
+    // above the unified cash-flow engine section) — computeForecast()'s output never reached any
+    // screen. isBillingActiveInMonth()/getBillingRange() (which these functions also used) are
+    // NOT removed: generateCashflowEvents() (the unified engine's event source) reuses them
+    // directly and remains fully live. Version 1.4.1 correction: buildCashflowSummary()/
+    // renderForecast() (the 6-month "תחזית חודשית מורחבת" section) were themselves later removed
+    // too — see CURRENT_STATUS.md, "Version 1.4.1" correction round.
 
     // Compares dated-item totals between the CURRENT calendar month and the PREVIOUS calendar
     // month (the one immediately before it — not part of computeForecast()'s forward-looking
@@ -978,8 +1110,8 @@
     }
 
     // Copied verbatim from index.html. Milestone 6: its original sole caller, computeForecast(),
-    // was removed as dead code — this function remains live because the unified cash-flow engine
-    // below (buildCashflowSummary()/generateCashflowEvents()) also reuses it directly.
+    // was removed as dead code — this function remains live because generateCashflowEvents()
+    // (the unified cash-flow engine's event source) reuses it directly.
     function isBillingActiveInMonth(range, year, monthIndex) {
         var firstYm = range.first.getFullYear() * 12 + range.first.getMonth();
         var lastYm = range.last.getFullYear() * 12 + range.last.getMonth();
@@ -988,10 +1120,10 @@
     }
 
     // Milestone 6 correction: computeForecast() removed here — confirmed unreachable (see the
-    // removal note above getDatedMonthOverMonthChange() for the full call-graph evidence). The
-    // six-month "תחזית חודשית מורחבת" UI is, and since Phase 2C always was, sourced exclusively
-    // from buildCashflowSummary() below (see renderForecast()) — this function's output never
-    // reached any live screen.
+    // removal note above getDatedMonthOverMonthChange() for the full call-graph evidence); its
+    // output never reached any live screen. Version 1.4.1 correction: the six-month "תחזית
+    // חודשית מורחבת" UI that later replaced it (buildCashflowSummary()/renderForecast()) was
+    // itself removed too — see CURRENT_STATUS.md.
 
     // =====================================================================================
     // ===== Version 1.3, Phase 2B/2E: unified cash-flow engine. Single source of truth for  =====
@@ -1049,62 +1181,11 @@
         return new Date(y, m, d);
     }
 
-    // ===== Version 1.3, Phase 2E: BALANCE ANCHOR model. Replaces the old "enter a fresh      =====
-    // ===== currentBalance every time" model — the user enters their real balance ONCE, as   =====
-    // ===== of a specific date (the anchor), not a value re-entered on demand. "יתרה         =====
-    // ===== משוערת להיום" is CALCULATED forward from that anchor using the same event stream =====
-    // ===== as everything else. "עדכן יתרה בפועל" (reconciliation) simply records a fresh    =====
-    // ===== anchor = {entered amount, today} — calibration, not mandatory daily entry.        =====
-
-    // Reads the persisted anchor. Priority: real anchorBalance/anchorDate fields if both are
-    // present and valid; otherwise, if only the legacy (pre-anchor-model) `currentBalance`
-    // field is set, treat it as a legacy anchor dated TODAY — never a fabricated historical
-    // date, since the app never recorded when the legacy value was actually entered. This is a
-    // pure, lazy, READ-TIME fallback (same "lazy fallback, no migration" convention as
-    // resolveEffectiveDay() above) — nothing is written back to localStorage just by reading
-    // it, so legacy `currentBalance` never becomes a second competing source of truth: once
-    // the user sets a real anchor (initial setup or reconciliation), anchorBalance/anchorDate
-    // take over and the legacy field is simply never consulted again. Net effect for an
-    // existing Preview user who already saved a currentBalance: their number keeps showing
-    // exactly as before (no forward drift), because a same-day anchor produces an empty
-    // catch-up window — until they explicitly reconcile once, at which point real anchor
-    // semantics take over.
-    function resolveBalanceAnchor() {
-        var ab = appSettings && appSettings.anchorBalance;
-        var ad = appSettings && appSettings.anchorDate;
-        if (typeof ab === 'number' && isFinite(ab) && typeof ad === 'string' && ad) {
-            return { balance: ab, date: ad, isSet: true, isLegacyFallback: false };
-        }
-        var legacy = appSettings && appSettings.currentBalance;
-        if (typeof legacy === 'number' && isFinite(legacy)) {
-            return { balance: legacy, date: todayStr(), isSet: true, isLegacyFallback: true };
-        }
-        return { balance: 0, date: null, isSet: false, isLegacyFallback: false };
-    }
-
-    // Persists a new anchor: the entered amount becomes anchorBalance, `dateStr` (always
-    // today's local date in practice — both initial setup and "עדכן יתרה בפועל"
-    // reconciliation call this identically) becomes anchorDate. One function serves both
-    // flows since they are semantically identical: "the real balance right now is X."
-    // Explicit 0 is a fully valid anchor amount (isFinite(0) === true). Does not touch/clear
-    // the legacy `currentBalance` field — leaving it in place is harmless once anchorBalance/
-    // anchorDate exist, since resolveBalanceAnchor() above always prefers them.
-    function setBalanceAnchor(value, dateStr) {
-        var num = parseFloat(value);
-        if (isFinite(num)) {
-            appSettings.anchorBalance = num;
-            appSettings.anchorDate = dateStr || todayStr();
-        } else {
-            appSettings.anchorBalance = null;
-            appSettings.anchorDate = null;
-        }
-        saveAppSettings();
-    }
-
     // Generates every cash-flow event across `monthsCount` consecutive calendar months
     // starting at `rangeStartMonth` (a Date already normalized to the 1st of its month) for
-    // non-archived income/fixed/loan/dated items — unfiltered by any "today"/anchor boundary
-    // (that filtering happens in buildCashflowSummary). One event per monthly occurrence for
+    // non-archived income/fixed/loan/dated items — unfiltered by any "today" boundary (that
+    // filtering, where needed, happens in the caller, e.g. buildMonthlyDailySeries()/
+    // getNextCashflowEvent()). One event per monthly occurrence for
     // income/fixed; one event per active billing month for loans (per-month range test, not
     // the left>0 gate); at most one event for dated items. `rangeStartMonth` may be in the
     // past relative to the current month (needed to catch up from an old anchor date) or in
@@ -1156,378 +1237,85 @@
         return events;
     }
 
-    // Sums a set of events onto a single running total, grouped by calendar day first (never
-    // a mid-day running total) — same day-atomic convention as the per-month walk below. Used
-    // only for the anchor→today catch-up, where a single final number is needed, not a
-    // lowest-point series.
-    function sumEventsOntoBalance(startBalance, events) {
-        var byDate = {};
-        var dateKeys = [];
-        for (var i = 0; i < events.length; i++) {
-            var key = cashflowDateKey(events[i].date);
-            if (!(key in byDate)) { byDate[key] = 0; dateKeys.push(key); }
-            byDate[key] += events[i].amount;
-        }
-        dateKeys.sort();
-        var running = startBalance;
-        for (var d = 0; d < dateKeys.length; d++) { running += byDate[dateKeys[d]]; }
-        return running;
+    // ===== Version 1.4.1: calendar-month DAILY cashflow series — replaces the retired      =====
+    // ===== balance-anchor forecast (buildPeriodCashflowForecast, removed) entirely. Reuses  =====
+    // ===== generateCashflowEvents() directly — the SAME unified event source every other     =====
+    // ===== forecast number in this file is built from — and never reads/writes the balance   =====
+    // ===== anchor. cumulative always starts at ₪0 on day 1 of the displayed month: a planned  =====
+    // ===== cash-flow CHANGE since the start of the month, never a bank balance, never labeled =====
+    // ===== as one anywhere this is displayed (Home hero, Forecast graph, Forecast table).     =====
+    // =====================================================================================
+
+    function getCalendarMonthBounds(refDate) {
+        var y = refDate.getFullYear(), m = refDate.getMonth();
+        var daysInMonth = new Date(y, m + 1, 0).getDate();
+        return { year: y, month: m, daysInMonth: daysInMonth, monthStart: new Date(y, m, 1) };
     }
 
-    // Builds every derived metric the approved contract asks for, from the BALANCE ANCHOR
-    // plus generateCashflowEvents(). Two stages, ONE shared event stream (generated once, over
-    // the full [anchor month .. current month + horizonMonths - 1] window — no event is ever
-    // generated twice, so no event can ever be double-counted between the two stages):
-    //
-    //   1. CATCH-UP (anchor → today): starting from anchorBalance, applies every event dated
-    //      STRICTLY AFTER anchorDate through TODAY (inclusive) — events on the anchor date
-    //      itself, and anything before it, are NEVER applied (already reflected in the anchor
-    //      amount by definition). Produces estimatedTodayBalance, a single number — no
-    //      lowest-point tracking here; only the current month's own walk below exposes
-    //      lowest/endOfMonth. When anchorDate === today (the common case right after setup/
-    //      reconciliation), this stage is a no-op by construction (no date can be "after
-    //      today, through today").
-    //
-    //   2. FORWARD FORECAST (tomorrow → horizon end): starting from estimatedTodayBalance,
-    //      walks one calendar month at a time exactly as the original model did — month 0
-    //      (current month) counts only events strictly after today (no execution/completion
-    //      status exists anywhere in the schema, so a today-dated event can never be assumed
-    //      pending or already processed); later months count their own events in full.
-    //
-    // Balance points are always END-OF-CALENDAR-DAY sums — same-day event order can never
-    // change a reported balance.
-    function buildCashflowSummary(itemsOverride, horizonMonthsOverride) {
+    // One entry per calendar day of the month containing `refDate` (defaults to today) — every
+    // day of the month is present, including past days and days with no events. income/expenses
+    // are same-day sums (day-atomic, same convention as generateCashflowEvents()'s callers
+    // elsewhere in this file — no invented intraday ordering). `events` carries every raw event
+    // for that day, for the daily table's expandable detail rows.
+    function buildMonthlyDailySeries(refDate, itemsOverride) {
         var sourceItems = Array.isArray(itemsOverride) ? itemsOverride : items;
-        var horizonMonths = (typeof horizonMonthsOverride === 'number') ? horizonMonthsOverride : CASHFLOW_HORIZON_MONTHS;
-        var now = new Date();
-        var todayZero = cashflowDateOnly(now);
-        var anchor = resolveBalanceAnchor();
+        var ref = (refDate instanceof Date) ? refDate : new Date();
+        var bounds = getCalendarMonthBounds(ref);
+        var monthEvents = generateCashflowEvents(sourceItems, bounds.monthStart, 1);
 
-        var anchorDateObj = anchor.isSet ? parseLocalDateStr(anchor.date) : null;
-        if (!anchorDateObj || anchorDateObj > todayZero) { anchorDateObj = todayZero; }
-
-        var currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        var anchorMonthStart = new Date(anchorDateObj.getFullYear(), anchorDateObj.getMonth(), 1);
-        // Months strictly before the current month that must be generated to catch up from the
-        // anchor (0 when the anchor is in the current month — the overwhelmingly common case).
-        var monthsBeforeCurrent = (currentMonthStart.getFullYear() - anchorMonthStart.getFullYear()) * 12
-            + (currentMonthStart.getMonth() - anchorMonthStart.getMonth());
-        if (monthsBeforeCurrent < 0) { monthsBeforeCurrent = 0; }
-        var totalMonthsToGenerate = monthsBeforeCurrent + horizonMonths;
-
-        var allEvents = generateCashflowEvents(sourceItems, anchorMonthStart, totalMonthsToGenerate);
-
-        // ----- Stage 1: catch-up from the anchor to today -----
-        var catchupEvents = [];
-        for (var ci = 0; ci < allEvents.length; ci++) {
-            var cd = cashflowDateOnly(allEvents[ci].date);
-            if (cd > anchorDateObj && cd <= todayZero) { catchupEvents.push(allEvents[ci]); }
+        var byDay = {};
+        for (var i = 0; i < monthEvents.length; i++) {
+            var ev = monthEvents[i];
+            var day = ev.date.getDate();
+            if (!byDay[day]) { byDay[day] = []; }
+            byDay[day].push(ev);
         }
-        var estimatedTodayBalance = sumEventsOntoBalance(anchor.balance, catchupEvents);
 
-        // ----- Stage 2: forward forecast from today, one month at a time -----
-        var monthResults = [];
-        var runningStart = estimatedTodayBalance;
-
-        for (var m = 0; m < horizonMonths; m++) {
-            var monthDate = new Date(now.getFullYear(), now.getMonth() + m, 1);
-            var y = monthDate.getFullYear(), mo = monthDate.getMonth();
-            var monthEvents = [];
-            for (var i = 0; i < allEvents.length; i++) {
-                var e = allEvents[i];
-                if (e.date.getFullYear() === y && e.date.getMonth() === mo) { monthEvents.push(e); }
+        var days = [];
+        var cumulative = 0;
+        for (var d = 1; d <= bounds.daysInMonth; d++) {
+            var dayEvents = byDay[d] || [];
+            var income = 0, expenses = 0;
+            for (var j = 0; j < dayEvents.length; j++) {
+                if (dayEvents[j].amount >= 0) { income += dayEvents[j].amount; } else { expenses += -dayEvents[j].amount; }
             }
-            if (m === 0) {
-                // Strictly after today only — see the forward-forecast reasoning above.
-                var filtered = [];
-                for (var j = 0; j < monthEvents.length; j++) {
-                    if (cashflowDateOnly(monthEvents[j].date) > todayZero) { filtered.push(monthEvents[j]); }
-                }
-                monthEvents = filtered;
-            }
-
-            var byDate = {};
-            var dateKeys = [];
-            for (var k = 0; k < monthEvents.length; k++) {
-                var key = cashflowDateKey(monthEvents[k].date);
-                if (!(key in byDate)) { byDate[key] = 0; dateKeys.push(key); }
-                byDate[key] += monthEvents[k].amount;
-            }
-            dateKeys.sort();
-
-            var running = runningStart;
-            var lowest = runningStart;
-            for (var d = 0; d < dateKeys.length; d++) {
-                running += byDate[dateKeys[d]];
-                if (running < lowest) { lowest = running; }
-            }
-
-            monthResults.push({
-                year: y,
-                month: mo,
-                label: monthDate.toLocaleDateString('he-IL', { month: 'short', year: 'numeric' }),
-                startingBalance: runningStart,
-                lowest: lowest,
-                endOfMonth: running,
-                eventCount: monthEvents.length
+            var net = round2(income - expenses);
+            cumulative = round2(cumulative + net);
+            days.push({
+                date: new Date(bounds.year, bounds.month, d),
+                day: d,
+                income: round2(income),
+                expenses: round2(expenses),
+                net: net,
+                cumulative: cumulative,
+                events: dayEvents
             });
-
-            runningStart = running;
         }
 
-        // nextEvent/nextIncome/amountBeforeNextIncome must not treat a today-dated event as
-        // "future" either — same reasoning as the month-0 filter above, so this also starts
-        // strictly after today (tomorrow onward).
-        var futureEvents = [];
-        for (var fi = 0; fi < allEvents.length; fi++) {
-            if (cashflowDateOnly(allEvents[fi].date) > todayZero) { futureEvents.push(allEvents[fi]); }
-        }
-        futureEvents.sort(compareCashflowEvents);
-
-        var nextEvent = futureEvents.length ? futureEvents[0] : null;
-        var nextIncome = null;
-        for (var ni = 0; ni < futureEvents.length; ni++) {
-            if (futureEvents[ni].type === 'income') { nextIncome = futureEvents[ni]; break; }
-        }
-
-        var amountBeforeNextIncome = null;
-        if (nextIncome) {
-            var sum = 0;
-            for (var bi = 0; bi < futureEvents.length; bi++) {
-                var ev = futureEvents[bi];
-                if (ev.amount < 0 && ev.date.getTime() < nextIncome.date.getTime()) { sum += -ev.amount; }
-            }
-            amountBeforeNextIncome = sum;
-        }
-
-        var currentMonth = monthResults[0];
         return {
-            estimatedTodayBalance: estimatedTodayBalance,
-            anchorBalance: anchor.balance,
-            anchorDate: anchor.isSet ? anchor.date : null,
-            anchorIsSet: anchor.isSet,
-            anchorIsLegacyFallback: !!anchor.isLegacyFallback,
-            months: monthResults,
-            currentMonth: currentMonth,
-            nextEvent: nextEvent,
-            nextIncome: nextIncome,
-            amountBeforeNextIncome: amountBeforeNextIncome,
-            isNegative: (currentMonth.lowest < 0) || (estimatedTodayBalance < 0),
-            // The same futureEvents list nextEvent/nextIncome are already derived from, exposed
-            // as-is for the Insights timeline UI — no new calculation, just reusing what was
-            // already computed above.
-            timelineEvents: futureEvents,
-            horizonMonths: horizonMonths
+            year: bounds.year,
+            month: bounds.month,
+            monthLabel: bounds.monthStart.toLocaleDateString('he-IL', { month: 'long', year: 'numeric' }),
+            daysInMonth: bounds.daysInMonth,
+            days: days
         };
     }
 
-    // =====================================================================================
-    // ===== Milestone 3: exact-calendar-day 30/60/90 horizon extension of the SAME unified  =====
-    // ===== engine above. This is NOT a third forecast engine — it takes buildCashflowSummary()'s =====
-    // ===== own estimatedTodayBalance and timelineEvents (the identical future-event stream  =====
-    // ===== nextEvent/nextIncome/the 6-month chart already read, already anchor-catch-up'd,  =====
-    // ===== already sorted via compareCashflowEvents) and only (a) re-slices it to an exact  =====
-    // ===== calendar-day cutoff instead of a whole-month boundary, and (b) walks it forward   =====
-    // ===== into a day-atomic cumulative running-balance series for the chart/stats/timeline. =====
-    // ===== No event is generated here — generateCashflowEvents() is still the only place that =====
-    // ===== happens. Day-atomic grouping (all of a day's events summed before checking for a  =====
-    // ===== new low) is the exact same convention buildCashflowSummary() itself already uses,  =====
-    // ===== so same-day events (e.g. income + a card charge on the same date) can never be     =====
-    // ===== reordered into a false intra-day dip — same guarantee, extended to day granularity. =====
-    // =====================================================================================
-    function buildPeriodCashflowForecast(days) {
-        var summary = buildCashflowSummary();
-        if (!summary.anchorIsSet) {
-            return { anchorIsSet: false, days: days };
-        }
-
+    // The single "האירוע הכספי הבא" card everywhere it appears (Home + Forecast) — strictly
+    // after today, from the same unified event source, with no balance-anchor dependency
+    // whatsoever. Looks two months ahead so an event just past a month boundary is never missed.
+    function getNextCashflowEvent(itemsOverride) {
+        var sourceItems = Array.isArray(itemsOverride) ? itemsOverride : items;
         var todayZero = cashflowDateOnly(new Date());
-        var cutoff = new Date(todayZero.getFullYear(), todayZero.getMonth(), todayZero.getDate() + days);
-
-        // summary.timelineEvents is already every tomorrow-onward event across the full 6-month
-        // engine horizon (180ish days), already sorted — always enough to cover a 90-day cutoff.
-        var eventsInRange = [];
-        for (var i = 0; i < summary.timelineEvents.length; i++) {
-            if (cashflowDateOnly(summary.timelineEvents[i].date) <= cutoff) { eventsInRange.push(summary.timelineEvents[i]); }
+        var monthStart = new Date(todayZero.getFullYear(), todayZero.getMonth(), 1);
+        var upcoming = generateCashflowEvents(sourceItems, monthStart, 2);
+        var future = [];
+        for (var i = 0; i < upcoming.length; i++) {
+            if (cashflowDateOnly(upcoming[i].date) > todayZero) { future.push(upcoming[i]); }
         }
-
-        var byDate = {};
-        var dateKeys = [];
-        for (var j = 0; j < eventsInRange.length; j++) {
-            var ev = eventsInRange[j];
-            var key = cashflowDateKey(ev.date);
-            if (!(key in byDate)) { byDate[key] = { total: 0, date: cashflowDateOnly(ev.date) }; dateKeys.push(key); }
-            byDate[key].total += ev.amount;
-        }
-        dateKeys.sort();
-
-        var running = summary.estimatedTodayBalance;
-        var lowest = running;
-        var lowestDate = todayZero;
-        var points = [{ dayOffset: 0, date: todayZero, balance: running }];
-
-        for (var d = 0; d < dateKeys.length; d++) {
-            var entry = byDate[dateKeys[d]];
-            running += entry.total;
-            if (running < lowest) { lowest = running; lowestDate = entry.date; }
-            var offset = Math.round((entry.date.getTime() - todayZero.getTime()) / 86400000);
-            points.push({ dayOffset: offset, date: entry.date, balance: running });
-        }
-        // Flat trailing point out to the exact horizon cutoff, so the chart/stats always cover the
-        // full selected period even with zero, or few, events — no fabricated balance change.
-        if (points[points.length - 1].dayOffset < days) {
-            points.push({ dayOffset: days, date: cutoff, balance: running });
-        }
-
-        return {
-            anchorIsSet: true,
-            days: days,
-            estimatedTodayBalance: summary.estimatedTodayBalance,
-            events: eventsInRange,
-            points: points,
-            lowest: lowest,
-            lowestDate: lowestDate,
-            endBalance: running,
-            isNegative: lowest < 0,
-            todayDate: todayZero,
-            cutoffDate: cutoff
-        };
+        future.sort(compareCashflowEvents);
+        return future.length ? future[0] : null;
     }
-    // =====================================================================================
-    // ===== Stage 3ב.4: forecast chart/table UI for the Insights screen. niceRoundUp/       =====
-    // ===== barPath/attachForecastHandlers/renderForecast/toggleForecastView are copied      =====
-    // ===== verbatim from index.html's own functions of the same name (geometry, scaling and =====
-    // ===== tooltip behavior unchanged) — only DOM ids/classes are renamed to this file's own =====
-    // ===== `preview-forecast-*` namespace, and the data source is `computeForecast(items)`   =====
-    // ===== (explicit, matching how the rest of this screen's real-data functions are called) =====
-    // ===== instead of computeForecast()'s no-arg global fallback. No new business logic.     =====
-    // =====================================================================================
-
-    var previewForecastView = 'chart';
-
-    // Copied verbatim from index.html.
-    function niceRoundUp(value) {
-        if (value <= 0) return 100;
-        var exp = Math.floor(Math.log(value) / Math.LN10);
-        var base = Math.pow(10, exp);
-        var n = value / base;
-        var niceN = (n <= 1) ? 1 : (n <= 2) ? 2 : (n <= 5) ? 5 : 10;
-        return niceN * base;
-    }
-
-    // Copied verbatim from index.html.
-    function barPath(x, y, w, h, r, roundedEnd) {
-        if (h < r * 2) r = Math.max(0, h / 2);
-        if (roundedEnd === 'top') {
-            return 'M' + x + ',' + (y + h) +
-                ' L' + x + ',' + (y + r) +
-                ' Q' + x + ',' + y + ' ' + (x + r) + ',' + y +
-                ' L' + (x + w - r) + ',' + y +
-                ' Q' + (x + w) + ',' + y + ' ' + (x + w) + ',' + (y + r) +
-                ' L' + (x + w) + ',' + (y + h) + ' Z';
-        }
-        return 'M' + x + ',' + y +
-            ' L' + (x + w) + ',' + y +
-            ' L' + (x + w) + ',' + (y + h - r) +
-            ' Q' + (x + w) + ',' + (y + h) + ' ' + (x + w - r) + ',' + (y + h) +
-            ' L' + (x + r) + ',' + (y + h) +
-            ' Q' + x + ',' + (y + h) + ' ' + x + ',' + (y + h - r) + ' Z';
-    }
-
-    // Same shape as index.html's attachForecastHandlers(), pointing at this screen's own
-    // preview-forecast-svg/preview-forecast-tooltip ids and .preview-forecast-bar class.
-    function attachForecastHandlers(months) {
-        var svg = document.getElementById('preview-forecast-svg');
-        var tooltip = document.getElementById('preview-forecast-tooltip');
-        var bars = svg.querySelectorAll('.preview-forecast-bar');
-        for (var i = 0; i < bars.length; i++) {
-            (function(bar) {
-                function show() {
-                    var idx = parseInt(bar.getAttribute('data-idx'), 10);
-                    var mo = months[idx];
-                    tooltip.innerHTML = '<strong>' + formatHomeCurrency(mo.net) + '</strong>' + escapeHtml(mo.label);
-                    tooltip.style.display = 'block';
-                    var rect = bar.getBoundingClientRect();
-                    var wrapRect = svg.parentNode.getBoundingClientRect();
-                    tooltip.style.left = (rect.left - wrapRect.left + rect.width / 2) + 'px';
-                    tooltip.style.top = (rect.top - wrapRect.top) + 'px';
-                }
-                function hide() { tooltip.style.display = 'none'; }
-                bar.addEventListener('pointerenter', show);
-                bar.addEventListener('pointermove', show);
-                bar.addEventListener('pointerleave', hide);
-                bar.addEventListener('focus', show);
-                bar.addEventListener('blur', hide);
-            })(bars[i]);
-        }
-    }
-
-    // Same geometry/scale as index.html's renderForecast(); reads computeForecast(items)
-    // explicitly instead of relying on the no-arg global fallback.
-    function renderForecast() {
-        var svg = document.getElementById('preview-forecast-svg');
-        var tableWrap = document.getElementById('preview-forecast-table-wrap');
-        if (!svg) return;
-
-        // Version 1.3, Phase 2C: sourced from buildCashflowSummary() instead of computeForecast()
-        // — each bar's "net" is that month's endOfMonth minus its startingBalance, i.e. exactly
-        // the net flow the unified engine itself applied for that month (for the current month,
-        // this is tomorrow-onward only, per the approved today-boundary rule; for every later
-        // month it is the full month, unchanged in spirit from the old computeForecast() bars).
-        // Geometry/drawing code below this line is untouched.
-        var cashflowSummaryForChart = buildCashflowSummary(items);
-        var months = [];
-        for (var smi = 0; smi < cashflowSummaryForChart.months.length; smi++) {
-            var smm = cashflowSummaryForChart.months[smi];
-            months.push({ label: smm.label, net: smm.endOfMonth - smm.startingBalance });
-        }
-        var maxAbs = 1;
-        for (var k = 0; k < months.length; k++) { maxAbs = Math.max(maxAbs, Math.abs(months[k].net)); }
-        var niceMax = niceRoundUp(maxAbs);
-
-        var W = 300, H = 170, baselineY = 88, barMaxH = 60, barW = 26, radius = 4;
-        var slot = W / months.length;
-        var scale = barMaxH / niceMax;
-
-        var parts = [];
-        parts.push('<line class="preview-forecast-zero-line" x1="0" y1="' + baselineY + '" x2="' + W + '" y2="' + baselineY + '"></line>');
-        parts.push('<text class="preview-forecast-scale-label" x="2" y="' + (baselineY - barMaxH - 3) + '">₪' + niceMax.toLocaleString() + '</text>');
-        parts.push('<text class="preview-forecast-scale-label" x="2" y="' + (baselineY + barMaxH + 8) + '">-₪' + niceMax.toLocaleString() + '</text>');
-
-        for (var i = 0; i < months.length; i++) {
-            var mo = months[i];
-            var x = i * slot + (slot - barW) / 2;
-            var h = Math.round(Math.abs(mo.net) * scale);
-            if (h < 3) h = 3;
-            var y, roundedEnd, colorClass;
-            if (mo.net >= 0) { y = baselineY - h; roundedEnd = 'top'; colorClass = 'preview-forecast-bar-pos'; }
-            else { y = baselineY; roundedEnd = 'bottom'; colorClass = 'preview-forecast-bar-neg'; }
-            var d = barPath(x, y, barW, h, radius, roundedEnd);
-            parts.push('<path class="preview-forecast-bar ' + colorClass + '" data-idx="' + i + '" tabindex="0" d="' + d + '"></path>');
-            parts.push('<text class="preview-forecast-axis-label" x="' + (x + barW / 2) + '" y="' + (H - 4) + '" text-anchor="middle">' + escapeHtml(mo.label) + '</text>');
-        }
-
-        svg.innerHTML = parts.join('');
-        attachForecastHandlers(months);
-
-        var tableHtml = '<table><thead><tr><th>חודש</th><th>יתרה פנויה צפויה</th></tr></thead><tbody>';
-        for (var j = 0; j < months.length; j++) {
-            var m2 = months[j];
-            tableHtml += '<tr><td>' + escapeHtml(m2.label) + '</td><td class="' + (m2.net >= 0 ? 'preview-forecast-positive' : 'preview-forecast-negative') + '">' + formatHomeCurrency(m2.net) + '</td></tr>';
-        }
-        tableHtml += '</tbody></table>';
-        tableWrap.innerHTML = tableHtml;
-    }
-
-    // Same toggle behavior as index.html's toggleForecastView(), pointing at this screen's own
-    // preview-forecast-chart-wrap/preview-forecast-table-wrap/preview-forecast-toggle-btn ids.
-    function toggleForecastView() {
-        previewForecastView = (previewForecastView === 'chart') ? 'table' : 'chart';
-        document.getElementById('preview-forecast-chart-wrap').style.display = (previewForecastView === 'chart') ? 'block' : 'none';
-        document.getElementById('preview-forecast-table-wrap').style.display = (previewForecastView === 'table') ? 'block' : 'none';
-        document.getElementById('preview-forecast-toggle-btn').textContent = (previewForecastView === 'chart') ? 'טבלה' : 'גרף';
-    }
-
     // =====================================================================================
     // ===== Stage D.2 (originally Preview-only, now Stage 4.4 candidate): read-only          =====
     // ===== connection to the app's own localStorage data. Reads ONLY DATA_KEY/CONFIG_KEY —  =====
@@ -1586,15 +1374,14 @@
             pinHash: null,
             pinEnabled: false,
             autoLockMinutes: null,
-            // Version 1.3, Phase 2B (legacy field, kept for backward compatibility only —
-            // superseded by anchorBalance/anchorDate below, Phase 2E). No longer written by
-            // any live UI; still read as a fallback by resolveBalanceAnchor() for Preview
-            // users who saved a balance before the anchor model existed.
+            // Version 1.3, Phase 2B (legacy field). Version 1.4.1 correction: the balance-anchor
+            // UI and its entire calculation path (resolveBalanceAnchor()/buildCashflowSummary())
+            // were removed — this field, and anchorBalance/anchorDate below, are no longer
+            // written OR read by any live code anywhere in the app. They are kept purely so an
+            // existing user's already-stored family_finance_settings value is never silently
+            // dropped/rewritten by this default-shape function — pure backward-compatible
+            // preservation, not an active data source.
             currentBalance: null,
-            // Version 1.3, Phase 2E: BALANCE ANCHOR — "at anchorDate, the real account
-            // balance was anchorBalance." Replaces the old "re-enter a fresh balance every
-            // time" model with a one-time-normally baseline the engine projects forward from.
-            // null/null means "never set" (never guessed); explicit 0 is a valid anchor.
             anchorBalance: null,
             anchorDate: null,
             notifications: { upcomingPayment: true, upcomingIncome: true, completedObligation: true },
@@ -2617,19 +2404,45 @@
         return { icon: icon, title: title, date: date, amount: amount, type: cssType, id: item.id, isArchived: !!item.isArchived, installmentProgress: installmentProgress, installmentBalance: installmentBalance };
     }
 
+    // Version 1.4.1: Home's hero no longer shows "כמה פנוי לי להוציא החודש" (a value that looked
+    // like a bank balance but never was one) — it shows today's own planned cash-flow change,
+    // from the exact same day-level series the Forecast screen uses (buildMonthlyDailySeries()),
+    // never a separate/competing calculation. hero-status (previously an untouched status pill)
+    // is reused for the required supporting line.
     function renderHomeScreenFromRealData() {
-        var snapshot = getMonthSnapshot(items);
+        var todaySeries = buildMonthlyDailySeries(new Date());
+        var todayZero = cashflowDateOnly(new Date());
+        var todayEntry = null;
+        for (var i = 0; i < todaySeries.days.length; i++) {
+            if (todaySeries.days[i].day === todayZero.getDate()) { todayEntry = todaySeries.days[i]; break; }
+        }
+        var todayNet = todayEntry ? todayEntry.net : 0;
+        var hasEventsToday = !!(todayEntry && todayEntry.events.length > 0);
 
-        document.getElementById('hero-amount').textContent = formatHomeCurrency(snapshot.balance);
+        var heroLabelEl = document.querySelector('#screen-home .hero-label');
+        var heroAmountEl = document.getElementById('hero-amount');
+        var heroStatusEl = document.getElementById('hero-status');
+        if (heroLabelEl) { heroLabelEl.textContent = 'התזרים הצפוי היום'; }
+        if (heroAmountEl) {
+            heroAmountEl.classList.remove('positive-amount', 'negative-amount', 'neutral-amount');
+            if (todayNet === 0) {
+                heroAmountEl.textContent = '₪0';
+                heroAmountEl.classList.add('neutral-amount');
+            } else {
+                heroAmountEl.textContent = formatSignedCurrency(todayNet);
+                heroAmountEl.classList.add(todayNet > 0 ? 'positive-amount' : 'negative-amount');
+            }
+        }
+        if (heroStatusEl) {
+            heroStatusEl.textContent = hasEventsToday ? 'הכנסות והוצאות המתוכננות להיום' : 'אין תנועות צפויות היום';
+        }
+
+        // snapshot-income/snapshot-expenses stay the existing monthly-total tiles (getMonthSnapshot)
+        // — unrelated to the hero above and out of this hotfix's scope; only the hero itself was
+        // the "misleading" value this correction targets.
+        var snapshot = getMonthSnapshot(items);
         document.getElementById('snapshot-income').textContent = formatHomeCurrency(snapshot.income);
         document.getElementById('snapshot-expenses').textContent = formatHomeCurrency(snapshot.expenses);
-
-        // hero-status (the small status pill) is intentionally left untouched — there is no
-        // narrative field that maps to a short status label without inventing new wording or
-        // logic (it would require the still-unimplemented getForecastWarning). See report.
-        // Version 1.1, Stage 1: hero-narrative (the "החודש: ..." sentence) removed from the hero
-        // card per product decision — buildPreviewNarrativeData() is no longer called here at all
-        // (its other fields are still used independently by the Insights/Attention screens).
 
         // Same row count the existing (Mock) Home design showed (4).
         var recent = getRecentActivity(items, 4).map(mapItemToHomeTxRow);
@@ -2674,13 +2487,6 @@
     // buildCashflowSummary()'s own isNegative field, so the engine's contract (isNegative =
     // current-month-only) does not change. Returns the FIRST (soonest) month whose lowest
     // projected balance goes negative, or null if none of the 6 projected months does.
-    function findFirstNegativeCashflowMonth(summary) {
-        for (var i = 0; i < summary.months.length; i++) {
-            if (summary.months[i].lowest < 0) { return summary.months[i]; }
-        }
-        return null;
-    }
-
     // Same '₪'+rounded+locale convention as formatHomeCurrency(), with an explicit leading
     // sign — used only for cash-flow EVENT amounts (income vs. expense), where showing the
     // direction of money movement is the point (formatHomeCurrency() alone already reads as
@@ -2691,377 +2497,193 @@
         return (rounded < 0 ? '-₪' : '+₪') + Math.abs(rounded).toLocaleString();
     }
 
-    // Renders the entire Version 1.3 cash-flow Insights block added in Phase 2C: the "מצב
-    // להיום" hero (+ its inline currentBalance editor's displayed state), the 5 summary
-    // cards (האירוע הבא/ההכנסה הבאה/צפוי לרדת/נקודת השפל/תחזית סוף חודש), and the
-    // expandable timeline. Everything is sourced from ONE buildCashflowSummary() call. The
-    // timeline shows ONLY summary.timelineEvents (tomorrow-onward, exactly what the numerical
-    // forecast itself uses) — today's own events are never shown here, so nothing on this
-    // screen can ever be misread as "pending" or "already processed" (execution status is
-    // unknowable per the approved today-boundary contract).
-    // Explicit UI-only state for whether the reconciliation form is manually expanded right
-    // now. Not inferred from the DOM's style.display string (that was the source of a real
-    // bug: the default, never-touched style.display is also '' — the same value
-    // toggleBalanceAnchorForm() uses for "open" — so a render right after a fresh page load
-    // could not tell "never touched" apart from "user just opened it" and failed to
-    // auto-collapse an already-set anchor's form after reload). This flag is the single
-    // source of truth for that one piece of UI state instead.
-    var balanceAnchorFormExpanded = false;
-
-    // Milestone 3: UI-only state for the Forecast screen's day-horizon selector and the
-    // collapsed "תחזית חודשית מורחבת" section. Neither is persisted (resets to the 30-day/
-    // collapsed default on reload), matching the existing balanceAnchorFormExpanded/
-    // previewForecastView convention of transient, in-memory-only UI state.
-    var forecastPeriodDays = 30;
-    var monthlyForecastExpanded = false;
-
+    // =====================================================================================
+    // ===== Version 1.4.1: the Forecast screen's "האירוע הכספי הבא" card — the ONLY summary =====
+    // ===== card kept on this screen (the old anchor hero + "ההכנסה הבאה"/"צפוי לרדת עד     =====
+    // ===== ההכנסה הבאה"/period lowest-balance cards are all removed, per the approved       =====
+    // ===== decision to stop presenting anything as a bank balance). Sourced from             =====
+    // ===== getNextCashflowEvent() — the same unified event source the daily table/graph use, =====
+    // ===== no balance anchor involved anywhere in this function.                             =====
+    // =====================================================================================
     function renderCashflowInsightsFromRealData() {
-        var summary = buildCashflowSummary();
+        var nextEvent = getNextCashflowEvent();
+        var toneClass = nextEvent ? (nextEvent.amount >= 0 ? ' positive-amount' : ' negative-amount') : '';
+        var valueText = nextEvent ? formatSignedCurrency(nextEvent.amount) : 'אין אירועים עתידיים';
+        var noteText = nextEvent
+            ? ((nextEvent.title || '') + ' · ' + nextEvent.date.toLocaleDateString('he-IL'))
+            : 'לא נמצאו אירועים בחודשיים הקרובים';
 
-        var balanceEl = document.getElementById('cashflow-today-balance');
-        var subnoteEl = document.getElementById('cashflow-balance-subnote');
-        var labelEl = document.getElementById('cashflow-hero-label');
-        var inputEl = document.getElementById('cashflow-balance-input');
-        var inputLabelEl = document.getElementById('cashflow-balance-input-label');
-        var toggleRowEl = document.getElementById('cashflow-anchor-toggle-row');
-        var formEl = document.getElementById('cashflow-anchor-form');
-        if (summary.anchorIsSet) {
-            if (labelEl) { labelEl.textContent = 'יתרה משוערת להיום'; }
-            if (balanceEl) { balanceEl.textContent = formatHomeCurrency(summary.estimatedTodayBalance); }
-            if (subnoteEl) {
-                var anchorDateObjForDisplay = summary.anchorDate ? parseLocalDateStr(summary.anchorDate) : null;
-                var anchorDateDisplay = anchorDateObjForDisplay ? anchorDateObjForDisplay.toLocaleDateString('he-IL') : '';
-                subnoteEl.textContent = 'מבוסס על יתרה שהוזנה ב-' + anchorDateDisplay + ' — מחושבת קדימה אוטומטית, לא נדרש עדכון יומי.';
-            }
-            if (inputLabelEl) { inputLabelEl.textContent = 'יתרת חשבון בפועל כרגע'; }
-            if (toggleRowEl) { toggleRowEl.style.display = ''; }
-            if (formEl) { formEl.style.display = balanceAnchorFormExpanded ? '' : 'none'; }
-        } else {
-            if (labelEl) { labelEl.textContent = 'הגדר יתרת בסיס'; }
-            if (balanceEl) { balanceEl.textContent = '—'; }
-            if (subnoteEl) { subnoteEl.textContent = 'הזן את היתרה האמיתית בחשבון שלך היום — פעם אחת בלבד. התחזית תתעדכן אוטומטית קדימה מכאן ואילך, לא תצטרך להזין אותה מידי יום.'; }
-            if (inputLabelEl) { inputLabelEl.textContent = 'יתרת חשבון נכון להיום'; }
-            if (toggleRowEl) { toggleRowEl.style.display = 'none'; }
-            if (formEl) { formEl.style.display = ''; }
-            balanceAnchorFormExpanded = false;
-        }
-        if (inputEl && document.activeElement !== inputEl) {
-            inputEl.value = summary.anchorIsSet ? summary.estimatedTodayBalance : '';
-        }
-
-        var cards = [];
-
-        if (summary.nextEvent) {
-            cards.push({
-                title: 'האירוע הכספי הבא',
-                value: formatSignedCurrency(summary.nextEvent.amount),
-                note: (summary.nextEvent.title || '') + ' · ' + summary.nextEvent.date.toLocaleDateString('he-IL'),
-                tone: 'normal'
-            });
-        } else {
-            cards.push({ title: 'האירוע הכספי הבא', value: 'אין אירועים עתידיים', note: 'לא נמצאו אירועים ב-6 החודשים הקרובים', tone: 'normal' });
-        }
-
-        if (summary.nextIncome) {
-            cards.push({
-                title: 'ההכנסה הבאה',
-                value: formatHomeCurrency(summary.nextIncome.amount),
-                note: (summary.nextIncome.title || '') + ' · ' + summary.nextIncome.date.toLocaleDateString('he-IL'),
-                tone: 'normal'
-            });
-        } else {
-            cards.push({ title: 'ההכנסה הבאה', value: 'אין הכנסה עתידית מוגדרת', note: 'לא נמצא פריט הכנסה עתידי ב-6 החודשים הקרובים', tone: 'normal' });
-        }
-
-        if (summary.nextIncome && summary.amountBeforeNextIncome !== null) {
-            cards.push({
-                title: 'צפוי לרדת עד ההכנסה הבאה',
-                value: formatHomeCurrency(summary.amountBeforeNextIncome),
-                note: 'סך ההוצאות הצפויות עד ' + summary.nextIncome.date.toLocaleDateString('he-IL'),
-                tone: 'normal'
-            });
-        } else {
-            cards.push({ title: 'צפוי לרדת עד ההכנסה הבאה', value: 'לא ידוע', note: 'אין הכנסה עתידית מוגדרת שממנה ניתן לחשב', tone: 'normal' });
-        }
-
-        // Milestone 3: the current-month-only "נקודת השפל"/"תחזית סוף חודש" cards that used to
-        // sit here are gone — superseded by the period-scoped equivalents in
-        // #forecast-period-stats (see renderForecastPeriodSection()), so the same concept is
-        // never shown twice at two different, potentially-confusing scopes at once.
-
-        var feedHtml = '';
-        for (var i = 0; i < cards.length; i++) {
-            var c = cards[i];
-            var toneClass = (c.tone === 'danger') ? ' danger' : ((c.tone === 'warning') ? ' warning' : '');
-            var toneIcon = (c.tone === 'danger' || c.tone === 'warning') ? '⚠️' : '📊';
-            feedHtml += '<div class="insight-card' + toneClass + '">' +
-                '<div class="insight-icon">' + toneIcon + '</div>' +
-                '<div class="insight-body">' +
-                    '<div class="insight-title">' + escapeHtml(c.title) + '</div>' +
-                    '<div class="insight-value">' + escapeHtml(c.value) + '</div>' +
-                    '<div class="insight-note">' + escapeHtml(c.note) + '</div>' +
-                '</div>' +
-            '</div>';
-        }
+        var feedHtml = '<div class="insight-card">' +
+            '<div class="insight-icon">📊</div>' +
+            '<div class="insight-body">' +
+                '<div class="insight-title">האירוע הכספי הבא</div>' +
+                '<div class="insight-value' + toneClass + '">' + escapeHtml(valueText) + '</div>' +
+                '<div class="insight-note">' + escapeHtml(noteText) + '</div>' +
+            '</div>' +
+        '</div>';
         var feedEl = document.getElementById('cashflow-summary-feed');
         if (feedEl) { feedEl.innerHTML = feedHtml; }
-
-        // Milestone 3: the cash-flow timeline (#cashflow-timeline-preview/-full) is no longer
-        // populated here — it now comes from the SAME period-scoped result as the graph/stats,
-        // via renderForecastPeriodSection()/buildTimelineRowHtml() below, so it can never
-        // disagree with them. Hero + the 3 summary cards above are all this function still owns.
-    }
-
-    // Shared by renderForecastPeriodSection() below — same .attention-item markup/escaping
-    // convention as every other existing row in this file.
-    function buildTimelineRowHtml(ev) {
-        return '<div class="attention-item">' +
-            '<div>' +
-                '<div class="attention-title">' + escapeHtml(ev.title || '') + '</div>' +
-                '<div class="attention-detail">' + escapeHtml(ev.date.toLocaleDateString('he-IL')) + '</div>' +
-            '</div>' +
-            '<div class="attention-amount">' + escapeHtml(formatSignedCurrency(ev.amount)) + '</div>' +
-        '</div>';
-    }
-
-    // Show/hide the full scrollable timeline list vs. the 3-item preview. Pure display toggle,
-    // no re-fetch/recompute (renderCashflowInsightsFromRealData() already populated both).
-    function toggleCashflowTimeline() {
-        var fullEl = document.getElementById('cashflow-timeline-full');
-        var previewEl = document.getElementById('cashflow-timeline-preview');
-        var btn = document.getElementById('cashflow-timeline-toggle-btn');
-        if (!fullEl || !btn) { return; }
-        var expanded = fullEl.style.display !== 'none';
-        fullEl.style.display = expanded ? 'none' : 'block';
-        if (previewEl) { previewEl.style.display = expanded ? 'block' : 'none'; }
-        btn.textContent = expanded ? 'הצג הכל' : 'הצג פחות';
-    }
-
-    // Show/hide the reconciliation entry form under the hero. Only relevant once an anchor
-    // is already set (before setup, the form is always shown directly — see
-    // renderCashflowInsightsFromRealData()). Pure display toggle, no recompute.
-    function toggleBalanceAnchorForm() {
-        var formEl = document.getElementById('cashflow-anchor-form');
-        var btn = document.getElementById('cashflow-anchor-toggle-btn');
-        if (!formEl || !btn) { return; }
-        balanceAnchorFormExpanded = !balanceAnchorFormExpanded;
-        formEl.style.display = balanceAnchorFormExpanded ? '' : 'none';
-        btn.textContent = balanceAnchorFormExpanded ? 'סגור' : 'עדכן יתרה בפועל';
-    }
-
-    // Reads the inline balance input, validates it's a real number (distinguishing an empty
-    // submission — rejected, no change — from a deliberately entered 0, which IS a valid
-    // anchor amount), persists it as a fresh BALANCE ANCHOR (amount + today's local date)
-    // via setBalanceAnchor(), collapses the reconciliation form back down (it only matters
-    // for the "already set" case — harmless no-op before setup, since the form has no
-    // toggle row to collapse into yet), and re-renders every screen that reads the engine.
-    // Serves BOTH the initial "הגדר יתרת בסיס" setup and the later "עדכן יתרה בפועל"
-    // reconciliation — both are the exact same operation: "the real balance right now is X."
-    function submitCurrentBalanceUpdate() {
-        var inputEl = document.getElementById('cashflow-balance-input');
-        if (!inputEl) { return; }
-        var raw = inputEl.value;
-        if (raw === '' || raw === null) { alert('נא להזין סכום תקין'); return; }
-        var num = parseFloat(raw);
-        if (!isFinite(num)) { alert('נא להזין סכום תקין'); return; }
-        setBalanceAnchor(num, todayStr());
-        balanceAnchorFormExpanded = false;
-        renderCashflowInsightsFromRealData();
-        renderForecast();
-        renderForecastPeriodSection();
     }
 
     // =====================================================================================
-    // ===== Milestone 3: rendering for the 30/60/90-day period-scoped Forecast section —    =====
-    // ===== negative-balance warning, lowest/end-of-period stat cards, the cumulative        =====
-    // ===== projected-balance graph, and the cash-flow timeline. ONE buildPeriodCashflowForecast() =====
-    // ===== call per render feeds all four, so they cannot disagree (requirement in the      =====
-    // ===== Milestone 3 spec). Called on initial load, after any data mutation (from          =====
-    // ===== renderAllPreviewScreens()), on period-button click, and after an anchor update.   =====
+    // ===== Version 1.4.1: the calendar-month daily cashflow graph + table — replaces the   =====
+    // ===== retired 30/60/90-day balance-anchor Forecast section entirely. ONE               =====
+    // ===== buildMonthlyDailySeries() call per render feeds both the graph and the table, so  =====
+    // ===== they can never disagree (same requirement the old period section already          =====
+    // ===== satisfied for its own graph/stats/timeline, now satisfied here instead).          =====
     // =====================================================================================
 
-    function setForecastPeriodDays(days) {
-        forecastPeriodDays = days;
-        renderForecastPeriodSection();
+    // UI-only: which single day-row (by 'YYYY-MM-DD' key) is currently expanded in the daily
+    // table, if any. Not persisted — resets on reload, same convention as every other transient,
+    // in-memory-only UI flag in this file.
+    var expandedForecastDayKey = null;
+
+    function renderMonthlyCashflowForecast() {
+        var series = buildMonthlyDailySeries(new Date());
+        var monthLabelEl = document.getElementById('forecast-month-label');
+        if (monthLabelEl) { monthLabelEl.textContent = series.monthLabel; }
+        renderMonthlyCashflowChart(series);
+        renderMonthlyCashflowTable(series);
     }
 
-    function renderForecastPeriodSection() {
-        var btn30 = document.getElementById('forecast-period-btn-30');
-        var btn60 = document.getElementById('forecast-period-btn-60');
-        var btn90 = document.getElementById('forecast-period-btn-90');
-        [btn30, btn60, btn90].forEach(function (b) { if (b) { b.classList.remove('active'); } });
-        var activeBtn = document.getElementById('forecast-period-btn-' + forecastPeriodDays);
-        if (activeBtn) { activeBtn.classList.add('active'); }
-
-        var timelineTitleEl = document.getElementById('cashflow-timeline-title');
-        if (timelineTitleEl) { timelineTitleEl.textContent = '📅 ציר תזרים — ' + forecastPeriodDays + ' הימים הקרובים'; }
-
-        var negBannerEl = document.getElementById('forecast-period-negative-banner');
-        var statsEl = document.getElementById('forecast-period-stats');
-        var chartSummaryEl = document.getElementById('forecast-period-chart-summary');
+    // Cumulative-since-month-start step chart, same "flat between events, jumps exactly on the
+    // day it changes" convention (and the same held-rectangle + staircase-outline drawing
+    // technique) as the retired period chart it replaces — only the x-axis changed, from a
+    // rolling day-offset-from-today to a fixed day-of-month 0..daysInMonth.
+    function renderMonthlyCashflowChart(series) {
         var svg = document.getElementById('forecast-period-svg');
-        var previewEl = document.getElementById('cashflow-timeline-preview');
-        var fullEl = document.getElementById('cashflow-timeline-full');
-        var toggleBtn = document.getElementById('cashflow-timeline-toggle-btn');
-
-        var pf = buildPeriodCashflowForecast(forecastPeriodDays);
-
-        if (!pf.anchorIsSet) {
-            // Honest empty state — never a synthetic/misleading balance. Same reasoning as the
-            // hero's own "הגדר יתרת בסיס" state above; nothing here can render without a real
-            // starting balance, so nothing here pretends to.
-            if (negBannerEl) { negBannerEl.innerHTML = ''; }
-            if (statsEl) {
-                statsEl.innerHTML = '<div class="insight-note">נמוך ביותר וסוף-התקופה יוצגו לאחר הגדרת יתרת הבסיס למעלה.</div>';
-            }
-            if (svg) { svg.innerHTML = ''; }
-            if (chartSummaryEl) { chartSummaryEl.textContent = 'הגרף יוצג לאחר הגדרת יתרת בסיס.'; }
-            if (svg) { svg.removeAttribute('aria-label'); }
-            if (previewEl) { previewEl.innerHTML = ''; }
-            if (fullEl) { fullEl.innerHTML = ''; }
-            if (toggleBtn) { toggleBtn.style.display = 'none'; }
-            return;
-        }
-
-        if (negBannerEl) {
-            negBannerEl.innerHTML = pf.isNegative ?
-                ('<div class="insight-card danger">' +
-                    '<div class="insight-icon">⚠️</div>' +
-                    '<div class="insight-body">' +
-                        '<div class="insight-title">אזהרת תחזית</div>' +
-                        '<div class="insight-value">' + escapeHtml(formatHomeCurrency(pf.lowest)) + '</div>' +
-                        '<div class="insight-note">' + escapeHtml('היתרה הצפויה צונחת מתחת לאפס בטווח ' + forecastPeriodDays + ' הימים שנבחר (ב-' + pf.lowestDate.toLocaleDateString('he-IL') + ').') + '</div>' +
-                    '</div>' +
-                '</div>') : '';
-        }
-
-        if (statsEl) {
-            var lowestToneClass = pf.lowest < 0 ? ' danger' : '';
-            var lowestIcon = pf.lowest < 0 ? '⚠️' : '📉';
-            var endToneClass = pf.endBalance < 0 ? ' danger' : '';
-            var endIcon = pf.endBalance < 0 ? '⚠️' : '📊';
-            statsEl.innerHTML =
-                '<div class="insight-card' + lowestToneClass + '">' +
-                    '<div class="insight-icon">' + lowestIcon + '</div>' +
-                    '<div class="insight-body">' +
-                        '<div class="insight-title">נמוך ביותר בתקופה</div>' +
-                        '<div class="insight-value">' + escapeHtml(formatHomeCurrency(pf.lowest)) + '</div>' +
-                        '<div class="insight-note">' + escapeHtml('בתאריך ' + pf.lowestDate.toLocaleDateString('he-IL')) + '</div>' +
-                    '</div>' +
-                '</div>' +
-                '<div class="insight-card' + endToneClass + '">' +
-                    '<div class="insight-icon">' + endIcon + '</div>' +
-                    '<div class="insight-body">' +
-                        '<div class="insight-title">צפי בסוף התקופה</div>' +
-                        '<div class="insight-value">' + escapeHtml(formatHomeCurrency(pf.endBalance)) + '</div>' +
-                        '<div class="insight-note">' + escapeHtml('נכון ל-' + pf.cutoffDate.toLocaleDateString('he-IL')) + '</div>' +
-                    '</div>' +
-                '</div>';
-        }
-
-        renderForecastPeriodChart(pf, svg, chartSummaryEl);
-
-        var events = pf.events;
-        if (previewEl) {
-            if (events.length === 0) {
-                previewEl.innerHTML = '<div class="insight-note">אין אירועים עתידיים להצגה בטווח שנבחר.</div>';
-            } else {
-                var previewHtml = '';
-                for (var p = 0; p < Math.min(3, events.length); p++) { previewHtml += buildTimelineRowHtml(events[p]); }
-                previewEl.innerHTML = previewHtml;
-            }
-        }
-        if (fullEl) {
-            var fullHtml = '';
-            for (var f = 0; f < events.length; f++) { fullHtml += buildTimelineRowHtml(events[f]); }
-            fullEl.innerHTML = fullHtml;
-        }
-        if (toggleBtn) {
-            toggleBtn.style.display = (events.length > 3) ? '' : 'none';
-            // A period switch can leave a previously-expanded list showing stale content
-            // momentarily otherwise — force it back to the collapsed 3-item preview on every
-            // re-render so the toggle button's own "הצג הכל" label always matches what's shown.
-            document.getElementById('cashflow-timeline-full').style.display = 'none';
-            if (previewEl) { previewEl.style.display = 'block'; }
-            toggleBtn.textContent = 'הצג הכל';
-        }
-    }
-
-    // Draws the cumulative projected-balance graph as an SVG step chart (balance is flat
-    // between events, then jumps exactly on the day it changes — never a smoothed/interpolated
-    // line, since the underlying balance itself never changes gradually). Colors each held
-    // segment green (>=0) or red (<0) via barPath-adjacent styling reusing the existing
-    // preview-forecast-bar-pos/neg color tokens. No external charting library — plain SVG,
-    // consistent with the existing 6-month bar chart (renderForecast()) elsewhere on this file.
-    function renderForecastPeriodChart(pf, svg, summaryEl) {
+        var summaryEl = document.getElementById('forecast-period-chart-summary');
         if (!svg) { return; }
-        var points = pf.points;
+
         var W = 300, H = 170, padL = 40, padR = 8, padT = 14, padB = 20;
         var innerW = W - padL - padR, innerH = H - padT - padB;
 
         var values = [0];
-        for (var vi = 0; vi < points.length; vi++) { values.push(points[vi].balance); }
+        for (var vi = 0; vi < series.days.length; vi++) { values.push(series.days[vi].cumulative); }
         var minV = Math.min.apply(null, values);
         var maxV = Math.max.apply(null, values);
         var range = (maxV - minV) || 1;
 
-        function xOf(dayOffset) { return padL + (pf.days > 0 ? (dayOffset / pf.days) : 0) * innerW; }
-        function yOf(balance) { return padT + innerH - ((balance - minV) / range) * innerH; }
+        function xOf(day) { return padL + (day / series.daysInMonth) * innerW; }
+        function yOf(v) { return padT + innerH - ((v - minV) / range) * innerH; }
         var zeroY = yOf(0);
 
         var parts = [];
         parts.push('<line x1="' + padL + '" y1="' + zeroY + '" x2="' + (W - padR) + '" y2="' + zeroY + '" stroke="var(--color-border)" stroke-width="1" stroke-dasharray="3,3"></line>');
 
-        // Filled "held balance" rectangles — one per step, colored by the sign of the balance
-        // held during that interval. The vertical boundary between two adjacent rectangles IS
-        // the step's jump; no separate connector shape is needed.
-        for (var i = 0; i < points.length - 1; i++) {
-            var p = points[i], q = points[i + 1];
-            var x1 = xOf(p.dayOffset), x2 = xOf(q.dayOffset), y1 = yOf(p.balance);
-            var fill = (p.balance >= 0) ? 'var(--color-primary-text)' : 'var(--color-danger)';
-            parts.push('<rect x="' + Math.min(x1, x2) + '" y="' + Math.min(y1, zeroY) + '" width="' + Math.max(1, Math.abs(x2 - x1)) + '" height="' + Math.max(1, Math.abs(zeroY - y1)) + '" fill="' + fill + '" fill-opacity="0.16"></rect>');
+        var prevX = xOf(0), prevY = yOf(0);
+        var strokePts = [prevX + ',' + prevY];
+        for (var i = 0; i < series.days.length; i++) {
+            var day = series.days[i];
+            var x = xOf(day.day);
+            var y = yOf(day.cumulative);
+            var fill = (day.cumulative >= 0) ? 'var(--color-success)' : 'var(--color-danger)';
+            parts.push('<rect x="' + Math.min(prevX, x) + '" y="' + Math.min(prevY, zeroY) + '" width="' + Math.max(1, Math.abs(x - prevX)) + '" height="' + Math.max(1, Math.abs(zeroY - prevY)) + '" fill="' + fill + '" fill-opacity="0.16"></rect>');
+            strokePts.push(x + ',' + prevY);
+            strokePts.push(x + ',' + y);
+            prevX = x; prevY = y;
         }
-
-        // Staircase outline on top, single pass, same points as the fills above.
-        var strokePts = [];
-        for (var si = 0; si < points.length; si++) {
-            var sx = xOf(points[si].dayOffset), sy = yOf(points[si].balance);
-            strokePts.push(sx + ',' + sy);
-            if (si < points.length - 1) { strokePts.push(xOf(points[si + 1].dayOffset) + ',' + sy); }
-        }
-        parts.push('<polyline points="' + strokePts.join(' ') + '" fill="none" stroke="var(--color-primary-text)" stroke-width="2" stroke-linejoin="round"></polyline>');
-
-        // Lowest-point marker, only when negative (matches the danger-tone stat card above).
-        if (pf.lowest < 0) {
-            var lowestOffset = Math.round((pf.lowestDate.getTime() - pf.todayDate.getTime()) / 86400000);
-            parts.push('<circle cx="' + xOf(lowestOffset) + '" cy="' + yOf(pf.lowest) + '" r="3.5" fill="var(--color-danger)"></circle>');
-        }
+        parts.push('<polyline points="' + strokePts.join(' ') + '" fill="none" stroke="var(--color-text)" stroke-width="2" stroke-linejoin="round"></polyline>');
 
         parts.push('<text x="' + padL + '" y="' + (padT - 2) + '" font-size="7" fill="var(--color-text-muted)">' + escapeHtml(formatHomeCurrency(maxV)) + '</text>');
         parts.push('<text x="' + padL + '" y="' + (H - padB + 12) + '" font-size="7" fill="var(--color-text-muted)">' + escapeHtml(formatHomeCurrency(minV)) + '</text>');
-        parts.push('<text x="' + padL + '" y="' + (H - 4) + '" font-size="7" fill="var(--color-text-muted)">' + escapeHtml(pf.todayDate.toLocaleDateString('he-IL')) + '</text>');
-        parts.push('<text x="' + (W - padR) + '" y="' + (H - 4) + '" font-size="7" fill="var(--color-text-muted)" text-anchor="end">' + escapeHtml(pf.cutoffDate.toLocaleDateString('he-IL')) + '</text>');
+        parts.push('<text x="' + padL + '" y="' + (H - 4) + '" font-size="7" fill="var(--color-text-muted)">1</text>');
+        parts.push('<text x="' + (W - padR) + '" y="' + (H - 4) + '" font-size="7" fill="var(--color-text-muted)" text-anchor="end">' + series.daysInMonth + '</text>');
 
         svg.innerHTML = parts.join('');
 
-        var a11ySummary = 'תחזית יתרה מצטברת ל-' + pf.days + ' יום: מ-' + formatHomeCurrency(pf.estimatedTodayBalance) +
-            ' ל-' + formatHomeCurrency(pf.endBalance) + '. הנמוך ביותר: ' + formatHomeCurrency(pf.lowest) +
-            ' בתאריך ' + pf.lowestDate.toLocaleDateString('he-IL') + '.';
+        var lastDay = series.days[series.days.length - 1];
+        var a11ySummary = 'תזרים מצטבר מתחילת החודש (' + series.monthLabel + '), מ-₪0: ' +
+            'בסוף החודש ' + formatSignedCurrency(lastDay.cumulative) + '. זהו תזרים מזומנים מתוכנן, לא יתרת הבנק שלך.';
         svg.setAttribute('aria-label', a11ySummary);
         if (summaryEl) { summaryEl.textContent = a11ySummary; }
     }
 
-    // Show/hide the pre-existing 6-month monthly forecast + legacy narrative cards. Pure
-    // display toggle — renderForecast()/renderInsightsScreenFromRealData() already keep the
-    // content inside up to date regardless of whether the section is currently visible.
-    function toggleMonthlyForecastSection() {
-        var sectionEl = document.getElementById('monthly-forecast-section');
-        var btn = document.getElementById('monthly-forecast-toggle-btn');
-        if (!sectionEl || !btn) { return; }
-        monthlyForecastExpanded = !monthlyForecastExpanded;
-        sectionEl.style.display = monthlyForecastExpanded ? '' : 'none';
-        btn.textContent = monthlyForecastExpanded ? '📆 תחזית חודשית מורחבת ▴' : '📆 תחזית חודשית מורחבת ▾';
+    function buildForecastDayDetailsHtml(day) {
+        if (!day.events || day.events.length === 0) {
+            return '<div class="insight-note">אין תנועות מתוכננות ביום זה.</div>';
+        }
+        var html = '';
+        for (var i = 0; i < day.events.length; i++) {
+            var ev = day.events[i];
+            var cls = ev.amount >= 0 ? 'positive-amount' : 'negative-amount';
+            html += '<div class="forecast-day-event">' +
+                '<span class="forecast-day-event-title">' + escapeHtml(ev.title || '') + '</span>' +
+                '<span class="forecast-day-event-amount ' + cls + '">' + escapeHtml(formatSignedCurrency(ev.amount)) + '</span>' +
+            '</div>';
+        }
+        return html;
     }
+
+    // One row per calendar day of the month, always all of them (including past days and days
+    // with no events) — never a filtered/paged subset. Each row's summary is a single
+    // touch/click/Enter/Space-activatable control with a real aria-expanded state and an
+    // explicit accessible name, so its expand/collapse state is never conveyed by color alone.
+    function renderMonthlyCashflowTable(series) {
+        var container = document.getElementById('forecast-daily-table');
+        if (!container) { return; }
+        var todayZero = cashflowDateOnly(new Date());
+        var isCurrentMonth = (series.year === todayZero.getFullYear() && series.month === todayZero.getMonth());
+
+        var rows = '<div class="forecast-day-row forecast-day-header" aria-hidden="true">' +
+            '<div class="forecast-day-cell">תאריך</div>' +
+            '<div class="forecast-day-cell">הכנסות</div>' +
+            '<div class="forecast-day-cell">הוצאות</div>' +
+            '<div class="forecast-day-cell">שינוי יומי</div>' +
+            '<div class="forecast-day-cell">מצטבר מתחילת החודש</div>' +
+        '</div>';
+
+        for (var i = 0; i < series.days.length; i++) {
+            var day = series.days[i];
+            var dateKey = cashflowDateKey(day.date);
+            var isToday = isCurrentMonth && day.day === todayZero.getDate();
+            var rowId = 'forecast-day-row-' + dateKey;
+            var expanded = (expandedForecastDayKey === dateKey);
+            var netClass = day.net > 0 ? 'positive-amount' : (day.net < 0 ? 'negative-amount' : 'neutral-amount');
+            var cumClass = day.cumulative > 0 ? 'positive-amount' : (day.cumulative < 0 ? 'negative-amount' : 'neutral-amount');
+            var dateLabel = day.date.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' });
+            var a11yLabel = dateLabel + ', שינוי יומי ' + formatSignedCurrency(day.net) + ', מצטבר מתחילת החודש ' + formatSignedCurrency(day.cumulative);
+
+            rows += '<div class="forecast-day-row' + (isToday ? ' is-today' : '') + '" id="' + rowId + '">' +
+                '<div class="forecast-day-summary" role="button" tabindex="0" aria-expanded="' + (expanded ? 'true' : 'false') + '" ' +
+                    'aria-controls="' + rowId + '-details" aria-label="' + escapeHtml(a11yLabel) + '" ' +
+                    'onclick="toggleForecastDayRow(\'' + dateKey + '\')" onkeydown="handleForecastDayRowKeydown(event, \'' + dateKey + '\')">' +
+                    '<div class="forecast-day-cell forecast-day-date" data-label="תאריך">' + escapeHtml(dateLabel) + '</div>' +
+                    '<div class="forecast-day-cell positive-amount" data-label="הכנסות">' + (day.income > 0 ? escapeHtml(formatSignedCurrency(day.income)) : '₪0') + '</div>' +
+                    '<div class="forecast-day-cell negative-amount" data-label="הוצאות">' + (day.expenses > 0 ? escapeHtml(formatSignedCurrency(-day.expenses)) : '₪0') + '</div>' +
+                    '<div class="forecast-day-cell ' + netClass + '" data-label="שינוי יומי">' + escapeHtml(formatSignedCurrency(day.net)) + '</div>' +
+                    '<div class="forecast-day-cell ' + cumClass + '" data-label="מצטבר">' + escapeHtml(formatSignedCurrency(day.cumulative)) + '</div>' +
+                '</div>' +
+                '<div class="forecast-day-details" id="' + rowId + '-details" style="display:' + (expanded ? 'block' : 'none') + ';">' +
+                    buildForecastDayDetailsHtml(day) +
+                '</div>' +
+            '</div>';
+        }
+
+        container.innerHTML = rows;
+    }
+
+    // Expanding/collapsing a row never mutates financial data — expandedForecastDayKey is pure,
+    // in-memory-only transient UI state. Focus is restored to the SAME row's summary control
+    // after the re-render below replaces its DOM node, so keyboard users never lose their place.
+    function toggleForecastDayRow(dateKey) {
+        var wasExpanded = (expandedForecastDayKey === dateKey);
+        expandedForecastDayKey = wasExpanded ? null : dateKey;
+        renderMonthlyCashflowForecast();
+        var rowEl = document.getElementById('forecast-day-row-' + dateKey);
+        if (rowEl) {
+            var summary = rowEl.querySelector('.forecast-day-summary');
+            if (summary) { try { summary.focus(); } catch (e) { } }
+        }
+    }
+
+    function handleForecastDayRowKeydown(e, dateKey) {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+            e.preventDefault();
+            toggleForecastDayRow(dateKey);
+        }
+    }
+
 
     // charge.month/warning.month are the same short month labels (e.g. "אוג׳") computeForecast()
     // already returns — no day-level date arithmetic is invented here. Amounts reuse
@@ -3079,13 +2701,20 @@
     // — see the removal note near computeForecast()'s former location for the full evidence.
     function renderAttentionListFromRealData() {
         var cards = [];
-        var cashflowSummaryForAttention = buildCashflowSummary(items);
+        // Version 1.4.1: sourced from getNextCashflowEvent() — the same unified-event helper the
+        // Forecast screen's own next-event card and daily series use — instead of
+        // buildCashflowSummary(items).nextEvent, so Home and Forecast can never compute two
+        // different answers to "what's the next event" via two different code paths. Signed
+        // amount + explicit green/expense-red color (income vs. expense/loan), per the approved
+        // semantic-color correction — previously this showed an unsigned, uncolored amount.
+        var nextEvent = getNextCashflowEvent(items);
 
-        if (cashflowSummaryForAttention.nextEvent) {
+        if (nextEvent) {
             cards.push({
-                title: cashflowSummaryForAttention.nextEvent.title || 'אירוע כספי קרוב',
-                detail: 'צפוי ב-' + cashflowSummaryForAttention.nextEvent.date.toLocaleDateString('he-IL'),
-                amount: formatHomeCurrency(Math.abs(cashflowSummaryForAttention.nextEvent.amount))
+                title: nextEvent.title || 'אירוע כספי קרוב',
+                detail: 'צפוי ב-' + nextEvent.date.toLocaleDateString('he-IL'),
+                amount: formatSignedCurrency(nextEvent.amount),
+                tone: nextEvent.amount >= 0 ? 'positive-amount' : 'negative-amount'
             });
         }
 
@@ -3118,7 +2747,7 @@
                     '<div class="attention-title">' + escapeHtml(a.title) + '</div>' +
                     '<div class="attention-detail">' + escapeHtml(a.detail) + '</div>' +
                 '</div>' +
-                '<div class="attention-amount">' + escapeHtml(a.amount) + '</div>' +
+                '<div class="attention-amount ' + a.tone + '">' + escapeHtml(a.amount) + '</div>' +
             '</div>';
         }
         document.getElementById('attention-list').innerHTML = html;
@@ -3155,25 +2784,11 @@
             tone: 'normal'
         });
 
-        // narrative.forecastWarning is null when there is no negative-balance month ahead. There
-        // is no existing "empty state" markup for this specific card to fall back to, and
-        // inventing new "everything's fine" wording is explicitly out of scope — so this card is
-        // simply omitted (not rendered) rather than shown with invented text. See the Stage D.6
-        // report for this judgment call.
-        // Version 1.3, Phase 2C: sourced from buildCashflowSummary() instead of the old
-        // getForecastWarning()/computeForecast() — same "first negative month" concept as the
-        // attention-list card, now computed once by the unified engine instead of by two
-        // different, potentially-disagreeing ones.
-        var cashflowSummaryForWarningCard = buildCashflowSummary(items);
-        var negMonthForInsightsCard = findFirstNegativeCashflowMonth(cashflowSummaryForWarningCard);
-        if (negMonthForInsightsCard) {
-            cards.push({
-                title: 'אזהרת תחזית',
-                value: formatHomeCurrency(negMonthForInsightsCard.lowest),
-                note: 'ב-' + negMonthForInsightsCard.label + ' צפויה נקודת שפל שלילית.',
-                tone: 'warning'
-            });
-        }
+        // Version 1.4.1: the "אזהרת תחזית" card that used to sit here (findFirstNegativeCashflowMonth
+        // over buildCashflowSummary(items)) is REMOVED — it was a "lowest projected balance goes
+        // negative" warning derived from the retired balance anchor, exactly the kind of
+        // anchor-derived card this correction removes. The two cards above (credit-card total,
+        // loans remaining) are unrelated tracking totals, not anchor-derived, and are unchanged.
 
         // Markup below is byte-for-byte identical to renderMockUI()'s insights-block (Stage B) —
         // same classes, same nesting, same tone-icon logic — only `cards` is a real-data array
@@ -3200,24 +2815,27 @@
     // guarantee, no code moved.
     renderInsightsScreenFromRealData();
 
-    // Version 1.3, Phase 2C: renders the new cash-flow hero/summary-cards/timeline block, same
-    // ordering guarantee (items/categoryConfig/appSettings already loaded).
+    // Renders the Forecast screen's single "האירוע הכספי הבא" card, same ordering guarantee
+    // (items/categoryConfig/appSettings already loaded).
     renderCashflowInsightsFromRealData();
 
-    // Stage 3ב.4: draws the forecast chart/table on the Insights screen. Called once at load,
-    // same ordering guarantee as the render call directly above (items/categoryConfig already
-    // loaded); also called from renderAllPreviewScreens() below so it stays in sync with any
-    // later mutation.
-    renderForecast();
+    // Version 1.4.1 correction: the 6-month "תחזית חודשית מורחבת" section (renderForecast(),
+    // anchor-dependent via buildCashflowSummary()) is REMOVED, not called — see CURRENT_STATUS.md.
 
-    // Milestone 3: draws the 30/60/90-day period-scoped Forecast section (graph/stats/warning/
-    // timeline). Same ordering guarantee as the two render calls directly above; also called
-    // from renderAllPreviewScreens() below.
-    renderForecastPeriodSection();
+    // Version 1.4.1: draws the calendar-month daily cashflow graph + table (replaces the retired
+    // 30/60/90-day period-scoped section). Same ordering guarantee as the two render calls
+    // directly above; also called from renderAllPreviewScreens() below.
+    renderMonthlyCashflowForecast();
 
     // Milestone 4: draws the Goals screen. Same ordering guarantee (goals/items/categoryConfig
     // already loaded above); also called from renderAllPreviewScreens() below.
     renderGoalsScreenFromRealData();
+
+    // Version 1.4.1: establish the base History-API entry (and, in standalone/installed-PWA mode,
+    // the Home boundary) BEFORE anything that could push a transient overlay entry on top of it
+    // — in particular, before the automatic reminder check directly below, which can open the
+    // Goals reminder overlay on a completely fresh load.
+    initNavHistory();
 
     // Milestone 5: the ONE automatic trigger point for the consolidated Goals reminder — checked
     // once per fresh page load, after goals/goalsState are fully loaded. See
@@ -3296,14 +2914,39 @@
         if (headEl) { headEl.focus(); }
     }
 
+    // Version 1.4.1 correction: exactly one Goals-screen inline sub-state (create/edit-goal,
+    // create/edit-component, archive-confirm, remove-component-confirm) can be open at a time —
+    // already enforced by every start*/ask* function below nulling out the others. One shared
+    // history entry ('goalInline') covers all of them: ensureGoalInlineTransient() pushes it only
+    // when nothing in the group is already open (switching between sibling states does NOT push a
+    // second entry); cancelCurrentGoalInlineState() — the onClose Back actually calls — dispatches
+    // to whichever state's OWN existing cancelX() is currently relevant, so Back can never do
+    // anything other than that exact same safe cancel. Every cancel/save/confirm function in this
+    // group calls consumeTransient('goalInline') so a direct click balances the stack exactly like
+    // Back would.
+    function ensureGoalInlineTransient() {
+        if (transientStack.length === 0 || transientStack[transientStack.length - 1].type !== 'goalInline') {
+            pushTransientState('goalInline', cancelCurrentGoalInlineState);
+        }
+    }
+    function cancelCurrentGoalInlineState() {
+        if (goalRemoveComponentConfirm !== null) { cancelRemoveComponent(); return; }
+        if (goalArchiveConfirmId !== null) { cancelArchiveGoal(); return; }
+        if (goalComponentFormFor !== null) { cancelComponentForm(); return; }
+        if (goalEditingId !== null) { cancelGoalEdit(); return; }
+        if (goalCreateFormOpen) { cancelGoalCreate(); return; }
+    }
+
     function startGoalCreate() {
         goalCreateFormOpen = true;
         goalsExpandedId = null;
         renderGoalsScreenFromRealData();
+        ensureGoalInlineTransient();
     }
     function cancelGoalCreate() {
         goalCreateFormOpen = false;
         renderGoalsScreenFromRealData();
+        consumeTransient('goalInline');
     }
 
     function startGoalEdit(id) {
@@ -3313,10 +2956,12 @@
         goalArchiveConfirmId = null;
         goalRemoveComponentConfirm = null;
         renderGoalsScreenFromRealData();
+        ensureGoalInlineTransient();
     }
     function cancelGoalEdit() {
         goalEditingId = null;
         renderGoalsScreenFromRealData();
+        consumeTransient('goalInline');
     }
 
     // Shared by both the create form and the edit form — identical fields, only the pre-filled
@@ -3386,6 +3031,7 @@
         saveGoals();
         goalCreateFormOpen = false;
         renderGoalsScreenFromRealData();
+        consumeTransient('goalInline');
 
         // Milestone 5: "a new active, incomplete goal created after the 2nd becomes reminder-
         // eligible immediately... show the consolidated reminder during the same application
@@ -3432,6 +3078,7 @@
         saveGoals();
         goalEditingId = null;
         renderGoalsScreenFromRealData();
+        consumeTransient('goalInline');
     }
 
     function startComponentCreate(goalId) {
@@ -3440,6 +3087,7 @@
         goalArchiveConfirmId = null;
         goalRemoveComponentConfirm = null;
         renderGoalsScreenFromRealData();
+        ensureGoalInlineTransient();
     }
     function startComponentEdit(goalId, componentId) {
         goalComponentFormFor = goalId;
@@ -3447,11 +3095,13 @@
         goalArchiveConfirmId = null;
         goalRemoveComponentConfirm = null;
         renderGoalsScreenFromRealData();
+        ensureGoalInlineTransient();
     }
     function cancelComponentForm() {
         goalComponentFormFor = null;
         goalComponentEditingId = null;
         renderGoalsScreenFromRealData();
+        consumeTransient('goalInline');
     }
 
     function buildComponentFormHtml(goalId, existingComponent) {
@@ -3509,6 +3159,7 @@
         saveGoals();
         goalComponentFormFor = null;
         renderGoalsScreenFromRealData();
+        consumeTransient('goalInline');
     }
 
     function saveComponentEdit(goalId, componentId) {
@@ -3527,6 +3178,7 @@
         goalComponentFormFor = null;
         goalComponentEditingId = null;
         renderGoalsScreenFromRealData();
+        consumeTransient('goalInline');
     }
 
     function askRemoveComponent(goalId, componentId) {
@@ -3535,10 +3187,12 @@
         goalComponentEditingId = null;
         goalArchiveConfirmId = null;
         renderGoalsScreenFromRealData();
+        ensureGoalInlineTransient();
     }
     function cancelRemoveComponent() {
         goalRemoveComponentConfirm = null;
         renderGoalsScreenFromRealData();
+        consumeTransient('goalInline');
     }
     function confirmRemoveComponent() {
         if (!goalRemoveComponentConfirm) { return; }
@@ -3559,6 +3213,7 @@
         }
         goalRemoveComponentConfirm = null;
         renderGoalsScreenFromRealData();
+        consumeTransient('goalInline');
     }
 
     function askArchiveGoal(id) {
@@ -3567,10 +3222,12 @@
         goalComponentEditingId = null;
         goalRemoveComponentConfirm = null;
         renderGoalsScreenFromRealData();
+        ensureGoalInlineTransient();
     }
     function cancelArchiveGoal() {
         goalArchiveConfirmId = null;
         renderGoalsScreenFromRealData();
+        consumeTransient('goalInline');
     }
     function confirmArchiveToggle(id) {
         var goal = findGoalById(id);
@@ -3582,6 +3239,7 @@
         goalArchiveConfirmId = null;
         goalsExpandedId = null;
         renderGoalsScreenFromRealData();
+        consumeTransient('goalInline');
     }
 
     // Builds one collapsed/expanded goal card. Every user-controlled string (goal.title,
@@ -3746,10 +3404,12 @@
     function askResetGoalsIntegrity() {
         goalsIntegrityResetConfirm = true;
         renderGoalsScreenFromRealData();
+        pushTransientState('goalsIntegrityReset', cancelResetGoalsIntegrity);
     }
     function cancelResetGoalsIntegrity() {
         goalsIntegrityResetConfirm = false;
         renderGoalsScreenFromRealData();
+        consumeTransient('goalsIntegrityReset');
     }
     function confirmResetGoalsIntegrity() {
         try { localStorage.setItem(GOALS_KEY, '[]'); } catch (e) { console.log('שגיאה באיפוס נתוני יעדים'); return; }
@@ -3918,6 +3578,13 @@
         if (overlay) { overlay.classList.add('open'); }
         document.addEventListener('keydown', handleGoalsReminderKeydown, true);
         focusFirstReminderElement();
+        // Version 1.4.1: Back postpones this reminder exactly like "הזכר לי מאוחר יותר" (calls
+        // the very same postponeGoalsReminder — never confirms a transfer, never writes a ledger
+        // record). Whichever path actually closes the overlay (postpone, full confirm, custom
+        // confirm), closeGoalsReminderOverlay() below is always the one function that runs, and
+        // it always calls consumeTransient() — so a confirm click ALSO consumes this same history
+        // entry (without invoking postponeGoalsReminder's own logic a second time).
+        pushTransientState('reminder', postponeGoalsReminder);
     }
 
     function closeGoalsReminderOverlay() {
@@ -3934,6 +3601,7 @@
             try { reminderPreviouslyFocusedEl.focus(); } catch (e) { }
         }
         reminderPreviouslyFocusedEl = null;
+        consumeTransient('reminder');
     }
 
     function reminderSuppressionToken(goalId) {
@@ -4269,6 +3937,11 @@
     }
 
     function renderTransactionsScreenFromRealData(filterName) {
+        // Version 1.4.1 correction: this rebuild recreates the row-menu dropdown DOM from scratch
+        // (discarding any 'open' class along with it) WITHOUT going through closeAllRowMenus() —
+        // e.g. after archivePreviewItem()/unarchivePreviewItem(). Defensive safety net so an open
+        // 'rowMenu' history entry is never left stranded when that happens.
+        consumeTransient('rowMenu');
         // Version 1.1, Stage 1: self-heal a stale category filter (e.g. the category was deleted
         // from Settings in the meantime) — categoryHasPreviewItems() already blocks deleting a
         // category that still has items, so this only ever clears a filter that would otherwise
@@ -4533,7 +4206,9 @@
 
     function clearCategoryFilter() {
         // Collapse-on-leave: this is the one path that leaves a category's page (the ✕ on its
-        // filter chip) without going through showScreen() — see the identical reasoning there.
+        // filter chip) without going through showScreen() — see the identical reasoning there,
+        // including the same defensive consumeTransient('txInline') safety net.
+        consumeTransient('txInline');
         previewEditingId = null;
         currentCategoryFilterKey = null;
         renderTransactionsScreenFromRealData(getCurrentTxFilterName());
@@ -4763,8 +4438,7 @@
         renderAttentionListFromRealData();
         renderInsightsScreenFromRealData();
         renderCashflowInsightsFromRealData();
-        renderForecast();
-        renderForecastPeriodSection();
+        renderMonthlyCashflowForecast();
         renderGoalsScreenFromRealData();
         renderCategoriesScreenFromRealData();
         renderSettingsScreenFromRealData();
@@ -4841,11 +4515,17 @@
     // ===== .open class, so there is nothing that can go stale to track. =====
     // =====================================================================================
 
+    // Version 1.4.1 correction: the single choke-point for closing any open row menu — used
+    // directly (outside click, re-click-to-close) and reused as the onClose Back itself calls, so
+    // both paths consume the exact same 'rowMenu' history entry. consumeTransient() is safe to
+    // call even when nothing was actually open (the overwhelming majority of its calls, since this
+    // also runs on every single document click) — it only pops when the stack top is 'rowMenu'.
     function closeAllRowMenus() {
         var openDropdowns = document.querySelectorAll('.tx-menu-dropdown.open');
         for (var i = 0; i < openDropdowns.length; i++) {
             openDropdowns[i].classList.remove('open');
         }
+        consumeTransient('rowMenu');
     }
 
     // Called via onclick="toggleRowMenu(this)" (the button element itself, never a concatenated
@@ -4859,7 +4539,10 @@
         if (!dropdown) return;
         var wasOpen = dropdown.classList.contains('open');
         closeAllRowMenus();
-        if (!wasOpen) { dropdown.classList.add('open'); }
+        if (!wasOpen) {
+            dropdown.classList.add('open');
+            pushTransientState('rowMenu', closeAllRowMenus);
+        }
     }
 
     // Single delegated listener, registered once at script-load time (this script only ever runs
@@ -5007,6 +4690,20 @@
     // gives an archived row no onclick/tabindex whatsoever (rowOpenAttrs is empty for them), same
     // restriction the removed "✏️ עריכה" button used to enforce by simply not existing — but the
     // id is still verified against the live `items` array here rather than trusted blindly.
+    // Version 1.4.1 correction: the transaction inline-edit form (previewEditingId) and the
+    // quick-add form (previewAddMode) are mutually exclusive (already enforced below in both
+    // directions) — one shared 'txInline' history entry covers both, dispatching Back to
+    // whichever one's own existing Cancel function is currently relevant.
+    function ensureTxInlineTransient() {
+        if (transientStack.length === 0 || transientStack[transientStack.length - 1].type !== 'txInline') {
+            pushTransientState('txInline', cancelCurrentTxInlineState);
+        }
+    }
+    function cancelCurrentTxInlineState() {
+        if (previewEditingId !== null) { cancelPreviewEdit(); return; }
+        if (previewAddMode !== null) { cancelPreviewAdd(); return; }
+    }
+
     function handleTxRowClick(event, id) {
         if (event && event.target && event.target.closest && (event.target.closest('.tx-menu-toggle') || event.target.closest('.tx-menu-dropdown'))) { return; }
         var idx = items.findIndex(function (i) { return i.id === id; });
@@ -5024,6 +4721,7 @@
         // cancelPreviewEdit() below uses. Preserves whichever filter (active/archived) is
         // currently selected, exactly like every other Transactions re-render in this file.
         renderTransactionsScreenFromRealData(getCurrentTxFilterName());
+        ensureTxInlineTransient();
     }
 
     // Version 1.1, Stage 4.0.2.1: keyboard equivalent of clicking the row — only Enter/Space
@@ -5049,6 +4747,7 @@
     function cancelPreviewEdit() {
         previewEditingId = null;
         renderTransactionsScreenFromRealData(getCurrentTxFilterName());
+        consumeTransient('txInline');
     }
 
     // Called via onclick="savePreviewInlineEdit(<id>)" — the id here is baked into the form's own
@@ -5082,6 +4781,7 @@
             previewEditingId = null;
             savePreviewItems();
             renderAllPreviewScreens();
+            consumeTransient('txInline');
             return;
         }
 
@@ -5131,6 +4831,7 @@
         previewEditingId = null;
         savePreviewItems();
         renderAllPreviewScreens();
+        consumeTransient('txInline');
     }
 
     // =====================================================================================
@@ -5194,6 +4895,7 @@
         showScreen('transactions');
         renderTransactionsScreenFromRealData(getCurrentTxFilterName());
         renderAddFormArea();
+        ensureTxInlineTransient();
     }
 
     // Version 1.1, Stage 2: opens the SAME add-transaction form as startPreviewAdd()/
@@ -5211,6 +4913,7 @@
         previewAddMode = categoryConfig[key].baseType;
         previewAddCategoryKey = key;
         renderAddFormArea();
+        ensureTxInlineTransient();
     }
 
     // Called from the expense-type picker's 3 buttons. A baseType with no matching category
@@ -5234,6 +4937,7 @@
         previewAddMode = null;
         previewAddCategoryKey = null;
         renderAddFormArea();
+        consumeTransient('txInline');
     }
 
     // Builds the markup for whatever previewAddMode currently is: '' when closed, the
@@ -5421,6 +5125,7 @@
         // immediately visible — THEN re-render everything, in that exact order.
         setTxFilter('active');
         renderAllPreviewScreens();
+        consumeTransient('txInline');
     }
 
     // =====================================================================================
@@ -5631,10 +5336,27 @@
     // Opens the add-category form. Closes any other open category form first (rename/delete-
     // confirmation), same "one form at a time" rule already used for previewAddMode/
     // previewEditingId on the Transactions screen.
+    // Version 1.4.1 correction: exactly one category-page inline sub-state (add/edit/delete-
+    // confirm) can be open at a time (already enforced by resetPreviewCategoryFormsState() above,
+    // called by every start* function below). One shared history entry ('categoryInline') covers
+    // all three, dispatching Back to whichever state's own existing cancelX() is currently open —
+    // same pattern as the Goals-screen group above.
+    function ensureCategoryInlineTransient() {
+        if (transientStack.length === 0 || transientStack[transientStack.length - 1].type !== 'categoryInline') {
+            pushTransientState('categoryInline', cancelCurrentCategoryInlineState);
+        }
+    }
+    function cancelCurrentCategoryInlineState() {
+        if (previewDeletingCategoryKey !== null) { cancelPreviewDeleteCategory(); return; }
+        if (previewEditingCategoryKey !== null) { cancelPreviewEditCategory(); return; }
+        if (previewCategoryAddOpen) { cancelPreviewAddCategory(); return; }
+    }
+
     function startPreviewAddCategory() {
         resetPreviewCategoryFormsState();
         previewCategoryAddOpen = true;
         renderCategoriesScreenFromRealData();
+        ensureCategoryInlineTransient();
     }
 
     // Strict no-op on data: clears the open flag and re-renders, same convention as
@@ -5642,6 +5364,7 @@
     function cancelPreviewAddCategory() {
         previewCategoryAddOpen = false;
         renderCategoriesScreenFromRealData();
+        consumeTransient('categoryInline');
     }
 
     // Reads the add-category form's two inputs and calls the unmodified addPreviewCategory()
@@ -5682,6 +5405,7 @@
         if (newKey === null) { return; }
         previewCategoryAddOpen = false;
         renderCategoriesScreenFromRealData();
+        consumeTransient('categoryInline');
     }
 
     // Opens the rename form for one category. Available for both built-in and custom categories
@@ -5695,11 +5419,13 @@
         resetPreviewCategoryFormsState();
         previewEditingCategoryKey = key;
         renderCategoryFilterIndicator();
+        ensureCategoryInlineTransient();
     }
 
     function cancelPreviewEditCategory() {
         previewEditingCategoryKey = null;
         renderCategoryFilterIndicator();
+        consumeTransient('categoryInline');
     }
 
     // Reads the rename form's input and calls the unmodified renamePreviewCategory() logic.
@@ -5760,6 +5486,7 @@
 
         previewEditingCategoryKey = null;
         renderCategoryFilterIndicator();
+        consumeTransient('categoryInline');
     }
 
     // Opens the inline delete-confirmation for one category ("מחיקה" → "אישור מחיקה"/"ביטול")
@@ -5772,11 +5499,13 @@
         resetPreviewCategoryFormsState();
         previewDeletingCategoryKey = key;
         renderCategoryFilterIndicator();
+        ensureCategoryInlineTransient();
     }
 
     function cancelPreviewDeleteCategory() {
         previewDeletingCategoryKey = null;
         renderCategoryFilterIndicator();
+        consumeTransient('categoryInline');
     }
 
     // Calls the unmodified deletePreviewCategory() logic and turns its returned {success, reason}
@@ -5792,6 +5521,7 @@
         var wasCurrentCategory = (currentCategoryFilterKey === key);
         var result = deletePreviewCategory(key);
         previewDeletingCategoryKey = null;
+        consumeTransient('categoryInline'); // this dialog closes either way (success, or an alert() explaining why not)
         if (result.success) {
             if (wasCurrentCategory) { showScreen('categories'); }
             renderAllPreviewScreens();
@@ -6010,10 +5740,12 @@
     function openPinForm(mode) {
         settingsPinFormMode = mode;
         refreshSettingsUI();
+        pushTransientState('pinForm', closePinForm);
     }
     function closePinForm() {
         settingsPinFormMode = null;
         refreshSettingsUI();
+        consumeTransient('pinForm');
     }
 
     async function submitSetPin() {
@@ -6027,8 +5759,7 @@
         appSettings.pinHash = hash;
         appSettings.pinEnabled = true;
         saveAppSettings();
-        settingsPinFormMode = null;
-        refreshSettingsUI();
+        closePinForm();
     }
 
     async function submitChangePin() {
@@ -6044,8 +5775,7 @@
         if (v1 !== v2) { alert('הקודים אינם תואמים'); return; }
         appSettings.pinHash = await hashPin(v1);
         saveAppSettings();
-        settingsPinFormMode = null;
-        refreshSettingsUI();
+        closePinForm();
     }
 
     async function submitRemovePin() {
@@ -6056,8 +5786,7 @@
         appSettings.pinHash = null;
         appSettings.pinEnabled = false;
         saveAppSettings();
-        settingsPinFormMode = null;
-        refreshSettingsUI();
+        closePinForm();
     }
 
     // "שכחתי PIN": no current-PIN verification (that is the entire point) — requires typing the
@@ -6070,8 +5799,7 @@
         appSettings.pinHash = null;
         appSettings.pinEnabled = false;
         saveAppSettings();
-        settingsPinFormMode = null;
-        refreshSettingsUI();
+        closePinForm();
     }
 
     function handleAutoLockChange(value) {
@@ -6354,6 +6082,22 @@
         }
         pendingRestoreBackup = parsed;
         renderRestorePreview();
+        ensureRestorePanelTransient();
+    }
+
+    // Version 1.4.1 correction: the restore paste-panel (restorePasteMode) and the parsed-backup
+    // preview/confirm state (pendingRestoreBackup) are two phases of the SAME "restoring a backup"
+    // flow (checkPastedRestoreBackup() transitions directly from one to the other without ever
+    // fully closing) — one shared history entry covers both, dispatching Back to whichever phase
+    // is currently open, using that phase's own existing Cancel semantics (never confirms/writes).
+    function ensureRestorePanelTransient() {
+        if (transientStack.length === 0 || transientStack[transientStack.length - 1].type !== 'restorePanel') {
+            pushTransientState('restorePanel', cancelCurrentRestorePanelState);
+        }
+    }
+    function cancelCurrentRestorePanelState() {
+        if (restorePasteMode) { closeRestorePastePanel(); return; }
+        if (pendingRestoreBackup) { cancelRestoreBackup(); return; }
     }
 
     // Data-restore fix (Android/mobile): a native file-picker cancel does not fire `change` in
@@ -6459,6 +6203,7 @@
         pendingRestoreBackup = null;
         var el = document.getElementById('restore-preview-area');
         if (el) { el.innerHTML = ''; }
+        consumeTransient('restorePanel');
     }
 
     // Android fallback restore path: some native file pickers never return a usable file at all
@@ -6470,6 +6215,7 @@
         cancelRestoreBackup();
         restorePasteMode = true;
         renderRestorePasteArea();
+        ensureRestorePanelTransient();
     }
 
     function closeRestorePastePanel() {
@@ -6478,6 +6224,7 @@
         pendingRestoreBackup = null;
         var pv = document.getElementById('restore-preview-area');
         if (pv) { pv.innerHTML = ''; }
+        consumeTransient('restorePanel');
     }
 
     // Re-render entry point (also called from renderSettingsDetailScreen()) so the open/closed
@@ -6629,6 +6376,7 @@
                     '<div class="settings-hint settings-error">שחזור נכשל — הפעולה בוטלה והנתונים הקודמים שוחזרו במלואם. לא בוצע שינוי.</div>' :
                     '<div class="settings-hint settings-error">שגיאה קריטית בשחזור — הכתיבה נכשלה וגם ביטול הפעולה נכשל. לא ניתן להבטיח שהמצב המקורי שוחזר במלואו. אין לסמוך על הנתונים המוצגים ללא בדיקה ידנית — מומלץ לרענן ולבדוק, ובמידת הצורך לשחזר גיבוי שוב.</div>';
             }
+            consumeTransient('restorePanel');
             return;
         }
 
@@ -6668,10 +6416,14 @@
     function startResetAllData() {
         resetConfirmMode = true;
         renderResetConfirmArea();
+        // Version 1.4.1: Back cancels this destructive confirmation exactly like its own "ביטול"
+        // button — never confirms/deletes. See cancelResetAllData()/consumeTransient().
+        pushTransientState('resetConfirm', cancelResetAllData);
     }
     function cancelResetAllData() {
         resetConfirmMode = false;
         renderResetConfirmArea();
+        consumeTransient('resetConfirm');
     }
     function renderResetConfirmArea() {
         var el = document.getElementById('reset-confirm-area');
