@@ -6973,6 +6973,26 @@
         consumeTransient('openingBalanceForm');
     }
 
+    // Closes a SUCCESSFULLY saved/replaced opening-balance form and lands on Home — unlike
+    // cancelOpeningBalanceForm() (also this transient's Back/onClose target), which only ever
+    // returns to wherever Settings already was. Reuses history.replaceState() rather than
+    // consumeTransient()'s history.back(): back() resolves its target asynchronously when the
+    // browser actually processes it, so a synchronous pushState (from showScreen('home')) issued
+    // right after it would move the current index first and send that already-scheduled back() to
+    // the wrong entry. replaceState() converts this transient's own entry directly into the Home
+    // entry in one synchronous step — no dangling entry for Back to land on, so it can never
+    // reopen this completed form — then isRestoringNavFromHistory suppresses showScreen()'s own
+    // pushState (the same existing flag handleNavPopState() uses to sync the DOM to a history
+    // entry that already reflects reality, exactly the case here).
+    function closeOpeningBalanceFormToHome() {
+        if (transientStack.length > 0 && transientStack[transientStack.length - 1].type === 'openingBalanceForm') {
+            transientStack.pop();
+        }
+        try { history.replaceState({ v: NAV_STATE_VERSION, screen: 'home' }, ''); } catch (e) { }
+        isRestoringNavFromHistory = true;
+        try { showScreen('home'); } finally { isRestoringNavFromHistory = false; }
+    }
+
     function submitOpeningBalanceForm() {
         var amountInput = document.getElementById('opening-balance-amount-input');
         var dateInput = document.getElementById('opening-balance-date-input');
@@ -6994,7 +7014,7 @@
         renderAllPreviewScreens();
         settingsOpeningBalanceFormOpen = false;
         refreshSettingsUI();
-        consumeTransient('openingBalanceForm');
+        closeOpeningBalanceFormToHome();
     }
 
     function confirmReplaceOpeningBalance() {
@@ -7004,7 +7024,7 @@
         settingsOpeningBalanceFormOpen = false;
         renderAllPreviewScreens();
         refreshSettingsUI();
-        consumeTransient('openingBalanceForm');
+        closeOpeningBalanceFormToHome();
     }
 
     // Safe navigation target for the unconfigured-state action on Home/Forecast — reuses the
