@@ -18,7 +18,7 @@
     // included by collectAppLocalStorageBackup()'s/confirmResetAllData()'s existing prefix-sweep
     // with zero changes to either function.
     var GOALS_KEY = 'family_finance_goals';
-    var APP_VERSION = '1.4.8';
+    var APP_VERSION = '1.4.9';
 
     var PRIMARY_COLOR_OPTIONS = [
         { key: 'green', label: 'ירוק' },
@@ -628,6 +628,41 @@
             }
         }
         return { bank: bank, payroll: payroll };
+    }
+
+    // Version 1.4.9: display-only rounding fix for the "תשלומי הלוואות החודש" tile. Independently
+    // rounding the real bank/payroll amounts (via formatHomeCurrency()'s own Math.round) can make
+    // the two displayed lines sum to one shekel more or less than the displayed total — rounding is
+    // not distributive over addition (e.g. bank=3990.5, payroll=2791.5: real total=6782.0 exactly,
+    // rounds to 6782, but Math.round(3990.5)=3991 and Math.round(2791.5)=2792 sum to 6783). This
+    // NEVER touches the underlying real numbers, stored data, or either calculation (getCategoryMonthlyTotals/
+    // getLoanBankVsPayrollSplit stay untouched) — it only decides which INTEGER to display for each
+    // of the two lines, guaranteeing they always sum to exactly Math.round(bank + payroll).
+    //
+    // Uses the classical "largest remainder" (Hamilton) apportionment method — the same standard,
+    // deterministic algorithm used for proportional-seat allocation, chosen because it is provably
+    // optimal for exactly this problem (integers that must sum to a fixed rounded total, each as
+    // close as possible to its own real value): floor both real amounts, then distribute the small
+    // integer shortfall between the rounded total and the sum of floors — always 0, 1, or 2 shekels
+    // for two non-negative parts — one shekel at a time to whichever part has the LARGER fractional
+    // remainder (bank first on an exact tie, since it is listed first and Array.prototype.sort is
+    // stable, guaranteed since ES2019). Each displayed value therefore never deviates from its own
+    // naive Math.round() by more than 1, and only ever does so when that single shekel is genuinely
+    // needed to close the gap the classical method itself proves must exist somewhere.
+    function roundLoanSplitForDisplay(bank, payroll) {
+        var floorBank = Math.floor(bank), floorPayroll = Math.floor(payroll);
+        var roundedTotal = Math.round(bank + payroll);
+        var remainder = roundedTotal - (floorBank + floorPayroll);
+        var candidates = [
+            { key: 'bank', frac: bank - floorBank },
+            { key: 'payroll', frac: payroll - floorPayroll }
+        ];
+        candidates.sort(function (x, y) { return y.frac - x.frac; });
+        var displayBank = floorBank, displayPayroll = floorPayroll;
+        for (var i = 0; i < candidates.length && i < remainder; i++) {
+            if (candidates[i].key === 'bank') { displayBank++; } else { displayPayroll++; }
+        }
+        return { bank: displayBank, payroll: displayPayroll, total: roundedTotal };
     }
 
     // Mirrors renderAll()'s fixed-item handling in index.html exactly: catStats[cKey].monthly for
@@ -1525,6 +1560,38 @@
         var endLabel = periodEnd.toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' });
         var periodLabel = startLabel + (periodStart.getFullYear() !== periodEnd.getFullYear() ? (' ' + periodStart.getFullYear()) : '') + ' – ' + endLabel;
         return { periodStart: periodStart, periodEnd: periodEnd, totalDays: totalDays, periodLabel: periodLabel };
+    }
+
+    // Version 1.4.9: Home's "סך הכול הוצאות" tile — corrected to use the SAME 5th-to-4th reporting
+    // period as Forecast (getForecastPeriodBounds()) and the SAME unified cash-flow event stream
+    // (generateCashflowEvents()) as its ONLY source of truth — never a second, independent
+    // calculation, and never a sum of already-rendered tile values. Every event whose OWN exact
+    // date falls within [periodStart, periodEnd] (inclusive) AND whose amount is negative (a real
+    // bank outflow) is summed once. Every exclusion this figure needs — credit-paid fixed/variable
+    // items, payroll-deducted loans, non-settlement credit-paid dated charges — is already applied
+    // by generateCashflowEvents() itself (see its own EVENT CONTRACT comment and the 'fixed'/
+    // 'loan'/'variable'/'dated' branches above); this function adds no exclusion logic of its own,
+    // only a date-range filter + sum. The built-in credit-card settlement is included exactly once,
+    // on its own exact debit date, via the same isBuiltinCreditCardSettlement() exemption
+    // generateCashflowEvents() already applies — it is never double-counted against the individual
+    // credit-paid purchases it settles, because those purchases never generate an event of their
+    // own to begin with. ATM withdrawals (type 'cashWithdrawal') are included the same way, since
+    // generateCashflowEvents() already emits them as ordinary negative-amount events.
+    function getHomeTotalExpensesForCurrentPeriod(itemsOverride, refDate) {
+        var sourceItems = Array.isArray(itemsOverride) ? itemsOverride : items;
+        var bounds = getForecastPeriodBounds(refDate || new Date());
+        var rangeStartMonth = new Date(bounds.periodStart.getFullYear(), bounds.periodStart.getMonth(), 1);
+        var monthsCount = (bounds.periodEnd.getFullYear() - rangeStartMonth.getFullYear()) * 12 + (bounds.periodEnd.getMonth() - rangeStartMonth.getMonth()) + 1;
+        var events = generateCashflowEvents(sourceItems, rangeStartMonth, monthsCount);
+        var total = 0;
+        for (var i = 0; i < events.length; i++) {
+            var ev = events[i];
+            var evDate = cashflowDateOnly(ev.date);
+            if (ev.amount < 0 && evDate >= bounds.periodStart && evDate <= bounds.periodEnd) {
+                total += -ev.amount;
+            }
+        }
+        return round2(total);
     }
 
     // The single "האירוע הכספי הבא" card everywhere it appears (Home + Forecast) — strictly
@@ -2952,12 +3019,17 @@
             heroActionEl.innerHTML = settingsOpeningBalancePendingReplace ? buildOpeningBalancePendingReplaceHtml() : buildOpeningBalanceFormFieldsHtml();
         }
 
-        // snapshot-income/snapshot-expenses stay the existing monthly-total tiles (getMonthSnapshot)
-        // — unrelated to the hero above and out of this hotfix's scope; only the hero itself was
-        // the "misleading" value this correction targets.
+        // snapshot-income stays the existing monthly-total tile (getMonthSnapshot) — unrelated to
+        // the hero above and out of scope for this correction.
+        // Version 1.4.9 correction: snapshot-expenses ("סך הכול הוצאות") now reads
+        // getHomeTotalExpensesForCurrentPeriod() — the SAME 5th-4th reporting period and the SAME
+        // unified cash-flow event stream Forecast uses — instead of getMonthSnapshot()'s own
+        // separate calendar-month approximation (which could miss, or wrongly include, an event
+        // whose exact billing date falls just outside/inside the approximated window, e.g. the
+        // credit-card settlement dated the 1st of next month).
         var snapshot = getMonthSnapshot(items);
         document.getElementById('snapshot-income').textContent = formatHomeCurrency(snapshot.income);
-        document.getElementById('snapshot-expenses').textContent = formatHomeCurrency(snapshot.expenses);
+        document.getElementById('snapshot-expenses').textContent = formatHomeCurrency(getHomeTotalExpensesForCurrentPeriod(items));
 
         // Same row count the existing (Mock) Home design showed (4).
         var recent = getRecentActivity(items, 4).map(mapItemToHomeTxRow);
@@ -5028,12 +5100,21 @@
                     '</div>' +
                 '</div>';
             } else if (key === 'loan') {
+                // Version 1.4.9: the tile's own displayed TOTAL is derived from the SAME
+                // roundLoanSplitForDisplay() call as the two breakdown lines (not the separately-
+                // computed `amount`/rawTotal every other tile uses) — the only way to GUARANTEE
+                // displayed bank + displayed payroll === displayed total in every case, since
+                // rawTotal and bank+payroll are the same real number only up to floating-point
+                // precision. formatHomeCurrency() re-rounds an already-integer value harmlessly
+                // (Math.round of an integer is a no-op), so this is display-only, nothing new is
+                // computed financially.
+                var loanSplitForDisplay = roundLoanSplitForDisplay(categoryTileLoanSplitCache.bank, categoryTileLoanSplitCache.payroll);
                 html += '<div class="category-tile" data-category-key="' + safeKey + '">' +
                     '<div class="category-tile-label">' + escapeHtml(label) + '</div>' +
-                    '<div class="' + amountValueClass + '">' + amount + '</div>' +
+                    '<div class="' + amountValueClass + '">' + escapeHtml(formatHomeCurrency(loanSplitForDisplay.total)) + '</div>' +
                     '<div class="category-tile-breakdown">' +
-                        '<div class="category-tile-breakdown-line">מהבנק: ' + escapeHtml(formatHomeCurrency(categoryTileLoanSplitCache.bank)) + '</div>' +
-                        '<div class="category-tile-breakdown-line">דרך תלוש השכר: ' + escapeHtml(formatHomeCurrency(categoryTileLoanSplitCache.payroll)) + '</div>' +
+                        '<div class="category-tile-breakdown-line">מהבנק: ' + escapeHtml(formatHomeCurrency(loanSplitForDisplay.bank)) + '</div>' +
+                        '<div class="category-tile-breakdown-line">דרך תלוש השכר: ' + escapeHtml(formatHomeCurrency(loanSplitForDisplay.payroll)) + '</div>' +
                     '</div>' +
                 '</div>';
             } else {
