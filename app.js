@@ -18,7 +18,7 @@
     // included by collectAppLocalStorageBackup()'s/confirmResetAllData()'s existing prefix-sweep
     // with zero changes to either function.
     var GOALS_KEY = 'family_finance_goals';
-    var APP_VERSION = '1.4.3';
+    var APP_VERSION = '1.4.4';
 
     var PRIMARY_COLOR_OPTIONS = [
         { key: 'green', label: 'ירוק' },
@@ -5272,18 +5272,36 @@
         return html;
     }
 
-    // Bimonthly fixed-expense toggle: shows/hides the "starting month" group and disables/hides the
-    // existing monthly-or-yearly period select — the two are mutually exclusive (a bimonthly item
-    // has no meaningful "yearly" reading), matching "unchecked = monthly, preserving current
-    // behavior" (period governs only while bimonthly is off). Takes explicit element ids (same
+    // Frequency-UI correction: one "תדירות" select (monthly/bimonthly/annual) replaces the earlier
+    // separate bimonthly checkbox + period select. Selecting "bimonthly" immediately reveals the
+    // required starting-month select; any other choice hides it. Takes an explicit element id (same
     // convention as togglePreviewCardLast4Field(groupId, ...) above) so one function serves both
-    // the add form (fixed ids) and every edit form (per-item <id>-suffixed ids). Purely a display
-    // toggle; touches no data — addPreviewItem()/savePreviewInlineEdit() decide what's saved.
-    function togglePreviewBimonthlyFields(startGroupId, periodGroupId, checked) {
+    // the add form and every edit form (per-item <id>-suffixed ids). Purely a display toggle — it
+    // never touches any other field's value, so switching frequency back and forth never loses
+    // whatever the user already typed into title/amount/day/notes/etc. addPreviewItem()/
+    // savePreviewInlineEdit() alone decide what's actually saved, from whichever frequency is
+    // selected at save time.
+    function togglePreviewFixedFrequencyFields(startGroupId, frequencyValue) {
         var startGroup = document.getElementById(startGroupId);
-        var periodGroup = document.getElementById(periodGroupId);
-        if (startGroup) { startGroup.style.display = checked ? 'block' : 'none'; }
-        if (periodGroup) { periodGroup.style.display = checked ? 'none' : 'block'; }
+        if (startGroup) { startGroup.style.display = (frequencyValue === 'bimonthly') ? 'block' : 'none'; }
+    }
+
+    // Shared 3-option frequency <select> markup for both the add and edit forms — one place
+    // deciding which of the three values is pre-selected, so the two forms can never disagree.
+    function buildFixedFrequencySelectHtml(selectId, onchangeStartGroupId, currentFrequency) {
+        return '<select id="' + selectId + '" onchange="togglePreviewFixedFrequencyFields(\'' + onchangeStartGroupId + '\', this.value)">' +
+            '<option value="monthly"' + (currentFrequency === 'monthly' ? ' selected' : '') + '>חודשי</option>' +
+            '<option value="bimonthly"' + (currentFrequency === 'bimonthly' ? ' selected' : '') + '>דו-חודשי</option>' +
+            '<option value="annual"' + (currentFrequency === 'annual' ? ' selected' : '') + '>שנתי</option>' +
+            '</select>';
+    }
+
+    // Resolves the single frequency value ('monthly'/'bimonthly'/'annual') an existing fixed item
+    // should reopen with — the one place both buildPreviewEditFormHtml() and any future consumer
+    // derive it from, so an item can never be shown with a different frequency than it actually has.
+    function resolveFixedFrequency(item) {
+        if (resolveFixedIsBimonthly(item)) { return 'bimonthly'; }
+        return (item && item.period === 'שנתי') ? 'annual' : 'monthly';
     }
 
     // Builds the inline edit form for one item, branching by item.type exactly like index.html's
@@ -5339,6 +5357,7 @@
         if (item.type === 'fixed') {
             var isCreditFixed = (item.where === 'credit');
             var isBimonthlyFixedEdit = resolveFixedIsBimonthly(item);
+            var editFrequency = resolveFixedFrequency(item);
             html += '<div class="tx-edit-group"><label>סכום</label><input type="number" id="edit-amount-' + id + '" value="' + item.amount + '"></div>' +
                 '<div class="tx-edit-group"><label>יום ירידה</label><input type="number" id="edit-day-' + id + '" min="1" max="31" value="' + resolveEffectiveDay(item) + '"></div>' +
                 '<div class="tx-edit-group"><label>איפה יורד</label><select id="edit-where-' + id + '" onchange="togglePreviewCardLast4Field(\'edit-card-last4-group-' + id + '\', this.value)">' +
@@ -5346,11 +5365,7 @@
                     '<option value="credit"' + (isCreditFixed ? ' selected' : '') + '>כרטיס אשראי</option>' +
                 '</select></div>' +
                 '<div class="tx-edit-group" id="edit-card-last4-group-' + id + '" style="display:' + (isCreditFixed ? 'block' : 'none') + ';"><label>4 ספרות אחרונות של הכרטיס</label><input type="text" id="edit-card-last4-' + id + '" maxlength="4" inputmode="numeric" value="' + escapeHtml(item.cardLast4 || '') + '"></div>' +
-                '<div class="tx-edit-group" id="edit-fix-period-group-' + id + '" style="display:' + (isBimonthlyFixedEdit ? 'none' : 'block') + ';"><label>תדירות</label><select id="edit-period-' + id + '">' +
-                    '<option value="חודשי"' + (item.period === 'חודשי' ? ' selected' : '') + '>חודשי</option>' +
-                    '<option value="שנתי"' + (item.period === 'שנתי' ? ' selected' : '') + '>שנתי</option>' +
-                '</select></div>' +
-                '<div class="tx-edit-group"><label><input type="checkbox" id="edit-fix-bimonthly-' + id + '"' + (isBimonthlyFixedEdit ? ' checked' : '') + ' onchange="togglePreviewBimonthlyFields(\'edit-fix-bimonthly-start-group-' + id + '\', \'edit-fix-period-group-' + id + '\', this.checked)"> דו-חודשי (כל חודשיים)</label></div>' +
+                '<div class="tx-edit-group"><label>תדירות</label>' + buildFixedFrequencySelectHtml('edit-fix-frequency-' + id, 'edit-fix-bimonthly-start-group-' + id, editFrequency) + '</div>' +
                 '<div class="tx-edit-group" id="edit-fix-bimonthly-start-group-' + id + '" style="display:' + (isBimonthlyFixedEdit ? 'block' : 'none') + ';"><label>חודש התחלה</label><select id="edit-fix-bimonthly-start-' + id + '">' + buildMonthSelectOptionsHtml(resolveFixedBimonthlyStartMonth(item)) + '</select></div>' +
                 '<div class="tx-edit-group"><label>הערות</label><textarea id="edit-notes-' + id + '">' + escapeHtml(item.notes || '') + '</textarea></div>';
         } else if (item.type === 'variable') {
@@ -5564,13 +5579,13 @@
                     return;
                 }
             }
-            // Bimonthly correction: validated here, BEFORE any field on `item` is mutated below —
+            // Frequency-UI correction: validated here, BEFORE any field on `item` is mutated below —
             // same "validate everything first, mutate only once every check passed" pattern the
             // where/cardLast4 check above already follows, so a failed validation never leaves
             // `item` partially changed in memory (unsaved) the way mutating-then-validating would.
-            var editBimonthlyChecked = document.getElementById('edit-fix-bimonthly-' + id).checked;
+            var editFrequencyVal = document.getElementById('edit-fix-frequency-' + id).value;
             var editBimonthlyStart = null;
-            if (editBimonthlyChecked) {
+            if (editFrequencyVal === 'bimonthly') {
                 editBimonthlyStart = parseInt(document.getElementById('edit-fix-bimonthly-start-' + id).value, 10);
                 if (!isFinite(editBimonthlyStart) || editBimonthlyStart < 1 || editBimonthlyStart > 12) {
                     alert('נא לבחור חודש התחלה תקין');
@@ -5582,14 +5597,14 @@
             item.day = document.getElementById('edit-day-' + id).value;
             item.where = newWhere;
             item.notes = document.getElementById('edit-notes-' + id).value;
-            if (editBimonthlyChecked) {
+            if (editFrequencyVal === 'bimonthly') {
                 item.bimonthly = true;
                 item.bimonthlyStartMonth = editBimonthlyStart;
                 item.period = 'חודשי';
             } else {
                 item.bimonthly = false;
                 item.bimonthlyStartMonth = null;
-                item.period = document.getElementById('edit-period-' + id).value;
+                item.period = (editFrequencyVal === 'annual') ? 'שנתי' : 'חודשי';
             }
         } else if (item.type === 'variable') {
             item.originalAmount = parseFloat(document.getElementById('edit-original-' + id).value) || 0;
@@ -5735,8 +5750,7 @@
                 '<div class="tx-edit-group"><label>יום ירידה</label><input type="number" id="add-fix-day" min="1" max="31" value="' + addDefaultDay + '"></div>' +
                 '<div class="tx-edit-group"><label>איפה יורד</label><select id="add-fix-where" onchange="togglePreviewCardLast4Field(\'add-fix-card-last4-group\', this.value)"><option value="bank">חשבון בנק</option><option value="credit">כרטיס אשראי</option></select></div>' +
                 '<div class="tx-edit-group" id="add-fix-card-last4-group" style="display:none;"><label>4 ספרות אחרונות של הכרטיס</label><input type="text" id="add-fix-card-last4" maxlength="4" inputmode="numeric" placeholder="לדוגמה: 5646"></div>' +
-                '<div class="tx-edit-group" id="add-fix-period-group"><label>חודשי או שנתי</label><select id="add-fix-period"><option value="חודשי">חודשי</option><option value="שנתי">שנתי</option></select></div>' +
-                '<div class="tx-edit-group"><label><input type="checkbox" id="add-fix-bimonthly" onchange="togglePreviewBimonthlyFields(\'add-fix-bimonthly-start-group\', \'add-fix-period-group\', this.checked)"> דו-חודשי (כל חודשיים)</label></div>' +
+                '<div class="tx-edit-group"><label>תדירות</label>' + buildFixedFrequencySelectHtml('add-fix-frequency', 'add-fix-bimonthly-start-group', 'monthly') + '</div>' +
                 '<div class="tx-edit-group" id="add-fix-bimonthly-start-group" style="display:none;"><label>חודש התחלה</label><select id="add-fix-bimonthly-start">' + buildMonthSelectOptionsHtml(new Date().getMonth() + 1) + '</select></div>' +
                 '<div class="tx-edit-group"><label>הערות</label><textarea id="add-fix-notes"></textarea></div>';
         } else if (previewAddMode === 'dated') {
@@ -5850,7 +5864,6 @@
             obj.amount = parseFloat(document.getElementById('add-fix-amount').value);
             obj.day = document.getElementById('add-fix-day').value;
             obj.where = document.getElementById('add-fix-where').value;
-            obj.period = document.getElementById('add-fix-period').value;
             obj.notes = document.getElementById('add-fix-notes').value;
             if (!obj.title || isNaN(obj.amount)) { alert('מלא שם וסכום'); return; }
             if (obj.where === 'credit') {
@@ -5859,18 +5872,21 @@
             } else {
                 obj.cardLast4 = '';
             }
-            // Bimonthly correction: checked -> required starting month (native <select>, always a
-            // valid 1-12 value), period is irrelevant and reset to the harmless default so no stale
-            // "שנתי" lingers from before the checkbox was toggled. Unchecked -> unchanged existing
-            // behavior (period alone governs monthly/yearly).
-            obj.bimonthly = document.getElementById('add-fix-bimonthly').checked;
-            if (obj.bimonthly) {
+            // Frequency-UI correction: one "תדירות" select (monthly/bimonthly/annual) — bimonthly
+            // requires a valid starting month (native <select>, always a valid 1-12 value) and
+            // resets period to the harmless default so no stale "שנתי" lingers from a prior
+            // selection; monthly/annual set period directly and leave bimonthly fields cleared.
+            var addFrequencyVal = document.getElementById('add-fix-frequency').value;
+            if (addFrequencyVal === 'bimonthly') {
                 var addBimonthlyStart = parseInt(document.getElementById('add-fix-bimonthly-start').value, 10);
                 if (!isFinite(addBimonthlyStart) || addBimonthlyStart < 1 || addBimonthlyStart > 12) { alert('נא לבחור חודש התחלה תקין'); return; }
+                obj.bimonthly = true;
                 obj.bimonthlyStartMonth = addBimonthlyStart;
                 obj.period = 'חודשי';
             } else {
+                obj.bimonthly = false;
                 obj.bimonthlyStartMonth = null;
+                obj.period = (addFrequencyVal === 'annual') ? 'שנתי' : 'חודשי';
             }
         } else if (baseType === 'dated') {
             obj.title = document.getElementById('add-dated-title').value.trim();
