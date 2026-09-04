@@ -124,7 +124,17 @@
     .hero-gauge .hero-label { font-size: 13px; opacity: .85; }
     /* Stage F.1 follow-up: same bidi isolation as .tx-amount — negative balances rendered as
        "13,050-₪" instead of "-₪13,050" inside the surrounding RTL page. Display-only, value unchanged. */
-    .hero-gauge .hero-amount { font-size: 40px; font-weight: 700; margin: 4px 0; direction: ltr; unicode-bidi: isolate; }
+    /* Real-device correction: .positive-amount/.negative-amount/.neutral-amount (also applied
+       directly on this element by renderHomeScreenFromRealData()) set --color-success/-danger/
+       -text, meant for use on the plain page background elsewhere in this file — on the default
+       green theme, --color-success is the EXACT same color as --color-primary (this card's own
+       background), making a positive balance render as green-on-green and effectively invisible.
+       The explicit color:#fff here has higher selector specificity than any single sign class, so
+       it always wins regardless of which one is applied — the hero amount is always legible white,
+       the same established "white on --color-primary" convention already used by .fab/.tx-edit-save
+       elsewhere. The literal '-₪' sign from formatHomeCurrency() (not color) already conveys
+       negative vs positive, so no signal is lost. */
+    .hero-gauge .hero-amount { font-size: 40px; font-weight: 700; margin: 4px 0; direction: ltr; unicode-bidi: isolate; color: #fff; }
     .hero-gauge .status-pill {
         display: inline-block; background: rgba(255,255,255,.2);
         padding: 4px 12px; border-radius: 20px; font-size: 12px; margin-top: 4px;

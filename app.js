@@ -18,7 +18,7 @@
     // included by collectAppLocalStorageBackup()'s/confirmResetAllData()'s existing prefix-sweep
     // with zero changes to either function.
     var GOALS_KEY = 'family_finance_goals';
-    var APP_VERSION = '1.4.2';
+    var APP_VERSION = '1.4.3';
 
     var PRIMARY_COLOR_OPTIONS = [
         { key: 'green', label: 'ירוק' },
@@ -657,10 +657,20 @@
                 var dtLoan = parseDatesAndGetLeft(item.start, item.total, item.day);
                 if (dtLoan.left > 0) { totals[cKey] += item.amount; }
             } else if (item.type === 'dated') {
+                // Real-device correction: the credit-card tile must show "active upcoming" charges,
+                // not only the exact current calendar month — a charge already dated for next month
+                // (e.g. entered ahead of time, or a charge that lands right after a month boundary)
+                // must still total into the tile instead of showing the empty placeholder. Widened
+                // from an exact current-month match to current-OR-next-month, mirroring the same
+                // 2-month lookahead convention getNextCashflowEvent() already uses for the identical
+                // "don't miss something just past a month boundary" problem. This changes only this
+                // display total — generateCashflowEvents() (the actual balance-affecting engine)
+                // still deducts the charge exactly once, on its own exact date, unchanged.
                 if (item.start) {
                     var itemDate = new Date(item.start);
                     var now = new Date();
-                    if (itemDate.getFullYear() === now.getFullYear() && itemDate.getMonth() === now.getMonth()) {
+                    var monthDiff = (itemDate.getFullYear() - now.getFullYear()) * 12 + (itemDate.getMonth() - now.getMonth());
+                    if (monthDiff === 0 || monthDiff === 1) {
                         totals[cKey] += item.amount;
                     }
                 }
