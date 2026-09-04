@@ -18,7 +18,7 @@
     // included by collectAppLocalStorageBackup()'s/confirmResetAllData()'s existing prefix-sweep
     // with zero changes to either function.
     var GOALS_KEY = 'family_finance_goals';
-    var APP_VERSION = '1.4.6';
+    var APP_VERSION = '1.4.7';
 
     var PRIMARY_COLOR_OPTIONS = [
         { key: 'green', label: 'ירוק' },
@@ -1451,21 +1451,28 @@
     // ===== 4th billing-cycle-aligned reporting period — see getForecastPeriodBounds().           =====
     // =====================================================================================
 
-    // Version 1.4.6: the Forecast screen's reporting period — the 5th of a month through the 4th
-    // of the following month, inclusive (NOT a calendar month). A refDate on the 1st–4th belongs
-    // to the period that started the PREVIOUS month's 5th; a refDate on the 5th or later belongs
-    // to the period starting THIS month's 5th. This period always spans exactly two distinct
-    // calendar months (5th of month N through 4th of month N+1), including across a year boundary
-    // (Dec 5 – Jan 4) — so a single Date's own month/year can no longer identify "the displayed
-    // period" the way a calendar month could; periodStart/periodEnd fully describe it instead.
-    // totalDays is computed via the SAME integer year/month arithmetic idiom already used by
-    // getClampedBillingDate() above (`new Date(y, m+1, 0).getDate()`), not a millisecond
-    // difference — this avoids any Israel-DST (שעון קיץ) off-by-one risk entirely. It also happens
-    // to always equal periodStart's own calendar month length (5th–4th is just that month's days
-    // shifted by 4), which is why a single such call suffices.
+    // Version 1.4.7 correction: the Forecast screen's reporting period is the 5th of refDate's OWN
+    // calendar month through the 4th of the following month, inclusive (NOT a calendar month) —
+    // always anchored to refDate's month number, regardless of whether refDate's day-of-month is
+    // before or after the 5th. Example: on 04.09 the period is 05.09–04.10 (refDate's month is
+    // September, so periodStart is September's 5th) — NOT 05.08–04.09. This replaces the earlier
+    // Version 1.4.6 "which period contains today" rule (1st–4th showed the PREVIOUS month's
+    // already-ending period instead of the upcoming one), which is the confirmed root cause of the
+    // reported wrong-period/blank-graph bug: a 1st–4th refDate produced a period ending exactly
+    // today, so once a fresh opening balance was set for the CURRENT cycle, that period showed a
+    // wrong window and, whenever the opening date happened to fall outside it, an entirely
+    // 'unavailable' (blank) graph. This period always spans exactly two distinct calendar months
+    // (5th of month N through 4th of month N+1), including across a year boundary (Dec 5 – Jan 4)
+    // — so a single Date's own month/year can no longer identify "the displayed period" the way a
+    // calendar month could; periodStart/periodEnd fully describe it instead. totalDays is computed
+    // via the SAME integer year/month arithmetic idiom already used by getClampedBillingDate()
+    // above (`new Date(y, m+1, 0).getDate()`), not a millisecond difference — this avoids any
+    // Israel-DST (שעון קיץ) off-by-one risk entirely. It also happens to always equal periodStart's
+    // own calendar month length (5th–4th is just that month's days shifted by 4), which is why a
+    // single such call suffices.
     function getForecastPeriodBounds(refDate) {
-        var y = refDate.getFullYear(), m = refDate.getMonth(), d = refDate.getDate();
-        var periodStart = (d >= 5) ? new Date(y, m, 5) : new Date(y, m - 1, 5);
+        var y = refDate.getFullYear(), m = refDate.getMonth();
+        var periodStart = new Date(y, m, 5);
         var periodEnd = new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, 4);
         var totalDays = new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, 0).getDate();
         var startLabel = periodStart.toLocaleDateString('he-IL', { day: 'numeric', month: 'long' });
