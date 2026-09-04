@@ -18,7 +18,7 @@
     // included by collectAppLocalStorageBackup()'s/confirmResetAllData()'s existing prefix-sweep
     // with zero changes to either function.
     var GOALS_KEY = 'family_finance_goals';
-    var APP_VERSION = '1.4.4';
+    var APP_VERSION = '1.4.5';
 
     var PRIMARY_COLOR_OPTIONS = [
         { key: 'green', label: 'ירוק' },
@@ -139,6 +139,7 @@
                 '<div class="tx-icon">' + t.icon + '</div>' +
                 '<div class="tx-info">' +
                     '<div class="tx-title">' + escapeHtml(t.title) + '</div>' +
+                    (t.settlementNote ? '<div class="tx-note">' + escapeHtml(t.settlementNote) + '</div>' : '') +
                     '<div class="tx-date">' + escapeHtml(t.date) + '</div>' +
                 '</div>' +
                 '<div class="tx-amount ' + t.type + '">' + escapeHtml(t.amount) + '</div>' +
@@ -222,6 +223,7 @@
                 '<div class="tx-icon">' + t.icon + '</div>' +
                 '<div class="tx-info">' +
                     '<div class="tx-title">' + escapeHtml(t.title) + '</div>' +
+                    (t.settlementNote ? '<div class="tx-note">' + escapeHtml(t.settlementNote) + '</div>' : '') +
                     '<div class="tx-date-row">' +
                         '<span class="tx-date">' + escapeHtml(t.date) + '</span>' +
                         installmentMetaHtml +
@@ -1166,6 +1168,22 @@
         return (item && item.where === 'credit') ? 'credit' : 'bank';
     }
 
+    // Version 1.4.5: payment-method resolver for 'variable' ("תשלומים שונים") installment items —
+    // deliberately NOT the same "default to bank" convention as resolveEffectiveWhere() above.
+    // Returns 'bank'/'credit' ONLY when the item carries an explicit value (every add/edit form
+    // now requires an explicit choice, so every new/edited item always has one); returns null for a
+    // legacy item saved before this field existed, whose real cash effect may already be captured
+    // by a separate fixed/credit item elsewhere (the original tracking-only reasoning) — silently
+    // defaulting a legacy item to 'bank' would start deducting it from the balance with no user
+    // confirmation, which is exactly what "existing items without payment metadata must remain
+    // tracking-only" forbids. Used by generateCashflowEvents() below to decide whether a variable
+    // item generates a real balance-affecting event at all.
+    function resolveVariablePaymentMethod(item) {
+        if (item && item.where === 'bank') { return 'bank'; }
+        if (item && item.where === 'credit') { return 'credit'; }
+        return null;
+    }
+
     // Bimonthly fixed expenses: a fixed item recurs every 2 months instead of every month, e.g. a
     // September start recurs Sep/Nov/Jan/Mar/... indefinitely, forever, with no end date (same
     // "ongoing commitment" semantics as monthly/yearly 'fixed' — unlike loans/variable, which have
@@ -1224,6 +1242,18 @@
         return !!(item && item.type === 'dated' && (item.displayCategory || item.type) === 'dated');
     }
 
+    // Version 1.4.6: formats the built-in credit-card settlement tile's "עודכן: DD.MM.YYYY" line
+    // from appSettings.creditCardSettlementUpdatedAt (a plain 'YYYY-MM-DD' string, same convention
+    // as todayStr()). A plain string split — not a Date object/toLocaleDateString() — so there is
+    // no timezone/UTC-shift risk for a value that is itself always a local calendar date already.
+    // null/malformed input (never yet set, or a corrupt settings blob) safely falls back to the
+    // required "עודכן: —" placeholder — never the charge date, never today's date.
+    function formatCreditSettlementUpdatedLabel(dateStr) {
+        var parts = (dateStr || '').split('-');
+        if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) { return 'עודכן: —'; }
+        return 'עודכן: ' + parts[2] + '.' + parts[1] + '.' + parts[0];
+    }
+
     // Copied verbatim from index.html. Milestone 6: its original sole caller, computeForecast(),
     // was removed as dead code — this function remains live because generateCashflowEvents()
     // (the unified cash-flow engine's event source) reuses it directly.
@@ -1253,11 +1283,15 @@
     // =====================================================================================
 
     // EVENT CONTRACT: { date: Date, amount: signed number, itemId, type, title }.
-    // Positive amount = money in (income). Negative amount = money out (fixed/loan/dated).
-    // 'variable' ("תשלומים שונים") items NEVER generate an event here — approved Phase 2A
-    // decision: their real cash effect may already be captured by a separate fixed/credit
-    // item, and the current schema has no field that can safely tell the two cases apart.
-    // They remain tracking-only (existing category-tile / remaining-balance displays only).
+    // Positive amount = money in (income). Negative amount = money out (fixed/loan/dated/variable).
+    // 'variable' ("תשלומים שונים") items — Version 1.4.5 correction: the original Phase 2A
+    // decision (never generate an event) assumed the schema had no field that could safely tell
+    // "already captured elsewhere" apart from "a real, independent bank installment". Now that
+    // every variable item carries an explicit payment method (resolveVariablePaymentMethod()), a
+    // 'bank'-method item generates one real event per active billing month (identical schedule to
+    // 'loan' below); a 'credit'-method item, and any LEGACY item saved before this field existed
+    // (method unknown), remain tracking-only exactly as before — see resolveVariablePaymentMethod()
+    // for why an unset method must never be assumed to be 'bank'.
 
     var CASHFLOW_HORIZON_MONTHS = 6;
 
@@ -1267,8 +1301,8 @@
     // can never change any balance figure, only the order same-day rows are listed in the
     // timeline UI. Income is listed before expenses on a shared day so a day that nets
     // positive never *appears* to dip first; expense types are then ordered fixed → loan →
-    // dated (arbitrary but fixed), with itemId as the final tiebreak.
-    var CASHFLOW_TYPE_ORDER = { income: 0, fixed: 1, loan: 2, dated: 3, cashWithdrawal: 4 };
+    // variable → dated (arbitrary but fixed), with itemId as the final tiebreak.
+    var CASHFLOW_TYPE_ORDER = { income: 0, fixed: 1, loan: 2, variable: 3, dated: 4, cashWithdrawal: 5 };
     function compareCashflowEvents(a, b) {
         var dCompare = a.date.getTime() - b.date.getTime();
         if (dCompare !== 0) { return dCompare; }
@@ -1356,6 +1390,25 @@
                         }
                     }
                 }
+            } else if (item.type === 'variable') {
+                // Version 1.4.5: a 'bank'-method variable/installment item now generates one real
+                // event per active billing month — identical range/clamping logic to 'loan' above
+                // (same start/total/day schema), reusing getBillingRange()/isBillingActiveInMonth()
+                // verbatim rather than inventing new date arithmetic. 'credit'-method and legacy
+                // (unset) items generate nothing here — see resolveVariablePaymentMethod() and the
+                // EVENT CONTRACT comment above for why an unset method must never be assumed bank.
+                if (resolveVariablePaymentMethod(item) === 'bank') {
+                    var rangeVar = getBillingRange(item.start, item.total, resolveEffectiveDay(item));
+                    if (rangeVar) {
+                        for (var mv = 0; mv < months; mv++) {
+                            var probeVar = new Date(horizonStart.getFullYear(), horizonStart.getMonth() + mv, 1);
+                            if (isBillingActiveInMonth(rangeVar, probeVar.getFullYear(), probeVar.getMonth())) {
+                                var dv = getClampedBillingDate(probeVar.getFullYear(), probeVar.getMonth(), rangeVar.bDay);
+                                events.push({ date: dv, amount: -item.amount, itemId: item.id, type: 'variable', title: item.title });
+                            }
+                        }
+                    }
+                }
             } else if (item.type === 'dated') {
                 // Payment-method correction: a one-time dated charge paid by credit card is
                 // deferred to the card's own monthly settlement instead of leaving the bank on its
@@ -1381,7 +1434,7 @@
                     events.push({ date: dw, amount: -item.amount, itemId: item.id, type: 'cashWithdrawal', title: item.title });
                 }
             }
-            // 'variable' and any unrecognized type: no event (see contract comment above).
+            // any unrecognized type: no event.
         }
 
         events.sort(compareCashflowEvents);
@@ -1393,13 +1446,32 @@
     // ===== Version 1.4.1 buildMonthlyDailySeries() function that used to sit here (cumulative   =====
     // ===== reset to ₪0 every month) was REMOVED in Version 1.4.2 — replaced by the continuously- =====
     // ===== carried buildProjectedBalanceSeries()/buildProjectedBalanceMonthView() further below, =====
-    // ===== which is now the only day-level series Home/Forecast read.                           =====
+    // ===== which is now the only day-level series Home/Forecast read. Version 1.4.6: the         =====
+    // ===== calendar-month bounds this used to compute are REPLACED below by the approved 5th-to- =====
+    // ===== 4th billing-cycle-aligned reporting period — see getForecastPeriodBounds().           =====
     // =====================================================================================
 
-    function getCalendarMonthBounds(refDate) {
-        var y = refDate.getFullYear(), m = refDate.getMonth();
-        var daysInMonth = new Date(y, m + 1, 0).getDate();
-        return { year: y, month: m, daysInMonth: daysInMonth, monthStart: new Date(y, m, 1) };
+    // Version 1.4.6: the Forecast screen's reporting period — the 5th of a month through the 4th
+    // of the following month, inclusive (NOT a calendar month). A refDate on the 1st–4th belongs
+    // to the period that started the PREVIOUS month's 5th; a refDate on the 5th or later belongs
+    // to the period starting THIS month's 5th. This period always spans exactly two distinct
+    // calendar months (5th of month N through 4th of month N+1), including across a year boundary
+    // (Dec 5 – Jan 4) — so a single Date's own month/year can no longer identify "the displayed
+    // period" the way a calendar month could; periodStart/periodEnd fully describe it instead.
+    // totalDays is computed via the SAME integer year/month arithmetic idiom already used by
+    // getClampedBillingDate() above (`new Date(y, m+1, 0).getDate()`), not a millisecond
+    // difference — this avoids any Israel-DST (שעון קיץ) off-by-one risk entirely. It also happens
+    // to always equal periodStart's own calendar month length (5th–4th is just that month's days
+    // shifted by 4), which is why a single such call suffices.
+    function getForecastPeriodBounds(refDate) {
+        var y = refDate.getFullYear(), m = refDate.getMonth(), d = refDate.getDate();
+        var periodStart = (d >= 5) ? new Date(y, m, 5) : new Date(y, m - 1, 5);
+        var periodEnd = new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, 4);
+        var totalDays = new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, 0).getDate();
+        var startLabel = periodStart.toLocaleDateString('he-IL', { day: 'numeric', month: 'long' });
+        var endLabel = periodEnd.toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' });
+        var periodLabel = startLabel + (periodStart.getFullYear() !== periodEnd.getFullYear() ? (' ' + periodStart.getFullYear()) : '') + ' – ' + endLabel;
+        return { periodStart: periodStart, periodEnd: periodEnd, totalDays: totalDays, periodLabel: periodLabel };
     }
 
     // The single "האירוע הכספי הבא" card everywhere it appears (Home + Forecast) — strictly
@@ -1425,9 +1497,9 @@
     // ===== (settings.projectedBalanceOpeningAmount/projectedBalanceOpeningDate — see            =====
     // ===== getProjectedBalanceOpeningConfig() near saveAppSettings() below). Reuses             =====
     // ===== generateCashflowEvents() verbatim as its ONLY event source — no new event type is    =====
-    // ===== invented, and 'variable' items still never generate an event here (Version 1.3       =====
-    // ===== product decision, unchanged: they remain tracking-only, see the EVENT CONTRACT        =====
-    // ===== comment above generateCashflowEvents()). This is the ONE calculation path Home and    =====
+    // ===== invented; 'variable' items follow generateCashflowEvents()'s own EVENT CONTRACT       =====
+    // ===== rule (Version 1.4.5: 'bank'-method generates events, 'credit'/legacy remain           =====
+    // ===== tracking-only). This is the ONE calculation path Home and                             =====
     // ===== the Forecast graph/table all read from — none of them may recompute a balance         =====
     // ===== independently.                                                                        =====
     // =====================================================================================
@@ -1506,40 +1578,47 @@
         return { openingAmount: round2(openingAmount), openingDateStr: openingDateStr, days: days };
     }
 
-    // Current-calendar-month view for the Forecast graph/table — one entry for every day of the
-    // month containing refDate, always (including days before the opening date, and days before
-    // today). A day strictly before the opening date carries no computed figures at all
-    // (availability: 'unavailable') — never back-calculated, never fabricated (approved
-    // requirement: dates before the opening balance must show "אין נתון לפני יתרת ההתחלה", not a
-    // guessed number). Returns { configured:false, ... } with no days[] figures when no valid
-    // opening balance exists yet.
+    // Version 1.4.6: the Forecast graph/table's day range — one entry for every day of the
+    // approved 5th-to-4th reporting period containing refDate (see getForecastPeriodBounds()),
+    // always (including days before the opening date, and days before today). A day strictly
+    // before the opening date carries no computed figures at all (availability: 'unavailable') —
+    // never back-calculated, never fabricated (approved requirement: dates before the opening
+    // balance must show "אין נתון לפני יתרת ההתחלה", not a guessed number). Returns
+    // { configured:false, ... } with no days[] figures when no valid opening balance exists yet.
+    // Reuses buildProjectedBalanceSeries() verbatim as its only calculation source (walked from
+    // the existing opening balance through periodEnd — the opening balance itself is never reset
+    // or reseeded on the 5th, exactly as required) — this function only decides which slice of
+    // that one series' days to expose, never computes a balance independently.
     function buildProjectedBalanceMonthView(refDate, itemsOverride) {
-        var bounds = getCalendarMonthBounds(refDate);
-        var base = { year: bounds.year, month: bounds.month, monthLabel: bounds.monthStart.toLocaleDateString('he-IL', { month: 'long', year: 'numeric' }), daysInMonth: bounds.daysInMonth };
+        var bounds = getForecastPeriodBounds(refDate);
+        var base = { periodStart: bounds.periodStart, periodEnd: bounds.periodEnd, periodLabel: bounds.periodLabel, totalDays: bounds.totalDays };
         var opening = getProjectedBalanceOpeningConfig();
         if (!opening) { base.configured = false; base.days = []; return base; }
 
         var openingZero = cashflowDateOnly(parseLocalDateStr(opening.dateStr));
-        var monthEnd = new Date(bounds.year, bounds.month, bounds.daysInMonth);
-        var series = (openingZero <= monthEnd) ? buildProjectedBalanceSeries(opening.amount, opening.dateStr, monthEnd, itemsOverride, opening.includedWithdrawalIds) : null;
+        var series = (openingZero <= bounds.periodEnd) ? buildProjectedBalanceSeries(opening.amount, opening.dateStr, bounds.periodEnd, itemsOverride, opening.includedWithdrawalIds) : null;
         var seriesByKey = {};
         if (series) { for (var i = 0; i < series.days.length; i++) { seriesByKey[series.days[i].dateKey] = series.days[i]; } }
 
         var days = [];
-        for (var d = 1; d <= bounds.daysInMonth; d++) {
-            var date = new Date(bounds.year, bounds.month, d);
+        var cursor = new Date(bounds.periodStart.getFullYear(), bounds.periodStart.getMonth(), bounds.periodStart.getDate());
+        var periodDayIndex = 1;
+        while (cursor <= bounds.periodEnd) {
+            var date = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate());
             var dateKey = cashflowDateKey(date);
             if (date < openingZero) {
-                days.push({ date: date, day: d, dateKey: dateKey, availability: 'unavailable', income: null, expenses: null, net: null, projectedBalance: null, events: [] });
+                days.push({ date: date, periodDayIndex: periodDayIndex, dateKey: dateKey, availability: 'unavailable', income: null, expenses: null, net: null, projectedBalance: null, events: [] });
             } else {
                 var rec = seriesByKey[dateKey];
                 days.push({
-                    date: date, day: d, dateKey: dateKey,
+                    date: date, periodDayIndex: periodDayIndex, dateKey: dateKey,
                     availability: rec.isOpeningDay ? 'opening' : 'available',
                     income: rec.income, expenses: rec.expenses, net: rec.net,
                     projectedBalance: rec.projectedBalance, events: rec.events
                 });
             }
+            periodDayIndex++;
+            cursor.setDate(cursor.getDate() + 1);
         }
 
         base.configured = true;
@@ -1662,7 +1741,13 @@
             // array (possibly empty) and the precise per-id rule applies.
             projectedBalanceOpeningIncludedWithdrawalIds: null,
             notifications: { upcomingPayment: true, upcomingIncome: true, completedObligation: true },
-            experimentalFlags: {}
+            experimentalFlags: {},
+            // Version 1.4.6: last successful add/edit date (local 'YYYY-MM-DD', via todayStr()) for
+            // the built-in credit-card settlement category ONLY — never the charge date, never
+            // "today" as a live fallback at render time. null = never updated since this field was
+            // introduced ("עודכן: —"). Deletion never writes this field — see deletePreviewItem()'s
+            // callers, which have no code path that touches it.
+            creditCardSettlementUpdatedAt: null
         };
     }
 
@@ -2753,7 +2838,11 @@
                 installmentBalance = 'יתרה ' + formatHomeCurrency(instBalanceTotal);
             }
         }
-        return { icon: icon, title: title, date: date, amount: amount, type: cssType, id: item.id, isArchived: !!item.isArchived, installmentProgress: installmentProgress, installmentBalance: installmentBalance };
+        // Version 1.4.6: the note is surfaced only for the built-in credit-card settlement category
+        // — every other item type/category returns '' here, so renderTxList()/renderTxListWithActions()
+        // (both conditional on this being truthy) render byte-identically to before for them.
+        var settlementNote = isBuiltinCreditCardSettlement(item) ? (item.notes || '') : '';
+        return { icon: icon, title: title, date: date, amount: amount, type: cssType, id: item.id, isArchived: !!item.isArchived, installmentProgress: installmentProgress, installmentBalance: installmentBalance, settlementNote: settlementNote };
     }
 
     // Version 1.4.2: Home's hero shows the projected daily BALANCE (getProjectedBalanceToday(),
@@ -3101,10 +3190,11 @@
     }
 
     // =====================================================================================
-    // ===== Version 1.4.2: the calendar-month projected-daily-balance graph + table. ONE      =====
-    // ===== buildProjectedBalanceMonthView() call per render feeds both the graph and the      =====
-    // ===== table, so they can never disagree — same requirement the Version 1.4.1 section      =====
-    // ===== this replaces already satisfied for its own graph/table pair.                      =====
+    // ===== Version 1.4.2 (period redefined in 1.4.6 — see getForecastPeriodBounds()): the       =====
+    // ===== projected-daily-balance graph + table for the 5th-to-4th reporting period. ONE       =====
+    // ===== buildProjectedBalanceMonthView() call per render feeds both the graph and the        =====
+    // ===== table, so they can never disagree — same requirement the Version 1.4.1 section       =====
+    // ===== this replaces already satisfied for its own graph/table pair.                        =====
     // =====================================================================================
 
     // UI-only: which single day-row (by 'YYYY-MM-DD' key) is currently expanded in the daily
@@ -3119,7 +3209,7 @@
     function renderMonthlyCashflowForecast() {
         var view = buildProjectedBalanceMonthView(new Date());
         var monthLabelEl = document.getElementById('forecast-month-label');
-        if (monthLabelEl) { monthLabelEl.textContent = view.monthLabel; }
+        if (monthLabelEl) { monthLabelEl.textContent = view.periodLabel; }
         var unconfiguredEl = document.getElementById('forecast-unconfigured-notice');
         var configuredAreaEl = document.getElementById('forecast-configured-area');
 
@@ -3140,7 +3230,7 @@
     // Projected-daily-balance step chart — same held-rectangle + staircase-outline drawing
     // technique as the retired cumulative chart, now plotting projectedBalance and skipping any
     // day before the opening date entirely (no invented point exists for it). If the opening date
-    // falls entirely after the displayed month (every day 'unavailable'), the chart is left empty
+    // falls entirely after the displayed period (every day 'unavailable'), the chart is left empty
     // with an honest textual explanation rather than a misleading blank/zero graph.
     function renderMonthlyCashflowChart(view) {
         var svg = document.getElementById('forecast-period-svg');
@@ -3151,7 +3241,7 @@
         for (var pi = 0; pi < view.days.length; pi++) { if (view.days[pi].availability !== 'unavailable') { plottable.push(view.days[pi]); } }
         if (plottable.length === 0) {
             svg.innerHTML = '';
-            var emptyMsg = 'אין נתון להצגה בחודש זה — יתרת ההתחלה חלה מתאריך ' + view.openingDateStr + '.';
+            var emptyMsg = 'אין נתון להצגה בתקופה זו — יתרת ההתחלה חלה מתאריך ' + view.openingDateStr + '.';
             svg.setAttribute('aria-label', emptyMsg);
             if (summaryEl) { summaryEl.textContent = emptyMsg; }
             return;
@@ -3166,7 +3256,7 @@
         var maxV = Math.max.apply(null, values);
         var range = (maxV - minV) || 1;
 
-        function xOf(day) { return padL + (day / view.daysInMonth) * innerW; }
+        function xOf(periodDayIndex) { return padL + (periodDayIndex / view.totalDays) * innerW; }
         function yOf(v) { return padT + innerH - ((v - minV) / range) * innerH; }
         var baselineY = (minV <= 0 && maxV >= 0) ? yOf(0) : yOf(minV);
 
@@ -3175,11 +3265,11 @@
             parts.push('<line x1="' + padL + '" y1="' + baselineY + '" x2="' + (W - padR) + '" y2="' + baselineY + '" stroke="var(--color-border)" stroke-width="1" stroke-dasharray="3,3"></line>');
         }
 
-        var prevX = xOf(plottable[0].day), prevY = yOf(plottable[0].projectedBalance);
+        var prevX = xOf(plottable[0].periodDayIndex), prevY = yOf(plottable[0].projectedBalance);
         var strokePts = [prevX + ',' + prevY];
         for (var i = 0; i < plottable.length; i++) {
             var day = plottable[i];
-            var x = xOf(day.day);
+            var x = xOf(day.periodDayIndex);
             var y = yOf(day.projectedBalance);
             var fill = (day.projectedBalance >= 0) ? 'var(--color-success)' : 'var(--color-danger)';
             parts.push('<rect x="' + Math.min(prevX, x) + '" y="' + Math.min(y, baselineY) + '" width="' + Math.max(1, Math.abs(x - prevX)) + '" height="' + Math.max(1, Math.abs(baselineY - y)) + '" fill="' + fill + '" fill-opacity="0.16"></rect>');
@@ -3191,13 +3281,18 @@
 
         parts.push('<text x="' + padL + '" y="' + (padT - 2) + '" font-size="7" fill="var(--color-text-muted)">' + escapeHtml(formatHomeCurrency(maxV)) + '</text>');
         parts.push('<text x="' + padL + '" y="' + (H - padB + 12) + '" font-size="7" fill="var(--color-text-muted)">' + escapeHtml(formatHomeCurrency(minV)) + '</text>');
-        parts.push('<text x="' + padL + '" y="' + (H - 4) + '" font-size="7" fill="var(--color-text-muted)">' + plottable[0].day + '</text>');
-        parts.push('<text x="' + (W - padR) + '" y="' + (H - 4) + '" font-size="7" fill="var(--color-text-muted)" text-anchor="end">' + view.daysInMonth + '</text>');
+        // Version 1.4.6: axis end-labels show the actual first/last plotted DATE (day.month, same
+        // short format the table already uses) instead of a bare period-day-index number — a plain
+        // "1"/"30" would no longer correspond to any real calendar day a user recognizes now that
+        // the period spans two calendar months (unlike the retired single-calendar-month view,
+        // where the day-of-month number alone was already unambiguous).
+        parts.push('<text x="' + padL + '" y="' + (H - 4) + '" font-size="7" fill="var(--color-text-muted)">' + escapeHtml(plottable[0].date.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' })) + '</text>');
+        parts.push('<text x="' + (W - padR) + '" y="' + (H - 4) + '" font-size="7" fill="var(--color-text-muted)" text-anchor="end">' + escapeHtml(plottable[plottable.length - 1].date.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' })) + '</text>');
 
         svg.innerHTML = parts.join('');
 
         var lastDay = plottable[plottable.length - 1];
-        var a11ySummary = 'יתרה יומית צפויה (' + view.monthLabel + '): בסוף הטווח המוצג ' + formatHomeCurrency(lastDay.projectedBalance) + '. ' +
+        var a11ySummary = 'יתרה יומית צפויה (' + view.periodLabel + '): בסוף הטווח המוצג ' + formatHomeCurrency(lastDay.projectedBalance) + '. ' +
             'החישוב מבוסס על יתרת ההתחלה ועל התנועות המתוכננות באפליקציה, הוא אינו מחובר לחשבון הבנק.';
         svg.setAttribute('aria-label', a11ySummary);
         if (summaryEl) { summaryEl.textContent = a11ySummary; }
@@ -3235,8 +3330,9 @@
         return html;
     }
 
-    // One row per calendar day of the month, always all of them (including past days and days
-    // with no events) — never a filtered/paged subset. Each row's summary is a single
+    // One row per day of the 5th-to-4th reporting period (view.days — see
+    // getForecastPeriodBounds()/buildProjectedBalanceMonthView()), always all of them (including
+    // past days and days with no events) — never a filtered/paged subset. Each row's summary is a single
     // touch/click/Enter/Space-activatable control with a real aria-expanded state and an
     // explicit accessible name, so its expand/collapse state is never conveyed by color alone.
     // Version 1.4.2: a day before the opening date renders as an explicit unavailable row ("—" /
@@ -3245,8 +3341,10 @@
     function renderMonthlyCashflowTable(view) {
         var container = document.getElementById('forecast-daily-table');
         if (!container) { return; }
-        var todayZero = cashflowDateOnly(new Date());
-        var isCurrentMonth = (view.year === todayZero.getFullYear() && view.month === todayZero.getMonth());
+        // Version 1.4.6: compares dateKey directly instead of the retired year/month match — the
+        // period can span two different calendar months (or two different years, across Dec/Jan),
+        // so "today" is identified by its own exact date key, not by "is this the displayed month".
+        var todayKey = cashflowDateKey(new Date());
 
         var rows = '<div class="forecast-day-row forecast-day-header" aria-hidden="true">' +
             '<div class="forecast-day-cell">תאריך</div>' +
@@ -3259,7 +3357,7 @@
         for (var i = 0; i < view.days.length; i++) {
             var day = view.days[i];
             var dateKey = day.dateKey;
-            var isToday = isCurrentMonth && day.day === todayZero.getDate();
+            var isToday = (dateKey === todayKey);
             var rowId = 'forecast-day-row-' + dateKey;
             var expanded = (expandedForecastDayKey === dateKey);
             var dateLabel = day.date.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' });
@@ -4822,11 +4920,27 @@
             var amount = (key === 'dated' && !rawTotal) ? 'הזן חיוב' : formatHomeCurrency(rawTotal);
             var safeKey = escapeHtml(key);
             var label = getHomeTileDisplayLabel(key, cfg);
-            html += '<div class="category-tile" data-category-key="' + safeKey + '">' +
-                '<div class="category-tile-icon"></div>' +
-                '<div class="category-tile-label">' + escapeHtml(label) + '</div>' +
-                '<div class="category-tile-value">' + amount + '</div>' +
-            '</div>';
+            // Credit-card tile correction (Version 1.4.6): the built-in settlement tile only (key
+            // 'dated' specifically — never a custom dated-baseType category, same distinction
+            // isBuiltinCreditCardSettlement() draws for items) additionally shows a large, centered
+            // amount and an "עודכן:" line sourced from appSettings.creditCardSettlementUpdatedAt —
+            // set only by a successful add/edit to this category (see addPreviewItem()/
+            // savePreviewInlineEdit()), never by delete, never the charge date or "today". Title and
+            // icon markup are otherwise byte-identical to every other tile.
+            if (key === 'dated') {
+                html += '<div class="category-tile" data-category-key="' + safeKey + '">' +
+                    '<div class="category-tile-icon"></div>' +
+                    '<div class="category-tile-label">' + escapeHtml(label) + '</div>' +
+                    '<div class="category-tile-value credit-settlement-amount">' + amount + '</div>' +
+                    '<div class="credit-settlement-updated">' + escapeHtml(formatCreditSettlementUpdatedLabel(appSettings.creditCardSettlementUpdatedAt)) + '</div>' +
+                '</div>';
+            } else {
+                html += '<div class="category-tile" data-category-key="' + safeKey + '">' +
+                    '<div class="category-tile-icon"></div>' +
+                    '<div class="category-tile-label">' + escapeHtml(label) + '</div>' +
+                    '<div class="category-tile-value">' + amount + '</div>' +
+                '</div>';
+            }
             if (key === 'variable') { html += buildVariableRemainingStatTileHtml(); }
             if (key === 'loan') { html += buildLoanBalanceStatTileHtml(); }
         }
@@ -5324,7 +5438,8 @@
                 // Settlement-identification correction: the built-in settlement category is always
                 // a bank outflow — no payment-method choice, only its own always-required
                 // last-4-digits field, matching the add form's identical special-case.
-                html += '<div class="tx-edit-group"><label>4 ספרות אחרונות של הכרטיס</label><input type="text" id="edit-card-last4-' + id + '" maxlength="4" inputmode="numeric" value="' + escapeHtml(item.cardLast4 || '') + '"></div>';
+                html += '<div class="tx-edit-group"><label>4 ספרות אחרונות של הכרטיס</label><input type="text" id="edit-card-last4-' + id + '" maxlength="4" inputmode="numeric" value="' + escapeHtml(item.cardLast4 || '') + '"></div>' +
+                    '<div class="tx-edit-group"><label>הערות (אופציונלי)</label><textarea id="edit-dated-notes-' + id + '">' + escapeHtml(item.notes || '') + '</textarea></div>';
             } else {
                 html += '<div class="tx-edit-group"><label>אמצעי תשלום</label><select id="edit-where-' + id + '" onchange="togglePreviewCardLast4Field(\'edit-card-last4-group-' + id + '\', this.value)">' +
                         '<option value="bank"' + (!isCreditDated ? ' selected' : '') + '>חשבון בנק</option>' +
@@ -5369,11 +5484,24 @@
                 '<div class="tx-edit-group" id="edit-fix-bimonthly-start-group-' + id + '" style="display:' + (isBimonthlyFixedEdit ? 'block' : 'none') + ';"><label>חודש התחלה</label><select id="edit-fix-bimonthly-start-' + id + '">' + buildMonthSelectOptionsHtml(resolveFixedBimonthlyStartMonth(item)) + '</select></div>' +
                 '<div class="tx-edit-group"><label>הערות</label><textarea id="edit-notes-' + id + '">' + escapeHtml(item.notes || '') + '</textarea></div>';
         } else if (item.type === 'variable') {
+            // Version 1.4.5: legacy item (no explicit payment method saved yet) gets no pre-selected
+            // option at all — a disabled placeholder is shown instead — forcing the user to make an
+            // explicit choice before this form can be saved (savePreviewInlineEdit() rejects a blank
+            // value). An item that already has a valid stored method just re-shows it, same pattern
+            // as 'fixed'/'dated' above.
+            var varMethod = resolveVariablePaymentMethod(item);
+            var isCreditVar = (varMethod === 'credit');
             html += '<div class="tx-edit-group"><label>סכום מקור</label><input type="number" id="edit-original-' + id + '" value="' + (item.originalAmount || '') + '"></div>' +
                 '<div class="tx-edit-group"><label>עלות חודשית</label><input type="number" id="edit-amount-' + id + '" value="' + item.amount + '"></div>' +
                 '<div class="tx-edit-group"><label>יום ירידה</label><input type="number" id="edit-day-' + id + '" min="1" max="31" value="' + resolveEffectiveDay(item) + '"></div>' +
                 '<div class="tx-edit-group"><label>סך תשלומים</label><input type="number" id="edit-total-' + id + '" value="' + (item.total || '') + '"></div>' +
-                '<div class="tx-edit-group"><label>תאריך התחלה</label><input type="date" id="edit-start-' + id + '" value="' + (item.start || '') + '"></div>';
+                '<div class="tx-edit-group"><label>תאריך התחלה</label><input type="date" id="edit-start-' + id + '" value="' + (item.start || '') + '"></div>' +
+                '<div class="tx-edit-group"><label>אמצעי תשלום</label><select id="edit-where-' + id + '" onchange="togglePreviewCardLast4Field(\'edit-card-last4-group-' + id + '\', this.value)">' +
+                    (varMethod === null ? '<option value="" disabled selected>יש לבחור אמצעי תשלום</option>' : '') +
+                    '<option value="bank"' + (varMethod === 'bank' ? ' selected' : '') + '>חשבון בנק</option>' +
+                    '<option value="credit"' + (isCreditVar ? ' selected' : '') + '>כרטיס אשראי</option>' +
+                '</select></div>' +
+                '<div class="tx-edit-group" id="edit-card-last4-group-' + id + '" style="display:' + (isCreditVar ? 'block' : 'none') + ';"><label>4 ספרות אחרונות של הכרטיס</label><input type="text" id="edit-card-last4-' + id + '" maxlength="4" inputmode="numeric" value="' + escapeHtml(item.cardLast4 || '') + '"></div>';
         } else if (item.type === 'loan') {
             html += '<div class="tx-edit-group"><label>סכום מקור</label><input type="number" id="edit-original-' + id + '" value="' + (item.originalAmount || '') + '"></div>' +
                 '<div class="tx-edit-group"><label>החזר חודשי</label><input type="number" id="edit-amount-' + id + '" value="' + item.amount + '"></div>' +
@@ -5511,6 +5639,7 @@
                 }
                 item.where = 'bank';
                 item.cardLast4 = settlementCardLast4;
+                item.notes = document.getElementById('edit-dated-notes-' + id).value;
             } else {
                 var datedNewWhere = document.getElementById('edit-where-' + id).value;
                 if (datedNewWhere === 'credit') {
@@ -5528,6 +5657,13 @@
             item.title = datedTitleVal;
             item.start = dateVal;
             item.amount = dAmountVal;
+            // Version 1.4.6: same "עודכן:" bump as addPreviewItem()'s identical branch — only for
+            // THIS item's own stable key (isBuiltinCreditCardSettlement(item), not any other
+            // dated-baseType category), on every successful edit, never on delete.
+            if (isBuiltinCreditCardSettlement(item)) {
+                appSettings.creditCardSettlementUpdatedAt = todayStr();
+                saveAppSettings();
+            }
             previewEditingId = null;
             savePreviewItems();
             renderAllPreviewScreens();
@@ -5607,10 +5743,30 @@
                 item.period = (editFrequencyVal === 'annual') ? 'שנתי' : 'חודשי';
             }
         } else if (item.type === 'variable') {
+            // Validated BEFORE any item.* mutation below — same "validate everything first" pattern
+            // 'fixed' above already follows, so a failed payment-method check never leaves `item`
+            // partially changed in memory. A blank value (the legacy-item placeholder option, still
+            // unselected) is rejected exactly like an invalid 'bank'/'credit' value would be.
+            var varNewWhere = document.getElementById('edit-where-' + id).value;
+            if (varNewWhere !== 'bank' && varNewWhere !== 'credit') {
+                alert('יש לבחור אמצעי תשלום (חשבון בנק או כרטיס אשראי)');
+                return;
+            }
+            var varNewCardLast4 = '';
+            if (varNewWhere === 'credit') {
+                varNewCardLast4 = document.getElementById('edit-card-last4-' + id).value.trim();
+                if (!/^\d{4}$/.test(varNewCardLast4)) {
+                    alert('נא להזין בדיוק 4 ספרות עבור כרטיס האשראי');
+                    return;
+                }
+            }
+
             item.originalAmount = parseFloat(document.getElementById('edit-original-' + id).value) || 0;
             item.day = document.getElementById('edit-day-' + id).value;
             item.total = document.getElementById('edit-total-' + id).value;
             item.start = document.getElementById('edit-start-' + id).value;
+            item.where = varNewWhere;
+            item.cardLast4 = varNewCardLast4;
         } else if (item.type === 'loan') {
             item.originalAmount = parseFloat(document.getElementById('edit-original-' + id).value) || 0;
             item.where = document.getElementById('edit-where-' + id).value;
@@ -5736,13 +5892,15 @@
                 '<div class="tx-edit-group"><label>תאריך לקיחה / פתיחה</label><input type="date" id="add-loan-start"></div>';
         } else if (previewAddMode === 'variable') {
             html += categoryPickerHtml +
-                '<div class="settings-hint">מיועד למעקב אחר יתרת תשלומים ואינו מופחת שוב בתחזית.</div>' +
+                '<div class="settings-hint">תשלום מכרטיס אשראי נשאר למעקב בלבד (אינו מופחת שוב בתחזית — ההשפעה בפועל מגיעה מחיוב הכרטיס). תשלום מחשבון בנק מפחית את היתרה הצפויה בכל תאריך תשלום בפועל.</div>' +
                 '<div class="tx-edit-group"><label>שם התשלום</label><input type="text" id="add-var-title"></div>' +
                 '<div class="tx-edit-group"><label>סכום מקור (סך כל העסקה המקורית)</label><input type="number" id="add-var-original" placeholder="₪"></div>' +
                 '<div class="tx-edit-group"><label>עלות חודשית</label><input type="number" id="add-var-amount" placeholder="₪"></div>' +
                 '<div class="tx-edit-group"><label>יום ירידה</label><input type="number" id="add-var-day" min="1" max="31" value="' + addDefaultDay + '"></div>' +
                 '<div class="tx-edit-group"><label>כמה תשלומים (סך הכל)</label><input type="number" id="add-var-total"></div>' +
-                '<div class="tx-edit-group"><label>תאריך התחלה</label><input type="date" id="add-var-start"></div>';
+                '<div class="tx-edit-group"><label>תאריך התחלה</label><input type="date" id="add-var-start"></div>' +
+                '<div class="tx-edit-group"><label>אמצעי תשלום</label><select id="add-var-where" onchange="togglePreviewCardLast4Field(\'add-var-card-last4-group\', this.value)"><option value="bank">חשבון בנק</option><option value="credit">כרטיס אשראי</option></select></div>' +
+                '<div class="tx-edit-group" id="add-var-card-last4-group" style="display:none;"><label>4 ספרות אחרונות של הכרטיס</label><input type="text" id="add-var-card-last4" maxlength="4" inputmode="numeric" placeholder="לדוגמה: 5646"></div>';
         } else if (previewAddMode === 'fixed') {
             html += categoryPickerHtml +
                 '<div class="tx-edit-group"><label>שם ההוצאה</label><input type="text" id="add-fix-title"></div>' +
@@ -5765,7 +5923,8 @@
                 '<div class="tx-edit-group"><label>סכום</label><input type="number" id="add-dated-amount" placeholder="₪"></div>' +
                 '<div class="tx-edit-group"><label>תאריך החיוב</label><input type="date" id="add-dated-date" value="' + todayStr() + '"></div>';
             if (isAddingBuiltinSettlement) {
-                html += '<div class="tx-edit-group"><label>4 ספרות אחרונות של הכרטיס</label><input type="text" id="add-dated-card-last4" maxlength="4" inputmode="numeric" placeholder="לדוגמה: 5646"></div>';
+                html += '<div class="tx-edit-group"><label>4 ספרות אחרונות של הכרטיס</label><input type="text" id="add-dated-card-last4" maxlength="4" inputmode="numeric" placeholder="לדוגמה: 5646"></div>' +
+                    '<div class="tx-edit-group"><label>הערות (אופציונלי)</label><textarea id="add-dated-notes"></textarea></div>';
             } else {
                 html += '<div class="tx-edit-group"><label>אמצעי תשלום</label><select id="add-dated-where" onchange="togglePreviewCardLast4Field(\'add-dated-card-last4-group\', this.value)"><option value="bank">חשבון בנק</option><option value="credit">כרטיס אשראי</option></select></div>' +
                     '<div class="tx-edit-group" id="add-dated-card-last4-group" style="display:none;"><label>4 ספרות אחרונות של הכרטיס</label><input type="text" id="add-dated-card-last4" maxlength="4" inputmode="numeric" placeholder="לדוגמה: 5646"></div>';
@@ -5859,6 +6018,13 @@
             obj.total = document.getElementById('add-var-total').value;
             obj.start = document.getElementById('add-var-start').value;
             if (!obj.title || isNaN(obj.amount)) { alert('מלא שם ועלות חודשית'); return; }
+            obj.where = document.getElementById('add-var-where').value;
+            if (obj.where === 'credit') {
+                obj.cardLast4 = document.getElementById('add-var-card-last4').value.trim();
+                if (!/^\d{4}$/.test(obj.cardLast4)) { alert('נא להזין בדיוק 4 ספרות עבור כרטיס האשראי'); return; }
+            } else {
+                obj.cardLast4 = '';
+            }
         } else if (baseType === 'fixed') {
             obj.title = document.getElementById('add-fix-title').value.trim();
             obj.amount = parseFloat(document.getElementById('add-fix-amount').value);
@@ -5900,6 +6066,7 @@
                 obj.where = 'bank';
                 obj.cardLast4 = document.getElementById('add-dated-card-last4').value.trim();
                 if (!/^\d{4}$/.test(obj.cardLast4)) { alert('נא להזין בדיוק 4 ספרות אחרונות של הכרטיס עבור חיוב האשראי'); return; }
+                obj.notes = document.getElementById('add-dated-notes').value;
             } else {
                 obj.where = document.getElementById('add-dated-where').value;
                 if (obj.where === 'credit') {
@@ -5929,6 +6096,15 @@
 
         items.push(obj);
         savePreviewItems();
+
+        // Version 1.4.6: the built-in credit-card settlement tile's "עודכן:" date — updated only on
+        // a successful add TO THIS SPECIFIC category (catKey === 'dated', the stable key, not any
+        // other dated-baseType category), never on delete (deletePreviewItem() has no code path
+        // that touches this field), never using the charge date the user picked above.
+        if (baseType === 'dated' && catKey === 'dated') {
+            appSettings.creditCardSettlementUpdatedAt = todayStr();
+            saveAppSettings();
+        }
 
         previewAddMode = null;
         previewAddCategoryKey = null;
