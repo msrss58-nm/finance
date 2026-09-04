@@ -75,6 +75,18 @@
 
         <div class="section-title">פעילות אחרונה</div>
         <div id="recent-activity-list"></div>
+
+        <!-- ATM withdrawals, after Recent activity. #home-atm-saved-list shows real, already-saved
+             withdrawals for the CURRENT month (renderHomeAtmSavedList() in app.js) — editable and
+             deletable (deletion requires confirm()) via the same items/savePreviewItems()/
+             deletePreviewItem() as everywhere else. #home-atm-rows below it is the draft quick-add
+             area: independent UI-only rows (renderHomeAtmWithdrawalRows()) — "+" adds another row,
+             "✕" discards one, "💾" saves it as a real cashWithdrawal item via the exact same data
+             type/ID generation/storage/forecast flow the Transactions-screen cash-withdrawal form
+             already uses. Always shows at least one draft row. -->
+        <div class="section-title">🏧 משיכת מזומן</div>
+        <div id="home-atm-saved-list"></div>
+        <div id="home-atm-rows"></div>
     </div>
 
     <!-- ===== מסך 2: תנועות ===== -->

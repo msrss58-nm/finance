@@ -713,7 +713,12 @@
                         monthlyExpenses += item.amount;
                     }
                 } else if (item.type === 'dated') {
-                    if (item.start) {
+                    // Payment-method correction: a credit-paid dated charge is deferred to the
+                    // card's own bank-paid monthly settlement — same "credit is never counted here
+                    // directly" rule already applied to 'fixed' above. Settlement-identification
+                    // correction: the built-in settlement category itself is exempt — see
+                    // isBuiltinCreditCardSettlement().
+                    if (item.start && (isBuiltinCreditCardSettlement(item) || resolveEffectiveWhere(item) !== 'credit')) {
                         var itemDate = new Date(item.start);
                         var now = new Date();
                         if (itemDate.getFullYear() === now.getFullYear() && itemDate.getMonth() === now.getMonth()) {
@@ -1149,6 +1154,35 @@
         return 1;
     }
 
+    // Payment-method correction: single central helper resolving the "effective" payment method
+    // for one item — 'credit' only when item.where is EXACTLY that string, 'bank' for every other
+    // value (missing/undefined/'bank'/anything else) — same "lazy fallback, no migration"
+    // convention as resolveEffectiveDay() above, so an existing item saved before this field
+    // existed is unaffected on disk and simply defaults to Bank account when read. Used by both
+    // the bank-balance-affecting calculations (generateCashflowEvents()/getMonthSnapshot()) and
+    // the edit-form pre-fill, so all three can never disagree about what "credit" means for a
+    // given item.
+    function resolveEffectiveWhere(item) {
+        return (item && item.where === 'credit') ? 'credit' : 'bank';
+    }
+
+    // Settlement-identification correction: the built-in credit-card SETTLEMENT category (key
+    // 'dated' — the default "💳 חיוב כרטיס אשראי", present in every categoryConfig via the
+    // existing backfill) IS the actual monthly bank outflow — selecting "Credit card" as this
+    // item's own payment method must never exclude it, or the settlement itself would vanish from
+    // the balance it exists to represent. Only a DIFFERENT dated-baseType category (a custom one,
+    // e.g. a purchase-level charge awaiting settlement) can still be deferred/excluded via
+    // resolveEffectiveWhere(). Identified by the STABLE KEY (displayCategory, falling back to
+    // item.type exactly like the cKey resolution already used in getCategoryMonthlyTotals()/
+    // getMonthSnapshot() elsewhere in this file) — never by the category's displayed label, which
+    // a user can freely rename without changing its key. A pre-existing settlement item that
+    // happens to already have where:'credit' stored (e.g. from before this correction existed) is
+    // unaffected by that stored value here — this checks the key, not `where`, so it self-heals
+    // with no migration needed.
+    function isBuiltinCreditCardSettlement(item) {
+        return !!(item && item.type === 'dated' && (item.displayCategory || item.type) === 'dated');
+    }
+
     // Copied verbatim from index.html. Milestone 6: its original sole caller, computeForecast(),
     // was removed as dead code — this function remains live because generateCashflowEvents()
     // (the unified cash-flow engine's event source) reuses it directly.
@@ -1248,10 +1282,19 @@
                     events.push({ date: di, amount: item.amount, itemId: item.id, type: 'income', title: item.title });
                 }
             } else if (item.type === 'fixed') {
-                var mAmount = (item.period === 'שנתי') ? (item.amount / 12) : item.amount;
-                for (var mf = 0; mf < months; mf++) {
-                    var df = getClampedBillingDate(horizonStart.getFullYear(), horizonStart.getMonth() + mf, resolveEffectiveDay(item));
-                    events.push({ date: df, amount: -mAmount, itemId: item.id, type: 'fixed', title: item.title });
+                // Payment-method correction: a fixed expense paid by credit card does not itself
+                // leave the bank on its own billing day — the card's own monthly settlement (a
+                // 'dated' item, itself excluded below when IT is marked 'credit') is what actually
+                // does. Previously only getMonthSnapshot() excluded credit-paid fixed items; the
+                // real balance-affecting engine here did not, double-counting them against the
+                // settlement. resolveEffectiveWhere() defaults missing/legacy items to 'bank'
+                // (unchanged behavior), so this only skips items explicitly marked 'credit'.
+                if (resolveEffectiveWhere(item) !== 'credit') {
+                    var mAmount = (item.period === 'שנתי') ? (item.amount / 12) : item.amount;
+                    for (var mf = 0; mf < months; mf++) {
+                        var df = getClampedBillingDate(horizonStart.getFullYear(), horizonStart.getMonth() + mf, resolveEffectiveDay(item));
+                        events.push({ date: df, amount: -mAmount, itemId: item.id, type: 'fixed', title: item.title });
+                    }
                 }
             } else if (item.type === 'loan') {
                 var range = getBillingRange(item.start, item.total, resolveEffectiveDay(item));
@@ -1265,9 +1308,17 @@
                     }
                 }
             } else if (item.type === 'dated') {
-                var dd = item.start ? parseLocalDateStr(item.start) : null;
-                if (dd && dd >= horizonStart && dd <= horizonEnd) {
-                    events.push({ date: dd, amount: -item.amount, itemId: item.id, type: 'dated', title: item.title });
+                // Payment-method correction: a one-time dated charge paid by credit card is
+                // deferred to the card's own monthly settlement instead of leaving the bank on its
+                // own date — same reasoning as 'fixed' above. Settlement-identification
+                // correction: the built-in settlement category itself is EXEMPT from this
+                // exclusion — it always counts, regardless of its own `where` — see
+                // isBuiltinCreditCardSettlement() above.
+                if (isBuiltinCreditCardSettlement(item) || resolveEffectiveWhere(item) !== 'credit') {
+                    var dd = item.start ? parseLocalDateStr(item.start) : null;
+                    if (dd && dd >= horizonStart && dd <= horizonEnd) {
+                        events.push({ date: dd, amount: -item.amount, itemId: item.id, type: 'dated', title: item.title });
+                    }
                 }
             } else if (item.type === 'cashWithdrawal') {
                 // Version 1.4.2: a bank-balance movement, deliberately its OWN event type (not
@@ -2717,6 +2768,218 @@
         // Version 1.1, Stage 4.0.3: in-app notifications only (no OS push) — see
         // computeHomeNotifications().
         renderHomeNotificationsFromRealData();
+
+        // ATM withdrawals: saved list (this month) + inline quick-add rows, after Recent activity.
+        renderHomeAtmSavedList();
+        renderHomeAtmWithdrawalRows();
+    }
+
+    // =====================================================================================
+    // ===== ATM withdrawals — inline quick-add rows on Home, after "פעילות אחרונה". Each row =====
+    // ===== is ephemeral, UI-only draft state (never persisted itself) until its own "💾" is    =====
+    // ===== pressed, at which point it becomes a REAL item via the exact same data shape,       =====
+    // ===== generateCashWithdrawalId(), savePreviewItems(), and cash-flow event branch the      =====
+    // ===== Transactions-screen cash-withdrawal add form already uses (addPreviewItem()'s        =====
+    // ===== 'cashWithdrawal' branch) — no second persistence/ID/forecast path. Always keeps at   =====
+    // ===== least one row so there is always something to fill in; "+" adds another independent =====
+    // ===== row, "✕" discards one without saving.                                               =====
+    // =====================================================================================
+
+    var homeAtmRows = [];
+    var homeAtmNextLocalId = 1;
+
+    function ensureHomeAtmRows() {
+        if (homeAtmRows.length === 0) {
+            homeAtmRows.push({ localId: homeAtmNextLocalId++, amount: '', date: todayStr(), notes: '' });
+        }
+    }
+
+    // Uncontrolled inputs (plain HTML, not synced to homeAtmRows on every keystroke) — reads
+    // whatever is CURRENTLY in the DOM for every still-rendered row back into homeAtmRows before
+    // any add/delete/save re-render, so a row the user is mid-typing in never loses its text just
+    // because a DIFFERENT row was added, deleted, or saved. Matched by localId; a row not found in
+    // the DOM (shouldn't happen — every row in the array is always rendered) is left as-is.
+    function syncHomeAtmRowsFromDom() {
+        for (var i = 0; i < homeAtmRows.length; i++) {
+            var row = homeAtmRows[i];
+            var amountEl = document.getElementById('home-atm-amount-' + row.localId);
+            var dateEl = document.getElementById('home-atm-date-' + row.localId);
+            var notesEl = document.getElementById('home-atm-notes-' + row.localId);
+            if (amountEl) { row.amount = amountEl.value; }
+            if (dateEl) { row.date = dateEl.value; }
+            if (notesEl) { row.notes = notesEl.value; }
+        }
+    }
+
+    function renderHomeAtmWithdrawalRows() {
+        var container = document.getElementById('home-atm-rows');
+        if (!container) { return; }
+        ensureHomeAtmRows();
+        var html = '';
+        for (var i = 0; i < homeAtmRows.length; i++) {
+            var row = homeAtmRows[i];
+            html += '<div class="home-atm-row">' +
+                '<button type="button" class="home-atm-add-btn" onclick="addHomeAtmRow()" aria-label="הוסף שורת משיכה">+</button>' +
+                '<input type="number" step="0.01" min="0" class="home-atm-amount-input" id="home-atm-amount-' + row.localId + '" placeholder="סכום" value="' + escapeHtml(row.amount) + '">' +
+                '<input type="date" class="home-atm-date-input" id="home-atm-date-' + row.localId + '" value="' + escapeHtml(row.date) + '">' +
+                '<input type="text" class="home-atm-notes-input" id="home-atm-notes-' + row.localId + '" placeholder="הערה (אופציונלי)" value="' + escapeHtml(row.notes) + '">' +
+                '<button type="button" class="home-atm-save-btn" onclick="saveHomeAtmRow(' + row.localId + ')" aria-label="שמור משיכה">💾</button>' +
+                '<button type="button" class="home-atm-delete-btn" onclick="deleteHomeAtmRow(' + row.localId + ')" aria-label="מחק שורה">✕</button>' +
+                '</div>';
+        }
+        container.innerHTML = html;
+    }
+
+    function addHomeAtmRow() {
+        syncHomeAtmRowsFromDom();
+        homeAtmRows.push({ localId: homeAtmNextLocalId++, amount: '', date: todayStr(), notes: '' });
+        renderHomeAtmWithdrawalRows();
+    }
+
+    function deleteHomeAtmRow(localId) {
+        syncHomeAtmRowsFromDom();
+        var idx = homeAtmRows.findIndex(function (r) { return r.localId === localId; });
+        if (idx === -1) { return; }
+        homeAtmRows.splice(idx, 1);
+        renderHomeAtmWithdrawalRows();
+    }
+
+    // Validates and saves ONE row as a real cashWithdrawal item — same amount/date validation and
+    // same "not before the opening balance date" guard as addPreviewItem()'s 'cashWithdrawal'
+    // branch, so this second entry point can never create data the first one would have rejected.
+    // The `idx === -1` guard at the top is this round's duplicate-submit protection: a row is
+    // spliced out of homeAtmRows synchronously the instant it saves successfully, so a second,
+    // near-simultaneous click on the same (by-then-stale) save button finds nothing left to save
+    // and is a strict no-op — it can never create a second item from one click.
+    function saveHomeAtmRow(localId) {
+        syncHomeAtmRowsFromDom();
+        var idx = homeAtmRows.findIndex(function (r) { return r.localId === localId; });
+        if (idx === -1) { return; }
+        var row = homeAtmRows[idx];
+
+        var amount = sanitizePositiveAmount(row.amount);
+        var dateStr = row.date;
+        if (amount === null) { alert('נא להזין סכום תקין (גדול מאפס)'); return; }
+        if (!isValidDateStr(dateStr)) { alert('נא להזין תאריך תקין'); return; }
+        var opening = getProjectedBalanceOpeningConfig();
+        if (opening && cashflowDateOnly(parseLocalDateStr(dateStr)) < cashflowDateOnly(parseLocalDateStr(opening.dateStr))) {
+            alert('לא ניתן להזין משיכת מזומן בתאריך שלפני יתרת ההתחלה (' + opening.dateStr + ').');
+            return;
+        }
+
+        items.push({
+            id: generateCashWithdrawalId(),
+            type: 'cashWithdrawal',
+            title: 'משיכת מזומן',
+            amount: amount,
+            start: dateStr,
+            notes: (row.notes || '').trim(),
+            isArchived: false
+        });
+        savePreviewItems();
+
+        homeAtmRows.splice(idx, 1);
+        renderAllPreviewScreens();
+    }
+
+    // ===== Saved ATM withdrawals — lists real, already-saved cashWithdrawal items dated in the =====
+    // ===== CURRENT calendar month, directly above the draft add-rows. Editing/deleting here     =====
+    // ===== reuses the exact same items/savePreviewItems()/deletePreviewItem() as everywhere      =====
+    // ===== else in the app — no second data path, no second forecast calculation.                =====
+
+    var homeAtmEditingId = null;
+
+    function getHomeAtmSavedWithdrawalsThisMonth() {
+        var now = new Date();
+        var y = now.getFullYear(), m = now.getMonth();
+        var matches = [];
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            if (it.type !== 'cashWithdrawal' || it.isArchived || !it.start) { continue; }
+            var d = parseLocalDateStr(it.start);
+            if (d && d.getFullYear() === y && d.getMonth() === m) { matches.push(it); }
+        }
+        matches.sort(function (a, b) { return parseLocalDateStr(a.start) - parseLocalDateStr(b.start); });
+        return matches;
+    }
+
+    function renderHomeAtmSavedList() {
+        var container = document.getElementById('home-atm-saved-list');
+        if (!container) { return; }
+        var saved = getHomeAtmSavedWithdrawalsThisMonth();
+        var html = '';
+        for (var i = 0; i < saved.length; i++) {
+            var wd = saved[i];
+            if (homeAtmEditingId === wd.id) {
+                html += '<div class="home-atm-saved-row home-atm-saved-row-editing">' +
+                    '<div class="tx-edit-group"><label>סכום</label><input type="number" step="0.01" min="0" id="home-atm-edit-amount-' + wd.id + '" value="' + wd.amount + '"></div>' +
+                    '<div class="tx-edit-group"><label>תאריך</label><input type="date" id="home-atm-edit-date-' + wd.id + '" value="' + escapeHtml(wd.start || '') + '"></div>' +
+                    '<div class="tx-edit-group"><label>הערה</label><input type="text" id="home-atm-edit-notes-' + wd.id + '" value="' + escapeHtml(wd.notes || '') + '"></div>' +
+                    '<div class="tx-edit-actions">' +
+                    '<button type="button" class="tx-edit-save" onclick="saveHomeAtmEdit(' + wd.id + ')">💾 שמור</button>' +
+                    '<button type="button" class="tx-edit-cancel" onclick="cancelHomeAtmEdit()">ביטול</button>' +
+                    '</div></div>';
+            } else {
+                html += '<div class="home-atm-saved-row">' +
+                    '<div class="home-atm-saved-amount">' + escapeHtml(formatHomeCurrency(wd.amount)) + '</div>' +
+                    '<div class="home-atm-saved-date">' + escapeHtml(wd.start || '') + '</div>' +
+                    '<div class="home-atm-saved-notes">' + escapeHtml(wd.notes || '') + '</div>' +
+                    '<button type="button" class="home-atm-edit-btn" onclick="startHomeAtmEdit(' + wd.id + ')" aria-label="ערוך משיכה">✏️</button>' +
+                    '<button type="button" class="home-atm-delete-btn" onclick="deleteHomeAtmWithdrawal(' + wd.id + ')" aria-label="מחק משיכה">🗑️</button>' +
+                    '</div>';
+            }
+        }
+        container.innerHTML = html;
+    }
+
+    function startHomeAtmEdit(id) {
+        homeAtmEditingId = id;
+        renderHomeAtmSavedList();
+    }
+
+    function cancelHomeAtmEdit() {
+        homeAtmEditingId = null;
+        renderHomeAtmSavedList();
+    }
+
+    // Same validation rules as addPreviewItem()'s/savePreviewInlineEdit()'s 'cashWithdrawal'
+    // branches (positive amount, valid date, not before the opening-balance date) — kept as its
+    // own small copy (matching this file's existing convention of one validation copy per entry
+    // point) rather than calling savePreviewInlineEdit() directly, so homeAtmEditingId is only
+    // ever cleared on a CONFIRMED success — a failed validation leaves the row open exactly as the
+    // user left it, same as every other inline edit in this file.
+    function saveHomeAtmEdit(id) {
+        var idx = items.findIndex(function (i) { return i.id === id; });
+        if (idx === -1) { homeAtmEditingId = null; renderHomeAtmSavedList(); return; }
+        var item = items[idx];
+
+        var amount = sanitizePositiveAmount(document.getElementById('home-atm-edit-amount-' + id).value);
+        var dateStr = document.getElementById('home-atm-edit-date-' + id).value;
+        var notes = document.getElementById('home-atm-edit-notes-' + id).value;
+        if (amount === null) { alert('נא להזין סכום תקין (גדול מאפס)'); return; }
+        if (!isValidDateStr(dateStr)) { alert('נא להזין תאריך תקין'); return; }
+        var opening = getProjectedBalanceOpeningConfig();
+        if (opening && cashflowDateOnly(parseLocalDateStr(dateStr)) < cashflowDateOnly(parseLocalDateStr(opening.dateStr))) {
+            alert('לא ניתן להזין משיכת מזומן בתאריך שלפני יתרת ההתחלה (' + opening.dateStr + ').');
+            return;
+        }
+
+        item.amount = amount;
+        item.start = dateStr;
+        item.notes = notes.trim();
+        savePreviewItems();
+        homeAtmEditingId = null;
+        renderAllPreviewScreens();
+    }
+
+    // Native confirm() — the same destructive-action convention already used by
+    // handleDeleteMenuAction() elsewhere in this file — before permanently removing a saved
+    // withdrawal via the existing deletePreviewItem() (same delete path every other item type
+    // already uses; no second removal/forecast logic).
+    function deleteHomeAtmWithdrawal(id) {
+        if (!confirm('למחוק את המשיכה הזו לצמיתות? לא ניתן לשחזר לאחר מכן.')) { return; }
+        if (homeAtmEditingId === id) { homeAtmEditingId = null; }
+        deletePreviewItem(id);
     }
 
     // Called once, after items/categoryConfig (and everything Stage D.3/D.4 depend on) are
@@ -4961,9 +5224,23 @@
         var html = '<div class="tx-edit-form">';
 
         if (item.type === 'dated') {
+            var isEditingBuiltinSettlement = isBuiltinCreditCardSettlement(item);
+            var isCreditDated = (resolveEffectiveWhere(item) === 'credit');
             html += '<div class="tx-edit-group"><label>שם ההוצאה</label><input type="text" id="edit-title-' + id + '" value="' + escapeHtml(item.title || '') + '"></div>' +
                 '<div class="tx-edit-group"><label>סכום</label><input type="number" id="edit-amount-' + id + '" value="' + item.amount + '"></div>' +
                 '<div class="tx-edit-group"><label>תאריך החיוב</label><input type="date" id="edit-date-' + id + '" value="' + (item.start || '') + '"></div>';
+            if (isEditingBuiltinSettlement) {
+                // Settlement-identification correction: the built-in settlement category is always
+                // a bank outflow — no payment-method choice, only its own always-required
+                // last-4-digits field, matching the add form's identical special-case.
+                html += '<div class="tx-edit-group"><label>4 ספרות אחרונות של הכרטיס</label><input type="text" id="edit-card-last4-' + id + '" maxlength="4" inputmode="numeric" value="' + escapeHtml(item.cardLast4 || '') + '"></div>';
+            } else {
+                html += '<div class="tx-edit-group"><label>אמצעי תשלום</label><select id="edit-where-' + id + '" onchange="togglePreviewCardLast4Field(\'edit-card-last4-group-' + id + '\', this.value)">' +
+                        '<option value="bank"' + (!isCreditDated ? ' selected' : '') + '>חשבון בנק</option>' +
+                        '<option value="credit"' + (isCreditDated ? ' selected' : '') + '>כרטיס אשראי</option>' +
+                    '</select></div>' +
+                    '<div class="tx-edit-group" id="edit-card-last4-group-' + id + '" style="display:' + (isCreditDated ? 'block' : 'none') + ';"><label>4 ספרות אחרונות של הכרטיס</label><input type="text" id="edit-card-last4-' + id + '" maxlength="4" inputmode="numeric" value="' + escapeHtml(item.cardLast4 || '') + '"></div>';
+            }
             html += '<div class="tx-edit-actions">' +
                 '<button type="button" class="tx-edit-save" onclick="savePreviewInlineEdit(' + id + ')">💾 שמור שינויים</button>' +
                 '<button type="button" class="tx-edit-cancel" onclick="cancelPreviewEdit()">ביטול</button>' +
@@ -5130,6 +5407,32 @@
             if (!datedTitleVal || !dateVal || isNaN(dAmountVal)) {
                 alert('נא להזין שם, תאריך וסכום תקינים');
                 return;
+            }
+            // Settlement-identification correction: the built-in settlement category has no
+            // 'edit-where-<id>' select at all (see buildPreviewEditFormHtml()'s identical branch)
+            // — always bank, last-4-digits always required. Any other dated-baseType category
+            // keeps the normal bank/credit select.
+            if (isBuiltinCreditCardSettlement(item)) {
+                var settlementCardLast4 = document.getElementById('edit-card-last4-' + id).value.trim();
+                if (!/^\d{4}$/.test(settlementCardLast4)) {
+                    alert('נא להזין בדיוק 4 ספרות אחרונות של הכרטיס עבור חיוב האשראי');
+                    return;
+                }
+                item.where = 'bank';
+                item.cardLast4 = settlementCardLast4;
+            } else {
+                var datedNewWhere = document.getElementById('edit-where-' + id).value;
+                if (datedNewWhere === 'credit') {
+                    var datedNewCardLast4 = document.getElementById('edit-card-last4-' + id).value.trim();
+                    if (!/^\d{4}$/.test(datedNewCardLast4)) {
+                        alert('נא להזין בדיוק 4 ספרות עבור כרטיס האשראי');
+                        return;
+                    }
+                    item.cardLast4 = datedNewCardLast4;
+                } else {
+                    item.cardLast4 = '';
+                }
+                item.where = datedNewWhere;
             }
             item.title = datedTitleVal;
             item.start = dateVal;
@@ -5338,10 +5641,22 @@
                 '<div class="tx-edit-group"><label>חודשי או שנתי</label><select id="add-fix-period"><option value="חודשי">חודשי</option><option value="שנתי">שנתי</option></select></div>' +
                 '<div class="tx-edit-group"><label>הערות</label><textarea id="add-fix-notes"></textarea></div>';
         } else if (previewAddMode === 'dated') {
+            // Settlement-identification correction: the built-in settlement category (key
+            // 'dated' specifically) IS the monthly credit-card bill — it always leaves the bank,
+            // so it gets no bank/credit choice at all, just its own always-required last-4-digits
+            // field (which card this settlement is for). Any OTHER dated-baseType category (a
+            // custom one the user created) keeps the normal bank/credit payment-method choice.
+            var isAddingBuiltinSettlement = (previewAddCategoryKey === 'dated');
             html += categoryPickerHtml +
                 '<div class="tx-edit-group"><label>שם ההוצאה</label><input type="text" id="add-dated-title" placeholder="לדוגמה: קניות בסופר"></div>' +
                 '<div class="tx-edit-group"><label>סכום</label><input type="number" id="add-dated-amount" placeholder="₪"></div>' +
                 '<div class="tx-edit-group"><label>תאריך החיוב</label><input type="date" id="add-dated-date" value="' + todayStr() + '"></div>';
+            if (isAddingBuiltinSettlement) {
+                html += '<div class="tx-edit-group"><label>4 ספרות אחרונות של הכרטיס</label><input type="text" id="add-dated-card-last4" maxlength="4" inputmode="numeric" placeholder="לדוגמה: 5646"></div>';
+            } else {
+                html += '<div class="tx-edit-group"><label>אמצעי תשלום</label><select id="add-dated-where" onchange="togglePreviewCardLast4Field(\'add-dated-card-last4-group\', this.value)"><option value="bank">חשבון בנק</option><option value="credit">כרטיס אשראי</option></select></div>' +
+                    '<div class="tx-edit-group" id="add-dated-card-last4-group" style="display:none;"><label>4 ספרות אחרונות של הכרטיס</label><input type="text" id="add-dated-card-last4" maxlength="4" inputmode="numeric" placeholder="לדוגמה: 5646"></div>';
+            }
         } else if (previewAddMode === 'cashWithdrawal') {
             // Version 1.4.2: no category picker — a cash withdrawal is never assigned to a
             // category (never a Home tile, never counted in consumer-spending/category totals).
@@ -5450,6 +5765,22 @@
             obj.start = document.getElementById('add-dated-date').value;
             obj.amount = parseFloat(document.getElementById('add-dated-amount').value);
             if (!obj.title || !obj.start || isNaN(obj.amount)) { alert('מלא שם, תאריך וסכום'); return; }
+            // Settlement-identification correction: the built-in settlement category (catKey
+            // 'dated') is always a bank outflow — no payment-method choice, last-4-digits always
+            // required. Any other dated-baseType category keeps the normal bank/credit choice.
+            if (catKey === 'dated') {
+                obj.where = 'bank';
+                obj.cardLast4 = document.getElementById('add-dated-card-last4').value.trim();
+                if (!/^\d{4}$/.test(obj.cardLast4)) { alert('נא להזין בדיוק 4 ספרות אחרונות של הכרטיס עבור חיוב האשראי'); return; }
+            } else {
+                obj.where = document.getElementById('add-dated-where').value;
+                if (obj.where === 'credit') {
+                    obj.cardLast4 = document.getElementById('add-dated-card-last4').value.trim();
+                    if (!/^\d{4}$/.test(obj.cardLast4)) { alert('נא להזין בדיוק 4 ספרות עבור כרטיס האשראי'); return; }
+                } else {
+                    obj.cardLast4 = '';
+                }
+            }
         } else if (baseType === 'cashWithdrawal') {
             var wdAmount = sanitizePositiveAmount(document.getElementById('add-cash-amount').value);
             var wdDateStr = document.getElementById('add-cash-date').value;

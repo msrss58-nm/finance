@@ -376,6 +376,50 @@
     .tx-edit-save { background: var(--color-primary); color: #fff; }
     .tx-edit-cancel { background: var(--color-bg); color: var(--color-text); border: 1px solid var(--color-border); }
 
+    /* ===== ATM withdrawals — inline quick-add rows on Home (after "פעילות אחרונה") ===== */
+    /* flex-wrap lets a narrow (360/390px) viewport wrap the row onto two lines instead of
+       clipping/overflowing, while a wide viewport (1280px) keeps everything on one line — the "+
+       | amount | date | notes | save" sequence is preserved either way since flex items keep
+       their DOM order regardless of wrapping. */
+    .home-atm-row {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+        background: var(--color-surface); border-radius: 12px; padding: 10px;
+        margin-bottom: 8px; box-shadow: var(--shadow);
+    }
+    .home-atm-add-btn, .home-atm-save-btn, .home-atm-delete-btn {
+        flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%; border: none;
+        font-size: 15px; cursor: pointer; font-family: inherit;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .home-atm-add-btn { background: var(--color-primary-bg); color: var(--color-primary-text); }
+    .home-atm-save-btn { background: var(--color-primary); color: #fff; }
+    .home-atm-delete-btn { background: var(--color-danger-bg); color: var(--color-danger); }
+    .home-atm-amount-input { flex: 1 1 80px; min-width: 70px; }
+    .home-atm-date-input { flex: 1 1 130px; min-width: 118px; }
+    .home-atm-notes-input { flex: 2 1 140px; min-width: 100px; }
+    .home-atm-amount-input, .home-atm-date-input, .home-atm-notes-input {
+        padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 10px;
+        font-size: 13.5px; background: var(--color-bg); font-family: inherit;
+    }
+    /* Saved withdrawals (this month) — read-only display row above the draft add-rows. Reuses
+       .home-atm-delete-btn as-is (same circular treatment); .home-atm-edit-btn matches it. */
+    .home-atm-saved-row {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+        background: var(--color-surface); border-radius: 12px; padding: 10px 12px;
+        margin-bottom: 8px; box-shadow: var(--shadow);
+    }
+    .home-atm-saved-row-editing { display: block; }
+    .home-atm-saved-amount { font-weight: 700; direction: ltr; unicode-bidi: isolate; }
+    .home-atm-saved-date { color: var(--color-text-muted); font-size: 12.5px; direction: ltr; unicode-bidi: isolate; }
+    .home-atm-saved-notes { flex: 1 1 100px; min-width: 60px; font-size: 13px; color: var(--color-text-muted); }
+    .home-atm-edit-btn {
+        flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%; border: none;
+        font-size: 13px; cursor: pointer; font-family: inherit;
+        display: flex; align-items: center; justify-content: center;
+        background: var(--color-primary-bg); color: var(--color-primary-text);
+    }
+    .home-atm-saved-row .home-atm-delete-btn { width: 30px; height: 30px; font-size: 13px; }
+
     /* ===== Transactions screen: search + filter (visual only) ===== */
     .search-bar input {
         width: 100%; padding: 10px 14px; border: 1px solid var(--color-border);
