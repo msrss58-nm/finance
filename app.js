@@ -18,7 +18,7 @@
     // included by collectAppLocalStorageBackup()'s/confirmResetAllData()'s existing prefix-sweep
     // with zero changes to either function.
     var GOALS_KEY = 'family_finance_goals';
-    var APP_VERSION = '1.4.5';
+    var APP_VERSION = '1.4.6';
 
     var PRIMARY_COLOR_OPTIONS = [
         { key: 'green', label: 'ירוק' },
@@ -2674,8 +2674,11 @@
     // categories whose dashboard wording changed ("יורד החודש – ...") — categoryConfig itself keeps
     // its normal label (Settings/category page/forms are unaffected). Every other category
     // (including 'fixed' and any custom category) just shows its normal label, emoji stripped.
+    // Version 1.4.6 correction: the 'variable' override renamed from "יורד החודש – תשלומים שונים"
+    // to "תשלומים החודש" — display text only, no key/data change (categoryConfig.variable.label
+    // and every persisted field are untouched).
     var HOME_TILE_LABEL_OVERRIDE_BY_KEY = {
-        variable: 'יורד החודש – תשלומים שונים',
+        variable: 'תשלומים החודש',
         loan: 'יורד החודש – הלוואות'
     };
 
@@ -4920,25 +4923,37 @@
             var amount = (key === 'dated' && !rawTotal) ? 'הזן חיוב' : formatHomeCurrency(rawTotal);
             var safeKey = escapeHtml(key);
             var label = getHomeTileDisplayLabel(key, cfg);
+            // Version 1.4.6: amount-color-only correction for exactly these 4 built-in category
+            // tiles (identified by their own stable KEY — never by baseType, so a user's custom
+            // category sharing the same baseType, e.g. another 'fixed'-baseType category, is
+            // unaffected, same distinction the credit-card tile correction above already draws).
+            // Reuses the existing .negative-amount class verbatim (color: var(--color-danger),
+            // already used for tx-amount.expense elsewhere) — no new CSS, no change to background,
+            // title, or the calculation feeding `amount` itself.
+            var isRedAmountTile = (key === 'fixed' || key === 'variable' || key === 'loan' || key === 'dated');
+            var amountValueClass = 'category-tile-value' + (isRedAmountTile ? ' negative-amount' : '');
             // Credit-card tile correction (Version 1.4.6): the built-in settlement tile only (key
             // 'dated' specifically — never a custom dated-baseType category, same distinction
-            // isBuiltinCreditCardSettlement() draws for items) additionally shows a large, centered
-            // amount and an "עודכן:" line sourced from appSettings.creditCardSettlementUpdatedAt —
-            // set only by a successful add/edit to this category (see addPreviewItem()/
-            // savePreviewInlineEdit()), never by delete, never the charge date or "today". Title and
-            // icon markup are otherwise byte-identical to every other tile.
+            // isBuiltinCreditCardSettlement() draws for items) additionally shows an "עודכן:" line
+            // below the amount, sourced from appSettings.creditCardSettlementUpdatedAt — set only
+            // by a successful add/edit to this category (see addPreviewItem()/
+            // savePreviewInlineEdit()), never by delete, never the charge date or "today". The
+            // amount itself reuses the plain .category-tile-value style verbatim (font-size
+            // correction: an earlier larger-font override was removed — it must render identically
+            // to every other Home tile's amount, centered only via the shared parent). Icon/label
+            // markup are otherwise byte-identical to every other tile.
             if (key === 'dated') {
                 html += '<div class="category-tile" data-category-key="' + safeKey + '">' +
                     '<div class="category-tile-icon"></div>' +
                     '<div class="category-tile-label">' + escapeHtml(label) + '</div>' +
-                    '<div class="category-tile-value credit-settlement-amount">' + amount + '</div>' +
+                    '<div class="' + amountValueClass + '">' + amount + '</div>' +
                     '<div class="credit-settlement-updated">' + escapeHtml(formatCreditSettlementUpdatedLabel(appSettings.creditCardSettlementUpdatedAt)) + '</div>' +
                 '</div>';
             } else {
                 html += '<div class="category-tile" data-category-key="' + safeKey + '">' +
                     '<div class="category-tile-icon"></div>' +
                     '<div class="category-tile-label">' + escapeHtml(label) + '</div>' +
-                    '<div class="category-tile-value">' + amount + '</div>' +
+                    '<div class="' + amountValueClass + '">' + amount + '</div>' +
                 '</div>';
             }
             if (key === 'variable') { html += buildVariableRemainingStatTileHtml(); }

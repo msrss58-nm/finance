@@ -189,9 +189,11 @@
     }
     .category-tile-value { font-size: 13.5px; font-weight: 700; margin-top: 4px; direction: ltr; unicode-bidi: isolate; }
 
-    /* Version 1.4.6: built-in credit-card settlement tile only — larger centered amount (parent
-       .category-tile already has text-align:center) plus a small "עודכן:" line beneath it. */
-    .category-tile-value.credit-settlement-amount { font-size: 20px; margin-top: 6px; }
+    /* Version 1.4.6: built-in credit-card settlement tile only — the amount reuses the shared
+       .category-tile-value style as-is (font size identical to every other tile; parent
+       .category-tile already provides text-align:center) plus a small "עודכן:" line beneath it.
+       Font-size correction: an earlier larger-font override (.credit-settlement-amount) was
+       removed here — the amount must match every other Home category tile exactly, not stand out. */
     .credit-settlement-updated { font-size: 9.5px; color: var(--color-text-muted); margin-top: 4px; direction: rtl; }
 
     /* ===== Version 1.1, Stage 3.5: computed "stat" tiles (יתרת תשלומים שונים / יתרת הלוואות) — =====
