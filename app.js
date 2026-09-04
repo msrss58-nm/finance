@@ -590,7 +590,7 @@
         for (var i = 0; i < items.length; i++) {
             var it = items[i];
             if (it.type === 'fixed' && !it.isArchived && it.where === 'credit') {
-                total += (it.period === 'שנתי') ? (it.amount / 12) : it.amount;
+                total += getFixedItemMonthlyFigure(it, new Date());
             }
         }
         return total;
@@ -601,7 +601,7 @@
         for (var i = 0; i < items.length; i++) {
             var it = items[i];
             if (it.type === 'fixed' && !it.isArchived) {
-                var mAmount = (it.period === 'שנתי') ? (it.amount / 12) : it.amount;
+                var mAmount = getFixedItemMonthlyFigure(it, new Date());
                 if (it.where === 'credit') { credit += mAmount; } else { bank += mAmount; }
             }
         }
@@ -617,7 +617,7 @@
         for (var i = 0; i < items.length; i++) {
             var it = items[i];
             if (it.type === 'fixed' && !it.isArchived) {
-                total += (it.period === 'שנתי') ? (it.amount / 12) : it.amount;
+                total += getFixedItemMonthlyFigure(it, new Date());
             }
         }
         return total;
@@ -649,7 +649,7 @@
             if (item.type === 'income') {
                 totals[cKey] += item.amount;
             } else if (item.type === 'fixed') {
-                totals[cKey] += (item.period === 'שנתי') ? (item.amount / 12) : item.amount;
+                totals[cKey] += getFixedItemMonthlyFigure(item, new Date());
             } else if (item.type === 'variable') {
                 var dtVar = parseDatesAndGetLeft(item.start, item.total, resolveEffectiveDay(item));
                 if (dtVar.left > 0) { totals[cKey] += item.amount; }
@@ -701,7 +701,7 @@
                 if (item.type === 'income') {
                     sumInc += item.amount;
                 } else if (item.type === 'fixed') {
-                    var mAmount = (item.period === 'שנתי') ? (item.amount / 12) : item.amount;
+                    var mAmount = getFixedItemMonthlyFigure(item, new Date());
                     if (item.where !== 'credit') {
                         monthlyExpenses += mAmount;
                     }
@@ -1166,6 +1166,47 @@
         return (item && item.where === 'credit') ? 'credit' : 'bank';
     }
 
+    // Bimonthly fixed expenses: a fixed item recurs every 2 months instead of every month, e.g. a
+    // September start recurs Sep/Nov/Jan/Mar/... indefinitely, forever, with no end date (same
+    // "ongoing commitment" semantics as monthly/yearly 'fixed' — unlike loans/variable, which have
+    // a total-payment countdown). item.bimonthly is the boolean toggle; item.bimonthlyStartMonth
+    // (1–12) is which calendar month the every-2-months cycle is anchored to. Only a MONTH is
+    // stored (no year) because the pattern is year-agnostic by construction: a target month is
+    // "active" exactly when it shares the same parity (odd/even) as the start month — true for
+    // every year, so no year bookkeeping is ever needed. isBimonthly() requires BOTH fields to be
+    // valid before treating an item as bimonthly at all — malformed/missing recurrence data (a
+    // stray `bimonthly:true` with no/garbage start month, or an item saved before this feature
+    // existed) safely falls back to the existing monthly/yearly `period`-based behavior, never
+    // throws, never invents a start month.
+    function resolveFixedIsBimonthly(item) {
+        if (!item || item.bimonthly !== true) { return false; }
+        var m = parseInt(item.bimonthlyStartMonth, 10);
+        return isFinite(m) && m >= 1 && m <= 12;
+    }
+    function resolveFixedBimonthlyStartMonth(item) {
+        var m = parseInt(item && item.bimonthlyStartMonth, 10);
+        return (isFinite(m) && m >= 1 && m <= 12) ? m : 1;
+    }
+    function isBimonthlyActiveMonth(targetMonth1to12, startMonth1to12) {
+        return (targetMonth1to12 % 2) === (startMonth1to12 % 2);
+    }
+
+    // Single shared "monthly figure" for one fixed item, reused by every monthly-aggregate display
+    // (Home snapshot, category tiles, the Insights credit-card/commitments cards) so they can never
+    // disagree with each other about what a given fixed item contributes to a given month — exactly
+    // the "apply consistently" requirement. Monthly and yearly behavior is UNCHANGED (yearly still
+    // smooths to amount/12 every month, matching the existing budgeting convention). Bimonthly is
+    // deliberately NOT smoothed — the full amount in an active (matching-parity) month, zero in
+    // every other month — matching its own discrete every-2-months occurrence and the cash-flow
+    // engine's own event dates below, rather than inventing a new averaging rule nothing asked for.
+    function getFixedItemMonthlyFigure(item, refDate) {
+        if (resolveFixedIsBimonthly(item)) {
+            var refMonth1to12 = ((refDate || new Date()).getMonth()) + 1;
+            return isBimonthlyActiveMonth(refMonth1to12, resolveFixedBimonthlyStartMonth(item)) ? item.amount : 0;
+        }
+        return (item.period === 'שנתי') ? (item.amount / 12) : item.amount;
+    }
+
     // Settlement-identification correction: the built-in credit-card SETTLEMENT category (key
     // 'dated' — the default "💳 חיוב כרטיס אשראי", present in every categoryConfig via the
     // existing backfill) IS the actual monthly bank outflow — selecting "Credit card" as this
@@ -1290,9 +1331,17 @@
                 // settlement. resolveEffectiveWhere() defaults missing/legacy items to 'bank'
                 // (unchanged behavior), so this only skips items explicitly marked 'credit'.
                 if (resolveEffectiveWhere(item) !== 'credit') {
-                    var mAmount = (item.period === 'שנתי') ? (item.amount / 12) : item.amount;
+                    // Bimonthly correction: a bimonthly fixed item generates a DISCRETE, full-amount
+                    // event only in months matching its starting month's parity (Sep start -> Sep,
+                    // Nov, Jan, Mar, ... — see resolveFixedIsBimonthly()) instead of a smoothed
+                    // amount every month. Monthly/yearly behavior below this check is unchanged.
+                    var isBimonthlyFixed = resolveFixedIsBimonthly(item);
+                    var bimonthlyStart = isBimonthlyFixed ? resolveFixedBimonthlyStartMonth(item) : null;
+                    var mAmount = isBimonthlyFixed ? item.amount : ((item.period === 'שנתי') ? (item.amount / 12) : item.amount);
                     for (var mf = 0; mf < months; mf++) {
-                        var df = getClampedBillingDate(horizonStart.getFullYear(), horizonStart.getMonth() + mf, resolveEffectiveDay(item));
+                        var probeMonth = new Date(horizonStart.getFullYear(), horizonStart.getMonth() + mf, 1);
+                        if (isBimonthlyFixed && !isBimonthlyActiveMonth(probeMonth.getMonth() + 1, bimonthlyStart)) { continue; }
+                        var df = getClampedBillingDate(probeMonth.getFullYear(), probeMonth.getMonth(), resolveEffectiveDay(item));
                         events.push({ date: df, amount: -mAmount, itemId: item.id, type: 'fixed', title: item.title });
                     }
                 }
@@ -5213,6 +5262,30 @@
         if (group) { group.style.display = (whereValue === 'credit') ? 'block' : 'none'; }
     }
 
+    var HEBREW_MONTH_NAMES = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+
+    function buildMonthSelectOptionsHtml(selectedMonth1to12) {
+        var html = '';
+        for (var m = 1; m <= 12; m++) {
+            html += '<option value="' + m + '"' + (m === selectedMonth1to12 ? ' selected' : '') + '>' + HEBREW_MONTH_NAMES[m - 1] + '</option>';
+        }
+        return html;
+    }
+
+    // Bimonthly fixed-expense toggle: shows/hides the "starting month" group and disables/hides the
+    // existing monthly-or-yearly period select — the two are mutually exclusive (a bimonthly item
+    // has no meaningful "yearly" reading), matching "unchecked = monthly, preserving current
+    // behavior" (period governs only while bimonthly is off). Takes explicit element ids (same
+    // convention as togglePreviewCardLast4Field(groupId, ...) above) so one function serves both
+    // the add form (fixed ids) and every edit form (per-item <id>-suffixed ids). Purely a display
+    // toggle; touches no data — addPreviewItem()/savePreviewInlineEdit() decide what's saved.
+    function togglePreviewBimonthlyFields(startGroupId, periodGroupId, checked) {
+        var startGroup = document.getElementById(startGroupId);
+        var periodGroup = document.getElementById(periodGroupId);
+        if (startGroup) { startGroup.style.display = checked ? 'block' : 'none'; }
+        if (periodGroup) { periodGroup.style.display = checked ? 'none' : 'block'; }
+    }
+
     // Builds the inline edit form for one item, branching by item.type exactly like index.html's
     // own renderAll() does inline (isEditing branch) — copied literally per type (dated / fixed /
     // variable / loan / default-for-income), same field ids (edit-title-<id>, edit-amount-<id>,
@@ -5265,6 +5338,7 @@
 
         if (item.type === 'fixed') {
             var isCreditFixed = (item.where === 'credit');
+            var isBimonthlyFixedEdit = resolveFixedIsBimonthly(item);
             html += '<div class="tx-edit-group"><label>סכום</label><input type="number" id="edit-amount-' + id + '" value="' + item.amount + '"></div>' +
                 '<div class="tx-edit-group"><label>יום ירידה</label><input type="number" id="edit-day-' + id + '" min="1" max="31" value="' + resolveEffectiveDay(item) + '"></div>' +
                 '<div class="tx-edit-group"><label>איפה יורד</label><select id="edit-where-' + id + '" onchange="togglePreviewCardLast4Field(\'edit-card-last4-group-' + id + '\', this.value)">' +
@@ -5272,10 +5346,12 @@
                     '<option value="credit"' + (isCreditFixed ? ' selected' : '') + '>כרטיס אשראי</option>' +
                 '</select></div>' +
                 '<div class="tx-edit-group" id="edit-card-last4-group-' + id + '" style="display:' + (isCreditFixed ? 'block' : 'none') + ';"><label>4 ספרות אחרונות של הכרטיס</label><input type="text" id="edit-card-last4-' + id + '" maxlength="4" inputmode="numeric" value="' + escapeHtml(item.cardLast4 || '') + '"></div>' +
-                '<div class="tx-edit-group"><label>תדירות</label><select id="edit-period-' + id + '">' +
+                '<div class="tx-edit-group" id="edit-fix-period-group-' + id + '" style="display:' + (isBimonthlyFixedEdit ? 'none' : 'block') + ';"><label>תדירות</label><select id="edit-period-' + id + '">' +
                     '<option value="חודשי"' + (item.period === 'חודשי' ? ' selected' : '') + '>חודשי</option>' +
                     '<option value="שנתי"' + (item.period === 'שנתי' ? ' selected' : '') + '>שנתי</option>' +
                 '</select></div>' +
+                '<div class="tx-edit-group"><label><input type="checkbox" id="edit-fix-bimonthly-' + id + '"' + (isBimonthlyFixedEdit ? ' checked' : '') + ' onchange="togglePreviewBimonthlyFields(\'edit-fix-bimonthly-start-group-' + id + '\', \'edit-fix-period-group-' + id + '\', this.checked)"> דו-חודשי (כל חודשיים)</label></div>' +
+                '<div class="tx-edit-group" id="edit-fix-bimonthly-start-group-' + id + '" style="display:' + (isBimonthlyFixedEdit ? 'block' : 'none') + ';"><label>חודש התחלה</label><select id="edit-fix-bimonthly-start-' + id + '">' + buildMonthSelectOptionsHtml(resolveFixedBimonthlyStartMonth(item)) + '</select></div>' +
                 '<div class="tx-edit-group"><label>הערות</label><textarea id="edit-notes-' + id + '">' + escapeHtml(item.notes || '') + '</textarea></div>';
         } else if (item.type === 'variable') {
             html += '<div class="tx-edit-group"><label>סכום מקור</label><input type="number" id="edit-original-' + id + '" value="' + (item.originalAmount || '') + '"></div>' +
@@ -5480,20 +5556,41 @@
 
         if (item.type === 'fixed') {
             var newWhere = document.getElementById('edit-where-' + id).value;
+            var newCardLast4 = null;
             if (newWhere === 'credit') {
-                var newCardLast4 = document.getElementById('edit-card-last4-' + id).value.trim();
+                newCardLast4 = document.getElementById('edit-card-last4-' + id).value.trim();
                 if (!/^\d{4}$/.test(newCardLast4)) {
                     alert('נא להזין בדיוק 4 ספרות עבור כרטיס האשראי');
                     return;
                 }
-                item.cardLast4 = newCardLast4;
-            } else {
-                item.cardLast4 = '';
             }
+            // Bimonthly correction: validated here, BEFORE any field on `item` is mutated below —
+            // same "validate everything first, mutate only once every check passed" pattern the
+            // where/cardLast4 check above already follows, so a failed validation never leaves
+            // `item` partially changed in memory (unsaved) the way mutating-then-validating would.
+            var editBimonthlyChecked = document.getElementById('edit-fix-bimonthly-' + id).checked;
+            var editBimonthlyStart = null;
+            if (editBimonthlyChecked) {
+                editBimonthlyStart = parseInt(document.getElementById('edit-fix-bimonthly-start-' + id).value, 10);
+                if (!isFinite(editBimonthlyStart) || editBimonthlyStart < 1 || editBimonthlyStart > 12) {
+                    alert('נא לבחור חודש התחלה תקין');
+                    return;
+                }
+            }
+
+            item.cardLast4 = (newWhere === 'credit') ? newCardLast4 : '';
             item.day = document.getElementById('edit-day-' + id).value;
             item.where = newWhere;
-            item.period = document.getElementById('edit-period-' + id).value;
             item.notes = document.getElementById('edit-notes-' + id).value;
+            if (editBimonthlyChecked) {
+                item.bimonthly = true;
+                item.bimonthlyStartMonth = editBimonthlyStart;
+                item.period = 'חודשי';
+            } else {
+                item.bimonthly = false;
+                item.bimonthlyStartMonth = null;
+                item.period = document.getElementById('edit-period-' + id).value;
+            }
         } else if (item.type === 'variable') {
             item.originalAmount = parseFloat(document.getElementById('edit-original-' + id).value) || 0;
             item.day = document.getElementById('edit-day-' + id).value;
@@ -5638,7 +5735,9 @@
                 '<div class="tx-edit-group"><label>יום ירידה</label><input type="number" id="add-fix-day" min="1" max="31" value="' + addDefaultDay + '"></div>' +
                 '<div class="tx-edit-group"><label>איפה יורד</label><select id="add-fix-where" onchange="togglePreviewCardLast4Field(\'add-fix-card-last4-group\', this.value)"><option value="bank">חשבון בנק</option><option value="credit">כרטיס אשראי</option></select></div>' +
                 '<div class="tx-edit-group" id="add-fix-card-last4-group" style="display:none;"><label>4 ספרות אחרונות של הכרטיס</label><input type="text" id="add-fix-card-last4" maxlength="4" inputmode="numeric" placeholder="לדוגמה: 5646"></div>' +
-                '<div class="tx-edit-group"><label>חודשי או שנתי</label><select id="add-fix-period"><option value="חודשי">חודשי</option><option value="שנתי">שנתי</option></select></div>' +
+                '<div class="tx-edit-group" id="add-fix-period-group"><label>חודשי או שנתי</label><select id="add-fix-period"><option value="חודשי">חודשי</option><option value="שנתי">שנתי</option></select></div>' +
+                '<div class="tx-edit-group"><label><input type="checkbox" id="add-fix-bimonthly" onchange="togglePreviewBimonthlyFields(\'add-fix-bimonthly-start-group\', \'add-fix-period-group\', this.checked)"> דו-חודשי (כל חודשיים)</label></div>' +
+                '<div class="tx-edit-group" id="add-fix-bimonthly-start-group" style="display:none;"><label>חודש התחלה</label><select id="add-fix-bimonthly-start">' + buildMonthSelectOptionsHtml(new Date().getMonth() + 1) + '</select></div>' +
                 '<div class="tx-edit-group"><label>הערות</label><textarea id="add-fix-notes"></textarea></div>';
         } else if (previewAddMode === 'dated') {
             // Settlement-identification correction: the built-in settlement category (key
@@ -5759,6 +5858,19 @@
                 if (!/^\d{4}$/.test(obj.cardLast4)) { alert('נא להזין בדיוק 4 ספרות עבור כרטיס האשראי'); return; }
             } else {
                 obj.cardLast4 = '';
+            }
+            // Bimonthly correction: checked -> required starting month (native <select>, always a
+            // valid 1-12 value), period is irrelevant and reset to the harmless default so no stale
+            // "שנתי" lingers from before the checkbox was toggled. Unchecked -> unchanged existing
+            // behavior (period alone governs monthly/yearly).
+            obj.bimonthly = document.getElementById('add-fix-bimonthly').checked;
+            if (obj.bimonthly) {
+                var addBimonthlyStart = parseInt(document.getElementById('add-fix-bimonthly-start').value, 10);
+                if (!isFinite(addBimonthlyStart) || addBimonthlyStart < 1 || addBimonthlyStart > 12) { alert('נא לבחור חודש התחלה תקין'); return; }
+                obj.bimonthlyStartMonth = addBimonthlyStart;
+                obj.period = 'חודשי';
+            } else {
+                obj.bimonthlyStartMonth = null;
             }
         } else if (baseType === 'dated') {
             obj.title = document.getElementById('add-dated-title').value.trim();
