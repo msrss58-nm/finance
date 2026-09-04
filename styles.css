@@ -196,6 +196,11 @@
        removed here — the amount must match every other Home category tile exactly, not stand out. */
     .credit-settlement-updated { font-size: 9.5px; color: var(--color-text-muted); margin-top: 4px; direction: rtl; }
 
+    /* Version 1.4.8: bank/credit (fixed) and bank/payroll (loan) breakdown lines — built-in
+       "הוצאות קבועות"/"תשלומי הלוואות החודש" tiles only. */
+    .category-tile-breakdown { margin-top: 4px; }
+    .category-tile-breakdown-line { font-size: 9.5px; color: var(--color-text-muted); direction: rtl; line-height: 1.4; }
+
     /* ===== Version 1.1, Stage 3.5: computed "stat" tiles (יתרת תשלומים שונים / יתרת הלוואות) — =====
        ===== deliberately their own class, NOT .category-tile, so the Stage 1 drag-reorder      =====
        ===== pointerdown handler's `.category-tile` matching (and its index math against          =====

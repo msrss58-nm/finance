@@ -18,7 +18,7 @@
     // included by collectAppLocalStorageBackup()'s/confirmResetAllData()'s existing prefix-sweep
     // with zero changes to either function.
     var GOALS_KEY = 'family_finance_goals';
-    var APP_VERSION = '1.4.7';
+    var APP_VERSION = '1.4.8';
 
     var PRIMARY_COLOR_OPTIONS = [
         { key: 'green', label: 'ירוק' },
@@ -610,6 +610,26 @@
         return { bank: bank, credit: credit };
     }
 
+    // Version 1.4.8: bank/payroll breakdown for the "תשלומי הלוואות החודש" Home tile — the SAME
+    // "active this month" condition (parseDatesAndGetLeft(...).left > 0) and the SAME raw
+    // item.amount getCategoryMonthlyTotals()'s own loan branch already uses to compute that tile's
+    // total, just split by resolveLoanSource() instead of collapsed into one number — so bank +
+    // payroll here always sums to EXACTLY that tile's total, by construction, never a second
+    // independent calculation.
+    function getLoanBankVsPayrollSplit(items) {
+        var bank = 0, payroll = 0;
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            if (it.type === 'loan' && !it.isArchived) {
+                var dt = parseDatesAndGetLeft(it.start, it.total, it.day);
+                if (dt.left > 0) {
+                    if (resolveLoanSource(it) === 'payroll') { payroll += it.amount; } else { bank += it.amount; }
+                }
+            }
+        }
+        return { bank: bank, payroll: payroll };
+    }
+
     // Mirrors renderAll()'s fixed-item handling in index.html exactly: catStats[cKey].monthly for
     // baseType 'fixed' always includes both bank AND credit (no `where` filter — matches the
     // approved "dashboard tile shows everything" decision), and always period-converts yearly
@@ -710,8 +730,11 @@
                 } else if (item.type === 'variable') {
                     // תשלומים שונים למעקב/תצוגה בלבד - לא נכללים ביתרה הפנויה (ההשפעה בפועל מגיעה מחיוב כרטיס האשראי שנרשם בנפרד)
                 } else if (item.type === 'loan') {
+                    // Version 1.4.8: a payroll-deducted loan is excluded from bank expenses here —
+                    // same "credit/payroll never counted directly" rule as 'fixed' above — since the
+                    // salary already entered is net, after payroll deductions.
                     var dt = parseDatesAndGetLeft(item.start, item.total, item.day);
-                    if (dt.left > 0) {
+                    if (dt.left > 0 && resolveLoanSource(item) !== 'payroll') {
                         monthlyExpenses += item.amount;
                     }
                 } else if (item.type === 'dated') {
@@ -1184,6 +1207,21 @@
         return null;
     }
 
+    // Version 1.4.8: payment-SOURCE resolver for 'loan' items — REUSES the existing item.where
+    // field (previously free-text "where the loan is deducted from", e.g. a bank name typed by the
+    // user) rather than adding a new field, per the approved "reuse existing helpers/fields, avoid
+    // unnecessary migration" requirement. Returns 'payroll' ONLY when item.where is EXACTLY the
+    // payroll sentinel string the add/edit <select> now offers as its second option; every other
+    // value — undefined, empty, or any legacy free-text bank name typed before this correction —
+    // resolves to 'bank', so every existing loan's behavior is preserved with zero migration. Same
+    // "lazy fallback, single stable default" convention as resolveEffectiveWhere() above (loans
+    // default to 'bank', not null — a loan with an unrecognized/legacy where value has always been
+    // counted as a real bank outflow, and must keep being counted that way unless the user
+    // explicitly picks payroll).
+    function resolveLoanSource(item) {
+        return (item && item.where === 'דרך תלוש השכר') ? 'payroll' : 'bank';
+    }
+
     // Bimonthly fixed expenses: a fixed item recurs every 2 months instead of every month, e.g. a
     // September start recurs Sep/Nov/Jan/Mar/... indefinitely, forever, with no end date (same
     // "ongoing commitment" semantics as monthly/yearly 'fixed' — unlike loans/variable, which have
@@ -1380,13 +1418,21 @@
                     }
                 }
             } else if (item.type === 'loan') {
-                var range = getBillingRange(item.start, item.total, resolveEffectiveDay(item));
-                if (range) {
-                    for (var ml = 0; ml < months; ml++) {
-                        var probe = new Date(horizonStart.getFullYear(), horizonStart.getMonth() + ml, 1);
-                        if (isBillingActiveInMonth(range, probe.getFullYear(), probe.getMonth())) {
-                            var dl = getClampedBillingDate(probe.getFullYear(), probe.getMonth(), range.bDay);
-                            events.push({ date: dl, amount: -item.amount, itemId: item.id, type: 'loan', title: item.title });
+                // Version 1.4.8: a payroll-deducted loan (resolveLoanSource(item) === 'payroll')
+                // never leaves the bank on its own — the salary already entered into this app is
+                // net, after payroll deductions — so it must never generate a balance-affecting
+                // event here, exactly the same "credit/payroll never counted directly" rule already
+                // applied to 'fixed' above. resolveLoanSource() defaults every legacy/missing value
+                // to 'bank' (unchanged behavior), so this only skips loans explicitly marked payroll.
+                if (resolveLoanSource(item) !== 'payroll') {
+                    var range = getBillingRange(item.start, item.total, resolveEffectiveDay(item));
+                    if (range) {
+                        for (var ml = 0; ml < months; ml++) {
+                            var probe = new Date(horizonStart.getFullYear(), horizonStart.getMonth() + ml, 1);
+                            if (isBillingActiveInMonth(range, probe.getFullYear(), probe.getMonth())) {
+                                var dl = getClampedBillingDate(probe.getFullYear(), probe.getMonth(), range.bDay);
+                                events.push({ date: dl, amount: -item.amount, itemId: item.id, type: 'loan', title: item.title });
+                            }
                         }
                     }
                 }
@@ -2662,6 +2708,11 @@
     var categoryTileVariableRemainingCache = 0;
     var categoryTileLoanBalanceCache = { principal: 0, total: 0 };
 
+    // Version 1.4.8: bank/credit (fixed) and bank/payroll (loan) breakdown caches for the "הוצאות
+    // קבועות"/"תשלומי הלוואות החודש" tiles — same cache-once-per-full-render convention as above.
+    var categoryTileFixedSplitCache = { bank: 0, credit: 0 };
+    var categoryTileLoanSplitCache = { bank: 0, payroll: 0 };
+
     // Version 1.1, Stage 3.5: which value the "יתרת הלוואות" stat tile's small toggle currently
     // shows — 'principal' (קרן בלבד) or 'total' (קרן + ריבית, the full remaining amount). Its own
     // new localStorage key, independent of DATA_KEY/CONFIG_KEY/CATEGORY_TILE_ORDER_KEY, per the
@@ -2684,9 +2735,11 @@
     // Version 1.4.6 correction: the 'variable' override renamed from "יורד החודש – תשלומים שונים"
     // to "תשלומים החודש" — display text only, no key/data change (categoryConfig.variable.label
     // and every persisted field are untouched).
+    // Version 1.4.8 correction: the 'loan' override renamed from "יורד החודש – הלוואות" to
+    // "תשלומי הלוואות החודש" — same display-text-only rule, no key/data change.
     var HOME_TILE_LABEL_OVERRIDE_BY_KEY = {
         variable: 'תשלומים החודש',
-        loan: 'יורד החודש – הלוואות'
+        loan: 'תשלומי הלוואות החודש'
     };
 
     // =====================================================================================
@@ -4949,12 +5002,39 @@
             // correction: an earlier larger-font override was removed — it must render identically
             // to every other Home tile's amount, centered only via the shared parent). Icon/label
             // markup are otherwise byte-identical to every other tile.
+            // Version 1.4.8: the built-in "הוצאות קבועות"/"תשלומי הלוואות החודש" tiles ONLY (keys
+            // 'fixed'/'loan' specifically — never a custom category sharing the same baseType, same
+            // stable-KEY distinction already drawn above) drop the decorative icon and additionally
+            // show a bank/(credit or payroll) breakdown below the amount — both breakdown numbers
+            // are read from caches computed once in renderCategoryTilesFromRealData() (same
+            // cache-once-per-full-render convention as categoryTileVariableRemainingCache above),
+            // and always sum to EXACTLY this tile's own `amount`/rawTotal by construction (see
+            // getFixedBankVsCreditSplit()/getLoanBankVsPayrollSplit()) — never a second, independent
+            // total.
             if (key === 'dated') {
                 html += '<div class="category-tile" data-category-key="' + safeKey + '">' +
                     '<div class="category-tile-icon"></div>' +
                     '<div class="category-tile-label">' + escapeHtml(label) + '</div>' +
                     '<div class="' + amountValueClass + '">' + amount + '</div>' +
                     '<div class="credit-settlement-updated">' + escapeHtml(formatCreditSettlementUpdatedLabel(appSettings.creditCardSettlementUpdatedAt)) + '</div>' +
+                '</div>';
+            } else if (key === 'fixed') {
+                html += '<div class="category-tile" data-category-key="' + safeKey + '">' +
+                    '<div class="category-tile-label">' + escapeHtml(label) + '</div>' +
+                    '<div class="' + amountValueClass + '">' + amount + '</div>' +
+                    '<div class="category-tile-breakdown">' +
+                        '<div class="category-tile-breakdown-line">מהבנק: ' + escapeHtml(formatHomeCurrency(categoryTileFixedSplitCache.bank)) + '</div>' +
+                        '<div class="category-tile-breakdown-line">באשראי: ' + escapeHtml(formatHomeCurrency(categoryTileFixedSplitCache.credit)) + '</div>' +
+                    '</div>' +
+                '</div>';
+            } else if (key === 'loan') {
+                html += '<div class="category-tile" data-category-key="' + safeKey + '">' +
+                    '<div class="category-tile-label">' + escapeHtml(label) + '</div>' +
+                    '<div class="' + amountValueClass + '">' + amount + '</div>' +
+                    '<div class="category-tile-breakdown">' +
+                        '<div class="category-tile-breakdown-line">מהבנק: ' + escapeHtml(formatHomeCurrency(categoryTileLoanSplitCache.bank)) + '</div>' +
+                        '<div class="category-tile-breakdown-line">דרך תלוש השכר: ' + escapeHtml(formatHomeCurrency(categoryTileLoanSplitCache.payroll)) + '</div>' +
+                    '</div>' +
                 '</div>';
             } else {
                 html += '<div class="category-tile" data-category-key="' + safeKey + '">' +
@@ -4974,6 +5054,8 @@
         categoryTileTotalsCache = getCategoryMonthlyTotals(items, categoryConfig);
         categoryTileVariableRemainingCache = getVariableRemainingBalance(items);
         categoryTileLoanBalanceCache = getLoansBalanceSummary(items);
+        categoryTileFixedSplitCache = getFixedBankVsCreditSplit(items);
+        categoryTileLoanSplitCache = getLoanBankVsPayrollSplit(items);
         var gridEl = document.getElementById('category-tiles-grid');
         if (gridEl) { gridEl.innerHTML = renderCategoryTileGridHtml(order, categoryTileTotalsCache); }
     }
@@ -5422,6 +5504,20 @@
         if (startGroup) { startGroup.style.display = (frequencyValue === 'bimonthly') ? 'block' : 'none'; }
     }
 
+    // Version 1.4.8: shared 2-option loan-source <select> markup for both the add and edit forms —
+    // reuses resolveLoanSource() (the single source of truth for what counts as "payroll") to
+    // decide which option is pre-selected, so a legacy free-text where value and a real 'bank'
+    // value both correctly reopen with "חשבון בנק" selected, never a blank/wrong selection. The
+    // option VALUES are the exact Hebrew strings themselves (matching this field's own existing
+    // free-text convention — no new bank/credit-style English enum is introduced for loans).
+    function buildLoanSourceSelectHtml(selectId, currentWhere) {
+        var isPayroll = (resolveLoanSource({ where: currentWhere }) === 'payroll');
+        return '<select id="' + selectId + '">' +
+            '<option value="חשבון בנק"' + (!isPayroll ? ' selected' : '') + '>חשבון בנק</option>' +
+            '<option value="דרך תלוש השכר"' + (isPayroll ? ' selected' : '') + '>דרך תלוש השכר</option>' +
+            '</select>';
+    }
+
     // Shared 3-option frequency <select> markup for both the add and edit forms — one place
     // deciding which of the three values is pre-selected, so the two forms can never disagree.
     function buildFixedFrequencySelectHtml(selectId, onchangeStartGroupId, currentFrequency) {
@@ -5527,7 +5623,7 @@
         } else if (item.type === 'loan') {
             html += '<div class="tx-edit-group"><label>סכום מקור</label><input type="number" id="edit-original-' + id + '" value="' + (item.originalAmount || '') + '"></div>' +
                 '<div class="tx-edit-group"><label>החזר חודשי</label><input type="number" id="edit-amount-' + id + '" value="' + item.amount + '"></div>' +
-                '<div class="tx-edit-group"><label>היכן יורד</label><input type="text" id="edit-where-' + id + '" value="' + escapeHtml(item.where || '') + '"></div>' +
+                '<div class="tx-edit-group"><label>היכן יורד</label>' + buildLoanSourceSelectHtml('edit-where-' + id, item.where) + '</div>' +
                 '<div class="tx-edit-group"><label>ריבית (%)</label><input type="number" step="0.01" id="edit-interest-' + id + '" value="' + (item.interest || '') + '"></div>' +
                 '<div class="tx-edit-group"><label>יום בחודש</label><input type="number" id="edit-day-' + id + '" min="1" max="31" value="' + resolveEffectiveDay(item) + '"></div>' +
                 '<div class="tx-edit-group"><label>סך תשלומים</label><input type="number" id="edit-total-' + id + '" value="' + (item.total || '') + '"></div>' +
@@ -5907,7 +6003,7 @@
             html += '<div class="tx-edit-group"><label>שם ההלוואה</label><input type="text" id="add-loan-title"></div>' +
                 '<div class="tx-edit-group"><label>סכום מקור (סך ההלוואה המקורית)</label><input type="number" id="add-loan-original" placeholder="₪"></div>' +
                 '<div class="tx-edit-group"><label>החזר חודשי</label><input type="number" id="add-loan-amount" placeholder="₪"></div>' +
-                '<div class="tx-edit-group"><label>היכן יורד</label><input type="text" id="add-loan-where"></div>' +
+                '<div class="tx-edit-group"><label>היכן יורד</label>' + buildLoanSourceSelectHtml('add-loan-where', null) + '</div>' +
                 '<div class="tx-edit-group"><label>ריבית (%)</label><input type="number" id="add-loan-interest" step="0.01"></div>' +
                 '<div class="tx-edit-group"><label>מתי יורד (יום בחודש)</label><input type="number" id="add-loan-day" min="1" max="31" value="' + addDefaultDay + '"></div>' +
                 '<div class="tx-edit-group"><label>כמה תשלומים (סך הכל)</label><input type="number" id="add-loan-total"></div>' +
