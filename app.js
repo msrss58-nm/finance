@@ -18,7 +18,7 @@
     // included by collectAppLocalStorageBackup()'s/confirmResetAllData()'s existing prefix-sweep
     // with zero changes to either function.
     var GOALS_KEY = 'family_finance_goals';
-    var APP_VERSION = '1.4.9';
+    var APP_VERSION = '1.4.10';
 
     var PRIMARY_COLOR_OPTIONS = [
         { key: 'green', label: 'ירוק' },
@@ -309,6 +309,17 @@
     // =====      existed. No financial data is ever touched by any of this.                    =====
     // =====================================================================================
     var NAV_STATE_VERSION = 1;
+    // Version 1.4.10 fix: the Home boundary used to be exactly ONE history entry deep, re-armed
+    // only reactively from inside the popstate handler that fires AFTER it is consumed. A second
+    // physical Back press dispatched before that reactive re-arm has run (very plausible in
+    // practice — Home shows no visible change on the first press, which is exactly what leads a
+    // user to press Back again immediately) had no further boundary entry to land on and fell
+    // through to whatever preceded the app, closing/minimizing it. HOME_BOUNDARY_DEPTH gives the
+    // boundary a small fixed cushion of entries instead of one, so a short burst of consecutive
+    // Back presses still lands on a boundary entry every time. The re-arm logic itself (below)
+    // did not need to change: it already restores exactly the entry it consumed, so the cushion's
+    // depth stays constant forever — bounded, never growing.
+    var HOME_BOUNDARY_DEPTH = 3;
     var transientStack = []; // { type: string, onClose: function }
     var isRestoringNavFromHistory = false;
     var navHistoryInitialized = false;
@@ -322,13 +333,16 @@
 
     // Called once, very early (before any overlay/reminder can possibly open), so the base
     // 'home' entry always exists at the bottom of the stack before anything else pushes on top
-    // of it. Standalone (installed PWA) mode gets one extra permanent "boundary" entry beneath
-    // it — see handleNavPopState()'s boundary branch for why. A normal browser tab gets none,
-    // so its own prior-page Back history is never trapped or hidden.
+    // of it. Standalone (installed PWA) mode gets HOME_BOUNDARY_DEPTH extra permanent "boundary"
+    // entries beneath it — see handleNavPopState()'s boundary branch for why. A normal browser
+    // tab gets none, so its own prior-page Back history is never trapped or hidden.
     function initNavHistory() {
         try {
             if (isStandaloneDisplayMode()) {
                 history.replaceState({ v: NAV_STATE_VERSION, boundary: true }, '');
+                for (var i = 1; i < HOME_BOUNDARY_DEPTH; i++) {
+                    history.pushState({ v: NAV_STATE_VERSION, boundary: true }, '');
+                }
                 history.pushState({ v: NAV_STATE_VERSION, screen: 'home' }, '');
             } else {
                 history.replaceState({ v: NAV_STATE_VERSION, screen: 'home' }, '');
@@ -374,10 +388,13 @@
             return;
         }
         if (state && state.boundary) {
-            // Standalone-only Home boundary: re-establish the exact same one-entry boundary
-            // instead of letting Back fall through to whatever hosted the installed PWA (a blank
-            // page, the OS launcher, etc.) — bounded depth, never grows, never blocks a real
-            // OS-level close/task-switch (those bypass JavaScript entirely).
+            // Standalone-only Home boundary: whichever of the HOME_BOUNDARY_DEPTH boundary
+            // entries Back just landed on, replace exactly that one consumed entry with a fresh
+            // 'home' entry — the entries still further below (untouched, since pushState only
+            // ever truncates what is FORWARD of the current position) keep the cushion at its
+            // original fixed depth forever. Never lets Back fall through to whatever hosted the
+            // installed PWA (a blank page, the OS launcher, etc.); never blocks a real OS-level
+            // close/task-switch (those bypass JavaScript entirely).
             try { history.pushState({ v: NAV_STATE_VERSION, screen: 'home' }, ''); } catch (err) { }
             isRestoringNavFromHistory = true;
             try { showScreen('home'); } finally { isRestoringNavFromHistory = false; }
