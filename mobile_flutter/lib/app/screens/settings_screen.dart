@@ -1,6 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../data/backup/backup_transfer_service.dart';
+import '../../data/files/backup_file_gateway.dart';
+import '../../data/files/file_picker_backup_file_gateway.dart';
 import '../../domain/models/app_settings.dart';
 import '../../security/auth_controller.dart';
 import '../../security/pin_service.dart';
@@ -8,17 +13,26 @@ import '../../security/pin_verifier.dart';
 import '../../security/security_errors.dart';
 import '../security/auth_scope.dart';
 import '../services/app_services_scope.dart';
+import '../services/data_revision.dart';
 import '../widgets/async_screen_body.dart';
 
 /// Settings screen.
 ///
 /// Milestone 6 shipped this as a read-only display of every setting the
-/// migrated repository/domain layer supports. Milestone 7 adds exactly ONE
-/// write path — PIN setup / change / disable (section 10, "integrate
-/// minimally into Settings") — and nothing else. File import/export UI and
-/// general settings editing still belong to later milestones.
+/// migrated repository/domain layer supports. Milestone 7 added exactly ONE
+/// write path — PIN setup / change / disable. Milestone 8 adds the second:
+/// native backup export/import, which is pure I/O over the already-approved
+/// backup contract (see [BackupTransferService]). General settings editing
+/// still belongs to a later milestone.
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({
+    super.key,
+    this.fileGateway = const FilePickerBackupFileGateway(),
+  });
+
+  /// Injectable so widget tests can drive the export/import flows without a
+  /// platform channel. Production uses the real native picker.
+  final BackupFileGateway fileGateway;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -27,12 +41,203 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   Future<AppSettings>? _future;
 
+  /// Milestone 8's export/import state lives HERE, above the settings
+  /// FutureBuilder, on purpose.
+  ///
+  /// A successful restore re-issues [_future]; while that reload is in
+  /// flight the FutureBuilder shows its loading chrome and the settings
+  /// subtree is torn down. If the backup section owned this state, the
+  /// result message would be destroyed by the very reload it triggered — and
+  /// an operation still in flight would lose its `mounted` widget. Owning it
+  /// one level up also keeps the existing rendering contract of this screen
+  /// (a failed settings load still shows the error INSTEAD of the list)
+  /// exactly as it was.
+  BackupTransferService? _backupService;
+  _BackupUiState _backupState = _BackupUiState.idle;
+  String _backupMessage = '';
+
+  /// Settings re-read after a successful restore.
+  ///
+  /// Rendered INSTEAD of the initial [_future] once it is set. Re-issuing
+  /// the future instead would put the FutureBuilder back into its loading
+  /// state for a frame, which destroys the ListView element — losing the
+  /// scroll position and hiding the result message the user is waiting to
+  /// read. The initial load still uses the FutureBuilder, so this screen's
+  /// existing loading/error contract is unchanged.
+  AppSettings? _reloadedSettings;
+
+  /// Guard against double-submit — including while the modal confirmation is
+  /// open. Deliberately separate from [_backupState] so the busy spinner can
+  /// stop while the dialog is up without re-enabling the buttons underneath.
+  bool _backupBusy = false;
+
   // See HomeScreen's identical didChangeDependencies() note: an
   // InheritedWidget lookup must not happen in initState().
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _future ??= AppServicesScope.of(context).settings.load();
+    final services = AppServicesScope.of(context);
+    _future ??= services.settings.load();
+    _backupService ??= BackupTransferService(
+      repository: services.backup,
+      gateway: widget.fileGateway,
+    );
+  }
+
+  /// Terminal state: the operation is over, controls are re-enabled.
+  void _setBackup(_BackupUiState state, [String message = '']) {
+    if (!mounted) return;
+    setState(() {
+      _backupBusy = false;
+      _backupState = state;
+      _backupMessage = message;
+    });
+  }
+
+  /// Non-terminal state: an operation is still in flight, controls stay
+  /// disabled.
+  void _setBackupInFlight(_BackupUiState state, String message) {
+    if (!mounted) return;
+    setState(() {
+      _backupBusy = true;
+      _backupState = state;
+      _backupMessage = message;
+    });
+  }
+
+  static _BackupUiState _stateForFailure(BackupTransferFailureKind kind) =>
+      switch (kind) {
+        BackupTransferFailureKind.validation => _BackupUiState.validationFailure,
+        BackupTransferFailureKind.fileIo => _BackupUiState.fileIoFailure,
+        BackupTransferFailureKind.restore => _BackupUiState.restoreFailure,
+        BackupTransferFailureKind.storage => _BackupUiState.fileIoFailure,
+      };
+
+  Future<void> _exportBackup() async {
+    final service = _backupService;
+    if (_backupBusy || service == null) return;
+    _setBackupInFlight(_BackupUiState.working, 'מייצא גיבוי…');
+
+    final BackupExportOutcome outcome;
+    try {
+      outcome = await service.exportToFile();
+    } catch (_) {
+      // Never surface an untyped error's text (not ours, not guaranteed
+      // secret-free) and never report success.
+      _setBackup(_BackupUiState.fileIoFailure, 'ייצוא הגיבוי נכשל');
+      return;
+    }
+    if (!mounted) return;
+
+    switch (outcome) {
+      case BackupExportSaved(fileName: final name):
+        _setBackup(_BackupUiState.success, 'הגיבוי נשמר: $name');
+      case BackupExportCancelled():
+        _setBackup(_BackupUiState.cancelled, 'הייצוא בוטל — לא נשמר קובץ');
+      case BackupExportFailed(kind: final kind, message: final message):
+        _setBackup(_stateForFailure(kind), message);
+    }
+  }
+
+  Future<void> _importBackup() async {
+    final service = _backupService;
+    if (_backupBusy || service == null) return;
+    _setBackupInFlight(_BackupUiState.working, 'קורא את קובץ הגיבוי…');
+
+    // Phase 1: pick + read + decode + FULL validation. Writes nothing —
+    // there is no write path reachable from prepareImport().
+    final BackupImportPreparation prepared;
+    try {
+      prepared = await service.prepareImport();
+    } catch (_) {
+      _setBackup(_BackupUiState.fileIoFailure, 'קריאת קובץ הגיבוי נכשלה');
+      return;
+    }
+    if (!mounted) return;
+
+    final BackupImportReady ready;
+    switch (prepared) {
+      case BackupImportReady():
+        ready = prepared;
+      case BackupImportCancelled():
+        _setBackup(_BackupUiState.cancelled, 'הייבוא בוטל — לא בוצע שינוי בנתונים');
+        return;
+      case BackupImportRejected(kind: final kind, message: final message):
+        _setBackup(_stateForFailure(kind), message);
+        return;
+    }
+
+    // Phase 2: explicit confirmation. Until this returns non-null, nothing
+    // has been written and nothing will be.
+    _setBackupInFlight(_BackupUiState.awaitingConfirmation, 'ממתין לאישור…');
+    final confirmation = await showDialog<_RestoreConfirmation>(
+      context: context,
+      builder: (dialogContext) => _RestoreConfirmDialog(ready: ready),
+    );
+    if (!mounted) return;
+    if (confirmation == null) {
+      _setBackup(_BackupUiState.cancelled, 'הייבוא בוטל — לא בוצע שינוי בנתונים');
+      return;
+    }
+
+    _setBackupInFlight(_BackupUiState.working, 'משחזר נתונים…');
+    final BackupRestoreResult result;
+    try {
+      result = await service.commitImport(
+        ready,
+        deleteExistingGoalsForLegacyBackup: confirmation.deleteExistingGoals,
+      );
+    } catch (_) {
+      _setBackup(_BackupUiState.restoreFailure, 'השחזור נכשל');
+      return;
+    }
+    if (!mounted) return;
+
+    switch (result) {
+      case BackupRestoreSucceeded(writtenKeys: final keys):
+        // Only now — after the restore actually reported success — is the
+        // rest of the app told the data was replaced, and only now is
+        // success shown.
+        DataRevisionScope.readOf(context)?.markDataReplaced();
+        await _applyRestoredSettings(keys.length);
+      case BackupRestoreFailed(message: final message):
+        _setBackup(_BackupUiState.restoreFailure, message);
+    }
+  }
+
+  /// Re-reads the settings the restore just wrote, then reports success in
+  /// one single frame — so the screen never flashes its loading chrome and
+  /// never loses the user's scroll position or the result message.
+  Future<void> _applyRestoredSettings(int writtenKeyCount) async {
+    AppSettings? reloaded;
+    Object? reloadError;
+    try {
+      reloaded = await AppServicesScope.of(context).settings.load();
+    } catch (e) {
+      reloadError = e;
+    }
+    if (!mounted) return;
+
+    setState(() {
+      _backupBusy = false;
+      _backupState = _BackupUiState.success;
+      _backupMessage = 'השחזור הושלם ($writtenKeyCount מפתחות)';
+      if (reloaded != null) {
+        _reloadedSettings = reloaded;
+      } else {
+        // The restore itself succeeded, but the storage layer then failed to
+        // read back what it wrote. That is a real failure and must be shown
+        // through the existing error chrome rather than by leaving values on
+        // screen that are no longer known to be current.
+        _reloadedSettings = null;
+        final failed = Future<AppSettings>.error(reloadError!);
+        // Mark it observed so it is never reported as an unhandled async
+        // error before the FutureBuilder subscribes (same pattern as
+        // AppBootstrap's services future).
+        unawaited(failed.then((_) {}, onError: (Object _, StackTrace _) {}));
+        _future = failed;
+      }
+    });
   }
 
   @override
@@ -40,21 +245,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       key: const ValueKey('screen-loaded-settings'),
       appBar: AppBar(title: const Text('הגדרות')),
+      // The FutureBuilder stays in the tree unconditionally even when the
+      // override is in use: keeping the widget SHAPE identical is what lets
+      // Flutter reuse the ListView element across a post-restore refresh,
+      // preserving the scroll position instead of jumping back to the top.
       body: FutureBuilder<AppSettings>(
         future: _future,
-        builder: (context, snapshot) => buildAsyncScreenBody<AppSettings>(
-          snapshot,
-          data: (settings) => _SettingsList(settings: settings),
-        ),
+        builder: (context, snapshot) {
+          final reloaded = _reloadedSettings;
+          if (reloaded != null) return _buildList(reloaded);
+          return buildAsyncScreenBody<AppSettings>(snapshot, data: _buildList);
+        },
       ),
     );
   }
+
+  Widget _buildList(AppSettings settings) => _SettingsList(
+        settings: settings,
+        backupState: _backupState,
+        backupMessage: _backupMessage,
+        backupBusy: _backupBusy,
+        onExport: _exportBackup,
+        onImport: _importBackup,
+      );
 }
 
 class _SettingsList extends StatelessWidget {
-  const _SettingsList({required this.settings});
+  const _SettingsList({
+    required this.settings,
+    required this.backupState,
+    required this.backupMessage,
+    required this.backupBusy,
+    required this.onExport,
+    required this.onImport,
+  });
 
   final AppSettings settings;
+  final _BackupUiState backupState;
+  final String backupMessage;
+  final bool backupBusy;
+  final VoidCallback onExport;
+  final VoidCallback onImport;
 
   @override
   Widget build(BuildContext context) {
@@ -102,10 +333,19 @@ class _SettingsList extends StatelessWidget {
         // presented as if it were the live lock state. The real state comes
         // from PinService, the single source of truth for PIN configuration.
         const _PinSecuritySection(),
+        const SizedBox(height: 16),
+        _BackupSection(
+          state: backupState,
+          message: backupMessage,
+          busy: backupBusy,
+          onExport: onExport,
+          onImport: onImport,
+        ),
       ],
     );
   }
 }
+
 
 /// Which inline PIN form (if any) is currently open.
 enum _PinFormMode { none, setup, change, disable }
@@ -445,6 +685,181 @@ class _PinField extends StatelessWidget {
           ),
         ),
       );
+}
+
+/// Every state the backup section can be in. Kept explicit (rather than a
+/// bare "error string") because the milestone requires the three failure
+/// kinds to stay distinguishable: a file that is not a valid backup, a
+/// restore that failed, and the native file layer failing are three
+/// different situations for the user.
+enum _BackupUiState {
+  idle,
+  working,
+  awaitingConfirmation,
+  cancelled,
+  success,
+  validationFailure,
+  restoreFailure,
+  fileIoFailure,
+}
+
+/// Milestone 8's Settings controls: native backup export and import.
+///
+/// Pure presentation. Every decision about what a backup is, whether it is
+/// valid and how it is written belongs to [BackupTransferService] ->
+/// `BackupRepository`; none of that logic is duplicated here, and this
+/// widget never touches a repository, the database or the PIN. Its state is
+/// owned by [_SettingsScreenState] so that a post-restore reload of the
+/// settings cannot destroy it.
+class _BackupSection extends StatelessWidget {
+  const _BackupSection({
+    required this.state,
+    required this.message,
+    required this.busy,
+    required this.onExport,
+    required this.onImport,
+  });
+
+  final _BackupUiState state;
+  final String message;
+  final bool busy;
+  final VoidCallback onExport;
+  final VoidCallback onImport;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SectionHeader('גיבוי ושחזור'),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: FilledButton(
+                  key: const ValueKey('settings-backup-export-button'),
+                  onPressed: busy ? null : onExport,
+                  child: const Text('ייצוא גיבוי'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton(
+                  key: const ValueKey('settings-backup-import-button'),
+                  onPressed: busy ? null : onImport,
+                  child: const Text('ייבוא גיבוי'),
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (state != _BackupUiState.idle)
+          Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 4),
+            child: Row(
+              children: [
+                // The spinner runs only during genuine work — never while the
+                // modal confirmation is waiting on the user.
+                if (state == _BackupUiState.working) ...[
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                Expanded(
+                  child: Text(
+                    message,
+                    key: const ValueKey('settings-backup-status'),
+                    style: TextStyle(color: _messageColor(context)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Color? _messageColor(BuildContext context) => switch (state) {
+        _BackupUiState.validationFailure ||
+        _BackupUiState.restoreFailure ||
+        _BackupUiState.fileIoFailure =>
+          Theme.of(context).colorScheme.error,
+        _ => null,
+      };
+}
+
+
+/// What the user confirmed. A `null` result (dialog dismissed/cancelled)
+/// means "do nothing", which is why this is a value rather than a bool.
+class _RestoreConfirmation {
+  const _RestoreConfirmation({required this.deleteExistingGoals});
+  final bool deleteExistingGoals;
+}
+
+class _RestoreConfirmDialog extends StatefulWidget {
+  const _RestoreConfirmDialog({required this.ready});
+  final BackupImportReady ready;
+
+  @override
+  State<_RestoreConfirmDialog> createState() => _RestoreConfirmDialogState();
+}
+
+class _RestoreConfirmDialogState extends State<_RestoreConfirmDialog> {
+  /// Deliberately unchecked by default, exactly as the Web app's own
+  /// legacy-restore checkbox is: restoring a pre-Goals backup must not
+  /// silently delete goals the user created since.
+  bool _deleteExistingGoals = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final ready = widget.ready;
+    return AlertDialog(
+      key: const ValueKey('backup-import-confirm-dialog'),
+      title: const Text('שחזור מגיבוי'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('קובץ: ${ready.fileName}'),
+          const SizedBox(height: 8),
+          Text(
+            'השחזור יחליף את הנתונים הפיננסיים הקיימים באפליקציה '
+            'בנתונים מתוך קובץ הגיבוי (${ready.keyCount} מפתחות). '
+            'לא ניתן לבטל את הפעולה לאחר אישור.',
+          ),
+          if (!ready.isGoalsAware) ...[
+            const SizedBox(height: 8),
+            const Text('הגיבוי נוצר לפני שהיו יעדים, ולכן היעדים הקיימים יישמרו.'),
+            CheckboxListTile(
+              key: const ValueKey('backup-import-delete-goals-checkbox'),
+              contentPadding: EdgeInsets.zero,
+              value: _deleteExistingGoals,
+              onChanged: (v) => setState(() => _deleteExistingGoals = v ?? false),
+              title: const Text('מחק את היעדים הקיימים'),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          key: const ValueKey('backup-import-confirm-cancel'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('ביטול'),
+        ),
+        FilledButton(
+          key: const ValueKey('backup-import-confirm-approve'),
+          onPressed: () => Navigator.of(context).pop(
+            _RestoreConfirmation(deleteExistingGoals: _deleteExistingGoals),
+          ),
+          child: const Text('שחזר'),
+        ),
+      ],
+    );
+  }
 }
 
 class _SectionHeader extends StatelessWidget {

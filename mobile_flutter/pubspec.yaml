@@ -48,6 +48,14 @@ dependencies:
   flutter_secure_storage: ^11.0.0
   cryptography: ^2.9.0
 
+  # Milestone 8 (native file import/export), added under explicit user
+  # approval and pinned to the exact approved version:
+  #  - file_picker: the platform-native document picker. On Android it goes
+  #    through the Storage Access Framework (ACTION_CREATE_DOCUMENT /
+  #    ACTION_OPEN_DOCUMENT), so the app never writes to /sdcard directly and
+  #    needs no broad storage permission; on iOS it is UIDocumentPicker.
+  file_picker: 12.2.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

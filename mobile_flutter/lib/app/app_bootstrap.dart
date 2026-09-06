@@ -18,6 +18,7 @@ import 'security/auth_gate.dart';
 import 'security/auth_scope.dart';
 import 'services/app_services.dart';
 import 'services/app_services_scope.dart';
+import 'services/data_revision.dart';
 
 const String _kDatabaseFileName = 'familyfinance.sqlite';
 
@@ -81,6 +82,10 @@ class _AppBootstrapState extends State<AppBootstrap> {
   late final AuthController _authController;
   late final AppLockLifecycleObserver _lifecycleObserver;
 
+  /// Milestone 8: the single, app-run-scoped "the stored data was replaced"
+  /// signal. Owned and disposed here — not a global, not a singleton.
+  final DataRevision _dataRevision = DataRevision();
+
   @override
   void initState() {
     super.initState();
@@ -118,6 +123,7 @@ class _AppBootstrapState extends State<AppBootstrap> {
   void dispose() {
     WidgetsBinding.instance.removeObserver(_lifecycleObserver);
     _authController.dispose();
+    _dataRevision.dispose();
     super.dispose();
   }
 
@@ -165,7 +171,10 @@ class _AppBootstrapState extends State<AppBootstrap> {
               key: const ValueKey('bootstrap-ready'),
               child: AppServicesScope(
                 services: snapshot.data!,
-                child: const NavigationShell(),
+                child: DataRevisionScope(
+                  revision: _dataRevision,
+                  child: const NavigationShell(),
+                ),
               ),
             );
           },

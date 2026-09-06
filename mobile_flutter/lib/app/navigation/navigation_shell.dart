@@ -5,17 +5,26 @@ import '../screens/forecast_screen.dart';
 import '../screens/goals_screen.dart';
 import '../screens/home_screen.dart';
 import '../screens/settings_screen.dart';
+import '../services/data_revision.dart';
 import 'app_screen.dart';
 import 'navigation_history_controller.dart';
 
 /// Maps each [AppScreen] to its real Milestone 6 screen widget. The ONLY
 /// production screen-selection logic lives here — [NavigationShell] itself
 /// stays agnostic to which widget backs a given screen.
+///
+/// Milestone 8 wraps the four read-only screens in [RefreshOnDataRevision]
+/// so a completed backup restore re-issues their cached loads. Settings is
+/// deliberately NOT wrapped: it hosts the import flow itself and refreshes
+/// its own data in place, so remounting it would destroy the very result
+/// message the user just produced. Navigation itself is untouched — this is
+/// still a plain widget-for-screen mapping.
 Widget defaultScreenBuilder(AppScreen screen) => switch (screen) {
-      AppScreen.home => const HomeScreen(),
-      AppScreen.forecast => const ForecastScreen(),
-      AppScreen.goals => const GoalsScreen(),
-      AppScreen.categories => const CategoriesScreen(),
+      AppScreen.home => const RefreshOnDataRevision(child: HomeScreen()),
+      AppScreen.forecast => const RefreshOnDataRevision(child: ForecastScreen()),
+      AppScreen.goals => const RefreshOnDataRevision(child: GoalsScreen()),
+      AppScreen.categories =>
+        const RefreshOnDataRevision(child: CategoriesScreen()),
       AppScreen.settings => const SettingsScreen(),
     };
 
