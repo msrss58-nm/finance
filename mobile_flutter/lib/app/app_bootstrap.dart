@@ -21,6 +21,7 @@ import 'security/auth_gate.dart';
 import 'security/auth_scope.dart';
 import 'services/app_services.dart';
 import 'services/app_services_scope.dart';
+import 'services/backup_transfer_coordinator.dart';
 import 'services/data_revision.dart';
 import 'services/notification_scope.dart';
 
@@ -101,6 +102,18 @@ class _AppBootstrapState extends State<AppBootstrap> {
   /// Milestone 8: the single, app-run-scoped "the stored data was replaced"
   /// signal. Owned and disposed here — not a global, not a singleton.
   final DataRevision _dataRevision = DataRevision();
+
+  /// Milestone 10 blocker fix: the backup export/import operation is owned
+  /// HERE, above everything [AuthGate] tears down when the app locks.
+  ///
+  /// That placement is the whole fix. The SAF picker backgrounds the app, the
+  /// Milestone 7 policy locks immediately (unchanged), and the navigation
+  /// shell — `SettingsScreen` included — is unmounted. An operation owned by
+  /// that screen died exactly when the picker returned; owned here it
+  /// survives, so a validated import can still be confirmed after the unlock
+  /// and an export result is still reported.
+  late final BackupTransferCoordinator _backupCoordinator =
+      BackupTransferCoordinator(dataRevision: _dataRevision);
 
   /// Milestone 9. All three are app-run-scoped and owned here, mirroring the
   /// security and financial roots: no global, no singleton, no service
@@ -198,6 +211,7 @@ class _AppBootstrapState extends State<AppBootstrap> {
     WidgetsBinding.instance.removeObserver(_lifecycleObserver);
     WidgetsBinding.instance.removeObserver(_reminderLifecycleObserver);
     _authController.dispose();
+    _backupCoordinator.dispose();
     _dataRevision.removeListener(_onDataReplaced);
     _dataRevision.dispose();
     if (_ownsPendingRoute) _pendingNotificationRoute.dispose();
@@ -250,11 +264,14 @@ class _AppBootstrapState extends State<AppBootstrap> {
                 services: snapshot.data!,
                 child: DataRevisionScope(
                   revision: _dataRevision,
-                  child: NotificationScope(
-                    scheduler: _reminderScheduler,
-                    child: PendingNotificationRouteScope(
-                      route: _pendingNotificationRoute,
-                      child: const NavigationShell(),
+                  child: BackupTransferCoordinatorScope(
+                    coordinator: _backupCoordinator,
+                    child: NotificationScope(
+                      scheduler: _reminderScheduler,
+                      child: PendingNotificationRouteScope(
+                        route: _pendingNotificationRoute,
+                        child: const NavigationShell(),
+                      ),
                     ),
                   ),
                 ),

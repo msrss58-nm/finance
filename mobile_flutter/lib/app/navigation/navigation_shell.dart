@@ -6,6 +6,7 @@ import '../screens/goals_screen.dart';
 import '../screens/home_screen.dart';
 import '../screens/settings_screen.dart';
 import '../../notifications/notification_gateway.dart';
+import '../services/backup_transfer_coordinator.dart';
 import '../services/data_revision.dart';
 import '../services/notification_scope.dart';
 import 'app_screen.dart';
@@ -81,6 +82,10 @@ class _NavigationShellState extends State<NavigationShell> {
   late final NavigationHistoryController _controller;
   late final bool _ownsController;
 
+  /// See [_consumePendingBackupReturn]: the backup return is a create-time
+  /// question, not a per-dependency-change one.
+  bool _checkedBackupReturn = false;
+
   @override
   void initState() {
     super.initState();
@@ -104,6 +109,11 @@ class _NavigationShellState extends State<NavigationShell> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _consumePendingNotificationTap();
+    _consumePendingBackupReturn();
+  }
+
+  void _consumePendingNotificationTap() {
     final pending = PendingNotificationRouteScope.maybeOf(context);
     if (pending == null || !pending.hasPending) return;
     final payload = pending.take();
@@ -113,6 +123,40 @@ class _NavigationShellState extends State<NavigationShell> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _controller.navigateTo(AppScreen.goals);
+    });
+  }
+
+  /// Milestone 10 blocker fix: brings the user back to Settings when a backup
+  /// operation resolved — or is waiting for a restore confirmation — while
+  /// this shell did not exist.
+  ///
+  /// Unlocking rebuilds the shell from scratch, which deterministically starts
+  /// at Home (see [AuthGate]'s note). That is the right default, but not when
+  /// the user's own export/import is sitting in Settings waiting to be
+  /// confirmed or read. Same mechanism as the notification tap above: a
+  /// one-shot flag, taken (never peeked), driving the SAME
+  /// [NavigationHistoryController.navigateTo] a bottom-nav tap uses — no extra
+  /// route, no duplicate history entry, no second navigator.
+  ///
+  /// Consumed AFTER the notification tap so that, in the rare case where both
+  /// are waiting, the backup wins the final tab: it may be holding a modal
+  /// decision the user explicitly started moments earlier. The tap is still
+  /// consumed exactly once either way, so it can never be replayed later.
+  ///
+  /// Checked only ONCE per shell instance, i.e. only when a shell is created:
+  /// that is precisely the "the app was locked and has just been unlocked"
+  /// moment this exists for. A shell that stays alive never re-checks, so a
+  /// completing operation can never yank a user who is deliberately on
+  /// another tab — in that case `SettingsScreen` is alive, is already showing
+  /// the result, and clears the flag itself.
+  void _consumePendingBackupReturn() {
+    if (_checkedBackupReturn) return;
+    _checkedBackupReturn = true;
+    final coordinator = BackupTransferCoordinatorScope.readOf(context);
+    if (coordinator == null || !coordinator.takeReturnToSettings()) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _controller.navigateTo(AppScreen.settings);
     });
   }
 

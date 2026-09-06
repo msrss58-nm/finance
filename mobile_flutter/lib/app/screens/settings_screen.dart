@@ -16,6 +16,7 @@ import '../../security/pin_verifier.dart';
 import '../../security/security_errors.dart';
 import '../security/auth_scope.dart';
 import '../services/app_services_scope.dart';
+import '../services/backup_transfer_coordinator.dart';
 import '../services/data_revision.dart';
 import '../services/notification_scope.dart';
 import '../widgets/async_screen_body.dart';
@@ -45,20 +46,32 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   Future<AppSettings>? _future;
 
-  /// Milestone 8's export/import state lives HERE, above the settings
-  /// FutureBuilder, on purpose.
-  ///
-  /// A successful restore re-issues [_future]; while that reload is in
-  /// flight the FutureBuilder shows its loading chrome and the settings
-  /// subtree is torn down. If the backup section owned this state, the
-  /// result message would be destroyed by the very reload it triggered — and
-  /// an operation still in flight would lose its `mounted` widget. Owning it
-  /// one level up also keeps the existing rendering contract of this screen
-  /// (a failed settings load still shows the error INSTEAD of the list)
-  /// exactly as it was.
+  /// The backup CONTRACT (validate/export/restore). Cheap to build and
+  /// stateless with respect to an operation — the operation itself is owned
+  /// by [_coordinator], not by this screen.
   BackupTransferService? _backupService;
-  _BackupUiState _backupState = _BackupUiState.idle;
-  String _backupMessage = '';
+
+  /// Milestone 10 blocker fix: the export/import operation and its result no
+  /// longer live in this `State`.
+  ///
+  /// The SAF picker backgrounds the app, Milestone 7 locks on `paused`, and
+  /// `AuthGate` then does not build its child — so this screen is UNMOUNTED
+  /// while a picker is open. Anything owned here would be destroyed exactly
+  /// when the picker returned, which is what silently discarded validated
+  /// imports and lost export results. The state now lives in a coordinator
+  /// owned by the composition root, and this screen only renders it and
+  /// presents its confirmation dialog.
+  BackupTransferCoordinator? _coordinator;
+
+  /// Used only when no [BackupTransferCoordinatorScope] is installed above
+  /// this screen (bare widget tests). It is owned — and disposed — here, and
+  /// therefore offers no lock-survival guarantee; production always finds the
+  /// scope, which `app_bootstrap_backup_scope_test` pins down.
+  BackupTransferCoordinator? _fallbackCoordinator;
+
+  /// True while THIS screen is showing the confirmation dialog, so that being
+  /// torn down mid-dialog can hand the claim back to the coordinator.
+  bool _presentingConfirmation = false;
 
   /// Settings re-read after a successful restore.
   ///
@@ -69,11 +82,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// read. The initial load still uses the FutureBuilder, so this screen's
   /// existing loading/error contract is unchanged.
   AppSettings? _reloadedSettings;
-
-  /// Guard against double-submit — including while the modal confirmation is
-  /// open. Deliberately separate from [_backupState] so the busy spinner can
-  /// stop while the dialog is up without re-enabling the buttons underneath.
-  bool _backupBusy = false;
 
   // See HomeScreen's identical didChangeDependencies() note: an
   // InheritedWidget lookup must not happen in initState().
@@ -86,146 +94,129 @@ class _SettingsScreenState extends State<SettingsScreen> {
       repository: services.backup,
       gateway: widget.fileGateway,
     );
+    if (_coordinator == null) {
+      final scoped = BackupTransferCoordinatorScope.readOf(context);
+      // The fallback still has to bump the same "data was replaced" signal the
+      // scoped coordinator does — the production one is already wired to it by
+      // the composition root, so this only wires the bare-harness case.
+      _fallbackCoordinator = scoped == null
+          ? BackupTransferCoordinator(
+              dataRevision: DataRevisionScope.readOf(context),
+            )
+          : null;
+      _coordinator = scoped ?? _fallbackCoordinator;
+      _coordinator!.addListener(_onBackupStateChanged);
+      // This screen exists, so it will present the confirmation and render the
+      // result itself — the shell's "bring the user back to Settings" flag has
+      // nothing left to do. Taking it here is what keeps that flag meaning
+      // exactly "an operation resolved while Settings did not exist", so it
+      // can never fire at some unrelated later moment.
+      _coordinator!.takeReturnToSettings();
+      // A remount after an unlock lands here: if a confirmation was still
+      // pending when the app locked, this is what puts it back on screen.
+      _maybeShowPendingConfirmation();
+    }
   }
 
-  /// Terminal state: the operation is over, controls are re-enabled.
-  void _setBackup(_BackupUiState state, [String message = '']) {
+  void _onBackupStateChanged() {
     if (!mounted) return;
-    setState(() {
-      _backupBusy = false;
-      _backupState = state;
-      _backupMessage = message;
-    });
+    setState(() {});
+    _maybeShowPendingConfirmation();
   }
 
-  /// Non-terminal state: an operation is still in flight, controls stay
-  /// disabled.
-  void _setBackupInFlight(_BackupUiState state, String message) {
-    if (!mounted) return;
-    setState(() {
-      _backupBusy = true;
-      _backupState = state;
-      _backupMessage = message;
-    });
+  @override
+  void dispose() {
+    // Torn down without a user decision — in practice AuthGate removing the
+    // tree on a lock, which destroys the open dialog too. Handing the claim
+    // back is what lets the confirmation be presented again after unlocking,
+    // instead of the picked file being silently dropped.
+    if (_presentingConfirmation) _coordinator?.releasePendingConfirmation();
+    _coordinator?.removeListener(_onBackupStateChanged);
+    _fallbackCoordinator?.dispose();
+    super.dispose();
   }
 
-  static _BackupUiState _stateForFailure(BackupTransferFailureKind kind) =>
-      switch (kind) {
-        BackupTransferFailureKind.validation => _BackupUiState.validationFailure,
-        BackupTransferFailureKind.fileIo => _BackupUiState.fileIoFailure,
-        BackupTransferFailureKind.restore => _BackupUiState.restoreFailure,
-        BackupTransferFailureKind.storage => _BackupUiState.fileIoFailure,
-      };
-
-  Future<void> _exportBackup() async {
+  /// Both controls now only START the operation. Everything that has to
+  /// survive the SAF round trip — and therefore a lock — belongs to the
+  /// coordinator, which is not torn down when this screen is.
+  void _exportBackup() {
     final service = _backupService;
-    if (_backupBusy || service == null) return;
-    _setBackupInFlight(_BackupUiState.working, 'מייצא גיבוי…');
-
-    final BackupExportOutcome outcome;
-    try {
-      outcome = await service.exportToFile();
-    } catch (_) {
-      // Never surface an untyped error's text (not ours, not guaranteed
-      // secret-free) and never report success.
-      _setBackup(_BackupUiState.fileIoFailure, 'ייצוא הגיבוי נכשל');
-      return;
-    }
-    if (!mounted) return;
-
-    switch (outcome) {
-      case BackupExportSaved(fileName: final name):
-        _setBackup(_BackupUiState.success, 'הגיבוי נשמר: $name');
-      case BackupExportCancelled():
-        _setBackup(_BackupUiState.cancelled, 'הייצוא בוטל — לא נשמר קובץ');
-      case BackupExportFailed(kind: final kind, message: final message):
-        _setBackup(_stateForFailure(kind), message);
-    }
+    final coordinator = _coordinator;
+    if (service == null || coordinator == null) return;
+    unawaited(coordinator.startExport(service));
   }
 
-  Future<void> _importBackup() async {
+  void _importBackup() {
     final service = _backupService;
-    if (_backupBusy || service == null) return;
-    _setBackupInFlight(_BackupUiState.working, 'קורא את קובץ הגיבוי…');
+    final coordinator = _coordinator;
+    if (service == null || coordinator == null) return;
+    unawaited(coordinator.startImport(service));
+  }
 
-    // Phase 1: pick + read + decode + FULL validation. Writes nothing —
-    // there is no write path reachable from prepareImport().
-    final BackupImportPreparation prepared;
-    try {
-      prepared = await service.prepareImport();
-    } catch (_) {
-      _setBackup(_BackupUiState.fileIoFailure, 'קריאת קובץ הגיבוי נכשלה');
-      return;
-    }
-    if (!mounted) return;
+  /// Presents the restore confirmation for a validated import that is waiting
+  /// — whether it became ready a moment ago, or while the app was locked and
+  /// this screen did not exist.
+  ///
+  /// Deferred to the end of the frame because this is reached from
+  /// `didChangeDependencies`/a notification callback, where pushing a route is
+  /// not allowed. The claim makes it one-shot: repeated rebuilds cannot open a
+  /// second dialog for the same pending import.
+  void _maybeShowPendingConfirmation() {
+    final coordinator = _coordinator;
+    if (coordinator == null || !coordinator.hasPendingConfirmation) return;
+    if (_presentingConfirmation) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final ready = coordinator.claimPendingConfirmation();
+      if (ready == null) return;
+      _presentingConfirmation = true;
 
-    final BackupImportReady ready;
-    switch (prepared) {
-      case BackupImportReady():
-        ready = prepared;
-      case BackupImportCancelled():
-        _setBackup(_BackupUiState.cancelled, 'הייבוא בוטל — לא בוצע שינוי בנתונים');
-        return;
-      case BackupImportRejected(kind: final kind, message: final message):
-        _setBackup(_stateForFailure(kind), message);
-        return;
-    }
-
-    // Phase 2: explicit confirmation. Until this returns non-null, nothing
-    // has been written and nothing will be.
-    _setBackupInFlight(_BackupUiState.awaitingConfirmation, 'ממתין לאישור…');
-    final confirmation = await showDialog<_RestoreConfirmation>(
-      context: context,
-      builder: (dialogContext) => _RestoreConfirmDialog(ready: ready),
-    );
-    if (!mounted) return;
-    if (confirmation == null) {
-      _setBackup(_BackupUiState.cancelled, 'הייבוא בוטל — לא בוצע שינוי בנתונים');
-      return;
-    }
-
-    _setBackupInFlight(_BackupUiState.working, 'משחזר נתונים…');
-    final BackupRestoreResult result;
-    try {
-      result = await service.commitImport(
-        ready,
-        deleteExistingGoalsForLegacyBackup: confirmation.deleteExistingGoals,
+      final confirmation = await showDialog<_RestoreConfirmation>(
+        context: context,
+        builder: (dialogContext) => _RestoreConfirmDialog(ready: ready),
       );
-    } catch (_) {
-      _setBackup(_BackupUiState.restoreFailure, 'השחזור נכשל');
-      return;
-    }
-    if (!mounted) return;
 
-    switch (result) {
-      case BackupRestoreSucceeded(writtenKeys: final keys):
-        // Only now — after the restore actually reported success — is the
-        // rest of the app told the data was replaced, and only now is
-        // success shown.
-        DataRevisionScope.readOf(context)?.markDataReplaced();
-        await _applyRestoredSettings(keys.length);
-      case BackupRestoreFailed(message: final message):
-        _setBackup(_BackupUiState.restoreFailure, message);
-    }
+      if (!mounted) {
+        // The dialog did not close on a user decision — the tree was removed
+        // underneath it (AuthGate, on a lock). dispose() has already handed
+        // the claim back, so the confirmation returns after the unlock. The
+        // import stays pending and, crucially, unwritten.
+        return;
+      }
+      _presentingConfirmation = false;
+
+      if (confirmation == null) {
+        // A real dismissal by the user (Cancel, or tapping the barrier).
+        coordinator.cancelPendingImport();
+        return;
+      }
+
+      await coordinator.commitPendingImport(
+        deleteExistingGoals: confirmation.deleteExistingGoals,
+      );
+      if (!mounted) return;
+      await _reloadSettingsAfterRestore();
+    });
   }
 
-  /// Re-reads the settings the restore just wrote, then reports success in
-  /// one single frame — so the screen never flashes its loading chrome and
-  /// never loses the user's scroll position or the result message.
-  Future<void> _applyRestoredSettings(int writtenKeyCount) async {
+  /// Re-reads the settings a restore just wrote, without flashing the loading
+  /// chrome and without losing the user's scroll position.
+  ///
+  /// If this screen is gone by the time the restore finishes, nothing is lost:
+  /// a remounted screen loads its settings from scratch anyway, and the
+  /// coordinator has already bumped [DataRevision] for the other screens.
+  Future<void> _reloadSettingsAfterRestore() async {
+    final settingsRepository = AppServicesScope.of(context).settings;
     AppSettings? reloaded;
     Object? reloadError;
     try {
-      reloaded = await AppServicesScope.of(context).settings.load();
+      reloaded = await settingsRepository.load();
     } catch (e) {
       reloadError = e;
     }
     if (!mounted) return;
 
     setState(() {
-      _backupBusy = false;
-      _backupState = _BackupUiState.success;
-      _backupMessage = 'השחזור הושלם ($writtenKeyCount מפתחות)';
       if (reloaded != null) {
         _reloadedSettings = reloaded;
       } else {
@@ -266,9 +257,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildList(AppSettings settings) => _SettingsList(
         settings: settings,
-        backupState: _backupState,
-        backupMessage: _backupMessage,
-        backupBusy: _backupBusy,
+        backupState: _coordinator?.state ?? BackupUiState.idle,
+        backupMessage: _coordinator?.message ?? '',
+        backupBusy: _coordinator?.busy ?? false,
         onExport: _exportBackup,
         onImport: _importBackup,
       );
@@ -285,7 +276,7 @@ class _SettingsList extends StatelessWidget {
   });
 
   final AppSettings settings;
-  final _BackupUiState backupState;
+  final BackupUiState backupState;
   final String backupMessage;
   final bool backupBusy;
   final VoidCallback onExport;
@@ -856,22 +847,6 @@ class _PinField extends StatelessWidget {
       );
 }
 
-/// Every state the backup section can be in. Kept explicit (rather than a
-/// bare "error string") because the milestone requires the three failure
-/// kinds to stay distinguishable: a file that is not a valid backup, a
-/// restore that failed, and the native file layer failing are three
-/// different situations for the user.
-enum _BackupUiState {
-  idle,
-  working,
-  awaitingConfirmation,
-  cancelled,
-  success,
-  validationFailure,
-  restoreFailure,
-  fileIoFailure,
-}
-
 /// Milestone 8's Settings controls: native backup export and import.
 ///
 /// Pure presentation. Every decision about what a backup is, whether it is
@@ -889,7 +864,7 @@ class _BackupSection extends StatelessWidget {
     required this.onImport,
   });
 
-  final _BackupUiState state;
+  final BackupUiState state;
   final String message;
   final bool busy;
   final VoidCallback onExport;
@@ -923,14 +898,14 @@ class _BackupSection extends StatelessWidget {
             ],
           ),
         ),
-        if (state != _BackupUiState.idle)
+        if (state != BackupUiState.idle)
           Padding(
             padding: const EdgeInsets.only(top: 4, bottom: 4),
             child: Row(
               children: [
                 // The spinner runs only during genuine work — never while the
                 // modal confirmation is waiting on the user.
-                if (state == _BackupUiState.working) ...[
+                if (state == BackupUiState.working) ...[
                   const SizedBox(
                     width: 16,
                     height: 16,
@@ -953,9 +928,9 @@ class _BackupSection extends StatelessWidget {
   }
 
   Color? _messageColor(BuildContext context) => switch (state) {
-        _BackupUiState.validationFailure ||
-        _BackupUiState.restoreFailure ||
-        _BackupUiState.fileIoFailure =>
+        BackupUiState.validationFailure ||
+        BackupUiState.restoreFailure ||
+        BackupUiState.fileIoFailure =>
           Theme.of(context).colorScheme.error,
         _ => null,
       };
