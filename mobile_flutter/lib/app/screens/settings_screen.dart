@@ -6,7 +6,10 @@ import 'package:flutter/services.dart';
 import '../../data/backup/backup_transfer_service.dart';
 import '../../data/files/backup_file_gateway.dart';
 import '../../data/files/file_picker_backup_file_gateway.dart';
+import '../../data/repositories/goals_reminder_settings_repository.dart';
 import '../../domain/models/app_settings.dart';
+import '../../notifications/goals_reminder_scheduler.dart';
+import '../../notifications/notification_gateway.dart';
 import '../../security/auth_controller.dart';
 import '../../security/pin_service.dart';
 import '../../security/pin_verifier.dart';
@@ -14,6 +17,7 @@ import '../../security/security_errors.dart';
 import '../security/auth_scope.dart';
 import '../services/app_services_scope.dart';
 import '../services/data_revision.dart';
+import '../services/notification_scope.dart';
 import '../widgets/async_screen_body.dart';
 
 /// Settings screen.
@@ -341,9 +345,174 @@ class _SettingsList extends StatelessWidget {
           onExport: onExport,
           onImport: onImport,
         ),
+        const SizedBox(height: 16),
+        const _GoalsReminderSection(),
       ],
     );
   }
+}
+
+/// Milestone 9's Settings control: the monthly Goals reminder switch.
+///
+/// Owns presentation and the opt-in gesture only. Every decision about
+/// whether a reminder should exist, when it fires, and how the OS is told
+/// belongs to [GoalsReminderScheduler]; nothing about Goals funding, dates
+/// or notification scheduling is duplicated here.
+class _GoalsReminderSection extends StatefulWidget {
+  const _GoalsReminderSection();
+
+  @override
+  State<_GoalsReminderSection> createState() => _GoalsReminderSectionState();
+}
+
+class _GoalsReminderSectionState extends State<_GoalsReminderSection> {
+  GoalsReminderScheduler? _scheduler;
+  Future<_ReminderViewState>? _future;
+  bool _busy = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Assert-free probe: this screen is also mounted with no notification
+    // wiring above it (navigation-shell tests, and before the database has
+    // opened). Missing scope means "reminders unavailable" — an honest
+    // disabled state, never a claim that a reminder is scheduled.
+    final scheduler = NotificationScope.maybeOf(context);
+    if (scheduler == null || identical(scheduler, _scheduler)) return;
+    _scheduler = scheduler;
+    _future = _read(scheduler);
+  }
+
+  static Future<_ReminderViewState> _read(
+    GoalsReminderScheduler scheduler,
+  ) async {
+    final settings = await scheduler.currentSettings();
+    final permission = await scheduler.currentPermission();
+    return _ReminderViewState(settings: settings, permission: permission);
+  }
+
+  Future<void> _toggle(bool enable) async {
+    final scheduler = _scheduler;
+    if (_busy || scheduler == null) return;
+    setState(() => _busy = true);
+    // A failure here is reported through the refreshed view state, never as
+    // a fabricated success and never as a crash.
+    try {
+      if (enable) {
+        await scheduler.enable();
+      } else {
+        await scheduler.disable();
+      }
+    } catch (_) {
+      // Deliberately swallowed: the scheduler already returns typed
+      // outcomes, and an unmodelled platform throw must not take the
+      // Settings screen down with it.
+    }
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _future = _read(scheduler);
+    });
+  }
+
+  Future<void> _openSystemSettings() async {
+    final scheduler = _scheduler;
+    if (_busy || scheduler == null) return;
+    setState(() => _busy = true);
+    try {
+      await scheduler.gateway.openSystemNotificationSettings();
+    } catch (_) {
+      // Not being able to open the OS screen is not an app error.
+    }
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _future = _read(scheduler);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final future = _future;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SectionHeader('תזכורות'),
+        if (future == null)
+          const _InfoTile(
+            key: ValueKey('settings-goals-reminder-status'),
+            label: 'תזכורת יעדים חודשית',
+            value: 'לא זמין',
+          )
+        else
+          FutureBuilder<_ReminderViewState>(
+            future: future,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const _InfoTile(
+                  key: ValueKey('settings-goals-reminder-status'),
+                  label: 'תזכורת יעדים חודשית',
+                  value: 'טוען…',
+                );
+              }
+              if (snapshot.hasError || !snapshot.hasData) {
+                return const _InfoTile(
+                  key: ValueKey('settings-goals-reminder-status'),
+                  label: 'תזכורת יעדים חודשית',
+                  value: 'לא זמין',
+                );
+              }
+              return _buildLoaded(context, snapshot.data!);
+            },
+          ),
+      ],
+    );
+  }
+
+  Widget _buildLoaded(BuildContext context, _ReminderViewState view) {
+    final denied =
+        view.permission == NotificationPermissionStatus.denied;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Card(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          child: SwitchListTile(
+            key: const ValueKey('settings-goals-reminder-switch'),
+            title: const Text('תזכורת יעדים חודשית'),
+            subtitle: const Text('תזכורת ב-2 בכל חודש להעברת הסכום לחיסכון'),
+            value: view.settings.enabled,
+            onChanged: _busy ? null : _toggle,
+          ),
+        ),
+        if (view.settings.enabled && denied) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 4),
+            child: Text(
+              'ההתראות חסומות בהגדרות המכשיר, ולכן התזכורת לא תישלח.',
+              key: const ValueKey('settings-goals-reminder-permission-denied'),
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
+          OutlinedButton(
+            key: const ValueKey('settings-goals-reminder-open-system'),
+            onPressed: _busy ? null : _openSystemSettings,
+            child: const Text('פתח הגדרות התראות'),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _ReminderViewState {
+  const _ReminderViewState({required this.settings, required this.permission});
+
+  final GoalsReminderSettings settings;
+
+  /// `null` when the platform state could not be read at all — rendered as
+  /// "unavailable", never as "granted".
+  final NotificationPermissionStatus? permission;
 }
 
 

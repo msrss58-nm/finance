@@ -1,4 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Milestone 9: the ONLY permission this milestone adds. It is the
+         minimum documented requirement of flutter_local_notifications for a
+         SCHEDULED notification to survive a reboot, and nothing else uses it.
+         Deliberately NOT added: SCHEDULE_EXACT_ALARM / USE_EXACT_ALARM (the
+         monthly reminder is scheduled inexactly on purpose),
+         USE_FULL_SCREEN_INTENT, and any foreground-service permission.
+         POST_NOTIFICATIONS and VIBRATE come from the plugin's own manifest. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <application
         android:label="familyfinance_pro"
         android:name="${applicationName}"
@@ -30,6 +38,23 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Milestone 9: the two receivers flutter_local_notifications
+             documents as required for scheduled notifications. Both are
+             android:exported="false". No service, no WorkManager, no
+             notification-action receiver (this app schedules no actions). -->
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+            </intent-filter>
+        </receiver>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

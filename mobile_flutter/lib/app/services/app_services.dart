@@ -4,6 +4,7 @@ import '../../data/persistence/drift/drift_key_value_store.dart';
 import '../../data/repositories/activity_log_repository.dart';
 import '../../data/repositories/category_config_repository.dart';
 import '../../data/repositories/category_tile_order_repository.dart';
+import '../../data/repositories/goals_reminder_settings_repository.dart';
 import '../../data/repositories/goals_repository.dart';
 import '../../data/repositories/items_repository.dart';
 import '../../data/repositories/loan_balance_view_repository.dart';
@@ -31,6 +32,10 @@ class AppServices {
   final LoanBalanceViewRepository loanBalanceView;
   final BackupRepository backup;
 
+  /// Milestone 9. Device-local notification preference — deliberately NOT a
+  /// `family_finance_*` key, so it never enters a backup export.
+  final GoalsReminderSettingsRepository goalsReminderSettings;
+
   const AppServices({
     required this.items,
     required this.categoryConfig,
@@ -40,6 +45,7 @@ class AppServices {
     required this.categoryTileOrder,
     required this.loanBalanceView,
     required this.backup,
+    required this.goalsReminderSettings,
   });
 
   /// Production wiring: every repository shares the ONE [DriftKeyValueStore]
@@ -57,6 +63,7 @@ class AppServices {
       categoryTileOrder: CategoryTileOrderRepositoryImpl(store),
       loanBalanceView: LoanBalanceViewRepositoryImpl(store),
       backup: BackupRepositoryImpl(store),
+      goalsReminderSettings: GoalsReminderSettingsRepositoryImpl(store),
     );
   }
 }

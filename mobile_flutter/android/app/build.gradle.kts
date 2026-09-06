@@ -16,6 +16,11 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // Milestone 9: flutter_local_notifications 10+ requires Java 8+ API
+        // desugaring for scheduled notifications on minSdk 24. This is the
+        // plugin's own documented requirement (README "Android setup"), not
+        // an unrelated build change.
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -52,4 +57,9 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Milestone 9: required by flutter_local_notifications (see compileOptions).
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

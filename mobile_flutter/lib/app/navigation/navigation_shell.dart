@@ -5,7 +5,9 @@ import '../screens/forecast_screen.dart';
 import '../screens/goals_screen.dart';
 import '../screens/home_screen.dart';
 import '../screens/settings_screen.dart';
+import '../../notifications/notification_gateway.dart';
 import '../services/data_revision.dart';
+import '../services/notification_scope.dart';
 import 'app_screen.dart';
 import 'navigation_history_controller.dart';
 
@@ -88,6 +90,31 @@ class _NavigationShellState extends State<NavigationShell> {
   }
 
   void _onHistoryChanged() => setState(() {});
+
+  /// Milestone 9: consumes a notification tap that was waiting for the app to
+  /// become viewable.
+  ///
+  /// This runs only from [didChangeDependencies], i.e. only once this widget
+  /// is actually being built — and `AuthGate` does not build its child while
+  /// the app is locked. A tap therefore cannot move the app anywhere until
+  /// after a successful unlock, and it uses the SAME
+  /// [NavigationHistoryController.navigateTo] a bottom-nav tap uses, so no
+  /// extra route and no duplicate history entry is created. The payload is
+  /// taken (not peeked), so one tap can navigate at most once.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final pending = PendingNotificationRouteScope.maybeOf(context);
+    if (pending == null || !pending.hasPending) return;
+    final payload = pending.take();
+    if (payload != kGoalsReminderPayload) return;
+    // Deferred to the end of the frame: navigateTo() notifies listeners,
+    // and calling setState during a dependency change is not allowed.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _controller.navigateTo(AppScreen.goals);
+    });
+  }
 
   @override
   void dispose() {

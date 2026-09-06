@@ -56,6 +56,20 @@ dependencies:
   #    needs no broad storage permission; on iOS it is UIDocumentPicker.
   file_picker: 12.2.0
 
+  # Milestone 9 (native local notifications), added under explicit user
+  # approval and pinned to the exact approved version:
+  #  - flutter_local_notifications: schedules the monthly Goals reminder as a
+  #    LOCAL notification only. No push, no Firebase, no background service,
+  #    no exact-alarm permission.
+  flutter_local_notifications: 22.3.0
+  #  - timezone: promoted from a transitive dependency of
+  #    flutter_local_notifications to a DIRECT one, at the exact version that
+  #    package already resolves (0.11.1). Needed because zonedSchedule() takes
+  #    a TZDateTime. No timezone-DETECTION package is used: see
+  #    FlutterLocalNotificationsGateway for why tz.UTC alone is sufficient and
+  #    DST-correct here.
+  timezone: 0.11.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
