@@ -7,6 +7,21 @@
 
 **מצב נוכחי (31/07/2026) — Version 1.0 הושלמה:** ה-Cockpit ("Preview v2") עבר **Cutover מלא** והפך ל-`index.html` הראשי והחי של האפליקציה (commit `c63a43e`, ענף `feature/cockpit-preview-v2`). כל 432 הבדיקות (367 VM/Node + 65 Edge/CDP) עברו מול ה-`index.html` הסופי. אין migration ואין שינוי סכימת נתונים — האפליקציה החדשה קוראת/כותבת לאותם מפתחות `family_finance_data`/`family_finance_cat_config` שהיו קיימים תמיד. ראו סעיפי "שלב 4.4"–"שלב 4.8" בתחתית המסמך לפירוט המלא של ה-Cutover. שלבי הרקע ("שלב האפיון לעיצוב מחדש (Cockpit)" ואילך) מתועדים למטה כפי שהיו, כהיסטוריה מלאה של איך שהתקבלה לגרסה הנוכחית.
 
+## Default Physical Android QA Device (נרשם 06/09/2026)
+- Manufacturer: Samsung
+- Model: Galaxy A54 5G
+- Device model: SM-A546E
+- Android: 16
+- API level: 36
+- adb serial/device ID: RZCX21DQYCL
+- Flutter target: android-arm64
+- Status: physical, online, authorized
+- Default QA command target: `-d RZCX21DQYCL`
+
+**מחליף את ה-Galaxy S21+ (SM-G996B / RFCR30R4LPP)** ששימש כמכשיר ה-QA הפיזי בברירת מחדל ב-Milestones 4–7. מ-06/09/2026 המכשיר לעיל הוא ברירת המחדל.
+
+**חובה לזהות מחדש לפני כל ריצת QA פיזית משמעותית** באמצעות `adb devices` ו-`flutter devices` — אין להסיק זמינות מהתיעוד הזה בלבד. המכשיר המחובר בפועל כבר התחלף באמצע עבודה יותר מפעם אחת, וריצה שכוונה למכשיר שנותק נתקעת מול יעד שאינו קיים.
+
 ## מה עובד — מאומת בהרצה בפועל (לא רק קריאת קוד)
 בתאריך 29/07/2026 בוצעה בדיקת end-to-end אמיתית: הפעלת שרת מקומי (`python -m http.server`), טעינת index.html בדפדפן Edge headless, ואינטראקציה בפועל (מילוי טפסים, לחיצות כפתורים אמיתיות, רענון דף) דרך Chrome DevTools Protocol. כל הבדיקות הבאות **עברו בהצלחה**:
 - **טעינת הדף** — נטען עד `document.readyState === 'complete'` ללא שגיאות
@@ -798,3 +813,36 @@
 אומת: מזהים כפולים בין שתי משיכות → נדחה, אפס שינוי ב-3 מפתחות (data/settings/goals, בייט-לבייט). התנגשות בין פריט רגיל למשיכה → נדחה. 7 מקרי מזהה פגום (חסר/מחרוזת/null/אפס/שלילי/שברי/גדול-מדי) → כולם נדחים; NaN/Infinity/-Infinity (לא ניתנים לייצוג ב-JSON) נבדקו בנפרד כערכים ישירים בזיכרון → כולם נדחים. גיבוי תקין עם 3 משיכות מזהה-נבדל → משוחזר תקין, שורד reload, עריכה/מחיקה משפיעות רק על הרשומה הנבחרת, היתרה סופרת כל משיכה פעם אחת. תאימות: גיבוי V2 ישן בלי משיכות עדיין תקין, שחזור V1 עדיין משמר Goals, מנגנון ה-snapshot והמחולל עדיין תקינים ללא שינוי.
 
 `APP_VERSION`/`schemaVersion` ללא שינוי (1.4.2/2). קובץ שהשתנה בסבב זה: `app.js` בלבד. אין commit.
+
+## עדכון (05/09/2026) — הפסקת ניסוי Capacitor Android + יישור ממשל CLAUDE.md לקראת תכנון Flutter
+
+**החלטת מוצר**: המסלול של עטיפת Android דרך Capacitor (bootstrap פרויקט, ניווט Back native, מספר סבבי חקירה פיזית) **הופסק**. הוחלט לתכנן במקום זאת הגירה ל-Flutter (Android+iOS אמיתי). בוצעה ביקורת הגירה מקיפה (7 מסכים, מודל נתונים מלא, לוגיקה עסקית, ניווט/transients, חוזה גיבוי/שחזור) — קריאה מלאה של `app.js`/`index.html` מקצה-לקצה, ללא דגימה.
+
+**ניקוי Capacitor**: כל שינויי `app.js`/`index.html` שהיו ייחודיים לניסוי (isCapacitorNative/screenNavStack/handleCapacitorBackButton וכל הענפים הקשורים, וגם עדכון `?v=1.4.11`) הוחזרו במלואם ל-HEAD (`git checkout`). תיקיית `mobile/` (בלתי-עקובה — פרויקט Capacitor+Android מלא, node_modules, עותקי www) נבדקה שאינה מכילה שום דבר מלבד קוד/build-artifacts של הניסוי (אין נתוני משתמש, אין נכס ייחודי), ואז הוסרה לגמרי. **`HEAD`/`origin/main` לא נגעו כלל בשום שלב של כל הסאגה הזו** — הניסוי כולו התקיים רק בקבצים מקומיים לא-עקובים/לא-commited.
+
+**יישור CLAUDE.md** (תיעוד בלבד, ללא שינוי קוד/לוגיקה עסקית): הביקורת חשפה שני פערים בין CLAUDE.md למימוש בפועל, שהוכרעו במפורש:
+1. **"Balance Anchor" (§11) מסומן כעת כ-superseded** — קוד מת בפועל מאז v1.4.1 (מתועד כך כבר בהערות הקוד עצמו וגם ב"Version 1.4.1"/"Version 1.4.2" למעלה במסמך הזה). המודל החי והמחייב הוא "יתרת התחלה" (`projectedBalanceOpeningAmount`/`projectedBalanceOpeningDate`/`projectedBalanceOpeningIncludedWithdrawalIds`), מתועד כעת כחוזה הרשמי ב-§11 (החוזה הישן נשמר בקובץ כהיסטוריה מקופלת, לא נמחק).
+2. **§10 ("Variable / installment-tracking items") תוקן** — "תשלומים שונים" עם `where==='bank'` **כן** משפיעים על תזרים מאז v1.4.5 (לא tracking-only-תמיד כפי שנוסח קודם); `where==='credit'` ופריטי legacy ללא `where` נשארים tracking-only, ולעולם לא מקבלים ברירת מחדל שקטה ל-bank.
+3. §12 עודכן כך ש"Insights" מפנה למודל "יתרת התחלה" (§11) במקום ל-"Balance Anchor" שהוסר.
+
+שלוש בעיות legacy נוספות שזוהו בביקורת (מחיקת קטגוריית `'dated'` לא חסומה, פרסור תאריך UTC לא-אחיד בפונקציות ישנות, ספירת הלוואה עתידית מוקדמת מדי ב-`getMonthSnapshot`) **נרשמו כדחויות במפורש**, מחוץ להיקף השוואת-הגירה ל-Flutter — ראו TODO.md.
+
+**מצב Git לאחר הניקוי**: `HEAD` = `origin/main` = `413fd7018db33b82bb02720d942afa3b611ff60b`, עץ עבודה נקי לחלוטין (רק שינויי התיעוד המאושרים בסבב הזה). `APP_VERSION` נשאר `1.4.10` (הערך שהיה ב-HEAD; לא עלה מ-1.4.11 כי כל שינויי הקוד שהצדיקו את העלייה הוחזרו). `schemaVersion` נשאר `2`. אין Service Worker. אין שינוי בלוגיקה פיננסית/מפתחות אחסון. לא בוצע commit/push/deploy/tag בסבב הזה.
+
+## הגירת Flutter — Milestone 4: Local Persistence Backend (06/09/2026)
+
+לאחר Milestones 1–3 (data/domain layer + מנוע גיבוי/שחזור מלא, שנסגרו CLOSED/PASS קודם באותה שיחה, 499 בדיקות) בוצע Milestone 4: בחירה ומימוש backend התמדה מקומי אמיתי ל-`mobile_flutter/`, במקום `InMemoryKeyValueStore` הזמני.
+
+**בחירת backend**: הושוו SQLite גולמי (`sqflite`)/Drift/Isar/Hive/SharedPreferences מול קריטריוני Android+iOS, מיגרציות, transactions, typed access, תאימות-גיבוי, testability, בשלות תלות. **נבחר Drift** (מבוסס `sqlite3`): מסגרת מיגרציה אמיתית עם `schemaVersion`/`MigrationStrategy`, transactions אמיתיים, ו-testability מלאה בלי אחסון-מכשיר (`NativeDatabase.memory()`/`NativeDatabase(file)`, ללא platform channels).
+
+**עיצוב סכימה**: טבלת KV שטוחה יחידה (`KvEntries(key TEXT PRIMARY KEY, value TEXT)`) — נבחרה במכוון על פני מודל יחסי (items/settings/goals כטבלאות נפרדות), כי הארכיטקטורה המאושרת כבר ממקמת נורמליזציה ושימור-raw ברמת ה-Repository (לא ברמת האחסון); פיצול יחסי היה מחייב שחזור-JSON-גולמי בייט-לבייט לצורך ייצוא גיבוי ומכפיל לוגיקת נורמליזציה קיימת ומבודקת, בלי תועלת אמיתית בהיקף הנתונים של אפליקציה משפחתית יחידה.
+
+**קבצים חדשים**: `lib/data/persistence/drift/{app_database,drift_key_value_store,database_opener}.dart`. **קבצים שהשתנו**: `lib/core/errors/data_errors.dart` (משפחת `PersistenceError` חדשה: `StorageOpenFailure`/`SchemaMigrationFailure`/`StorageReadFailure`/`StorageWriteFailure`/`StorageTransactionFailure`/`StorageCorruptionFailure`), `lib/data/persistence/key_value_store.dart` (ממשק `TransactionalKeyValueStore` חדש, תוספתי בלבד), `lib/data/backup/backup_service.dart` (`BackupRepositoryImpl.restore()` עוטף את לולאת הכתיבה ב-transaction אמיתי כש-store תומך בכך; ה-fallback ל-store לא-טרנזקציוני כמו `InMemoryKeyValueStore` נשאר זהה בייט-לביט לקוד הקודם — אומת ללא רגרסיה באף אחת מ-499 הבדיקות הקיימות).
+
+**תקלת סביבה שהתגלתה ותועדה**: הנתיב העברי של הריפו שובר את שלב ה-AOT-compile של `build_runner` (`Unable to write file: ...aot`) — אותה משפחת-תקלה כמו ה-LSP `FormatException` הידוע של `flutter analyze`, אך מוקדם יותר בשרשרת הכלים. **פתרון עובד ומאומת**: `--force-jit` (למשל `dart run build_runner build --force-jit --delete-conflicting-outputs`) עוקף לגמרי את שלב ה-AOT. חובה לזכור זאת בכל הרצת codegen עתידית בריפו הזה.
+
+**בדיקות**: נוספו 39 בדיקות חדשות (KV store בסיסי/transactions/עמידות-אחרי-restart, מיגרציה מוצלחת/כושלת/downgrade, אינטגרציית גיבוי-שחזור מול Drift אמיתי כולל rollback אמיתי תחת כשל מוזרק, concurrency/last-write-wins, פריטיות כל 7 ה-Repository מול Drift, ו-`openAppDatabase` open/corruption/migration) — **538/538 עברו**. `dart analyze` נקי. `flutter analyze` נשאר חסום מהתקלה הידועה (לא קשור למילסטון). Web source (`app.js`/`index.html`/`styles.css`) לא נגע בו כלל.
+
+**סקירת ארכיטקטורה סופית (agent נפרד, קריאה-בלבד)**: אישרה GO, עם פער אחד שנמצא ותוקן באותו סבב — `StorageOpenFailure`/`StorageCorruptionFailure` (ב-`database_opener.dart`) לא היו מכוסים בבדיקות כלל; נוסף `test/data/database_opener_test.dart` (4 בדיקות) הסוגר את הפער.
+
+Git: `mobile_flutter/` נשאר untracked כמקודם. לא בוצע commit/push/deploy/tag בסבב הזה.

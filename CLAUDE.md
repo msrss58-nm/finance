@@ -193,9 +193,11 @@ Unless explicitly superseded:
 - Loans only contribute within their active billing range.
 - Future loans must not be counted before they start.
 
-### Variable / installment-tracking items
-- variable / "תשלומים שונים" remains tracking-only for forward cash flow.
-- It must not be added to the forward cash-flow event stream unless the product/data model is deliberately redesigned, because doing so can double-count charges already represented elsewhere.
+### Variable / installment-tracking items (corrected 05/09/2026 — supersedes the original "always tracking-only" wording above)
+Live behavior, confirmed against code (as of Version 1.4.5) and approved as the authoritative product decision:
+- variable / "תשלומים שונים" with `where === 'bank'` DOES generate real forward cash-flow events (same billing-range/effective-day scheduling as loans) — this is deliberate, not tracking-only.
+- variable items with `where === 'credit'` do NOT generate an independent cash-flow event — the built-in credit-card settlement event represents them instead, avoiding double counting.
+- A legacy variable item with a missing/unrecognized `where` value remains tracking-only. Do not silently default a legacy item to `'bank'` — the absence of a value must continue to mean "not part of forward cash flow" unless the user explicitly sets it.
 
 ### One-time dated items
 - Dated items remain one-time events.
@@ -206,26 +208,35 @@ Unless explicitly superseded:
 - If there is no future income, "amount before next income" is unknown/null — not zero.
 - Negative projected balance is a warning, not a blocking state.
 
-## 11. Balance Anchor — Permanent Product Contract
+## 11. Opening Balance — Live Product Contract (supersedes the retired Balance Anchor model)
+
+**Superseded (05/09/2026):** an earlier version of this rule described a "Balance Anchor" contract (`anchorBalance`/`anchorDate`, a same-day reconciliation action called "עדכן יתרה בפועל"). A Flutter-migration audit confirmed that contract was retired from application code in Version 1.4.1 and is dead: `resolveBalanceAnchor()`/`buildCashflowSummary()` no longer exist, and no live code path reads or writes `anchorBalance`/`anchorDate`. Do not revive or reactivate this model. It is preserved below only for historical traceability — the rules under it no longer apply.
+
+<details>
+<summary>Retired Balance Anchor contract (historical, inactive)</summary>
+
+Persistent fields were stored inside the existing settings object: `anchorBalance`, `anchorDate`. Rules were: anchorBalance may validly be 0, unset and zero are distinct; the anchor meant actual balance on anchorDate; estimated-today balance = anchor balance + eligible cash-flow events strictly after anchor date through today; events on the anchor date were not applied again; forward projection started from estimated-today and applied events from tomorrow onward; catch-up (anchorDate, today] and future > today were to remain disjoint; reconciliation ("עדכן יתרה בפועל") established a new anchor using the entered actual balance and today's local calendar date.
+
+</details>
+
+### Live, authoritative mechanism: Opening Balance
 
 Persistent fields are stored inside the existing settings object:
-- anchorBalance
-- anchorDate
+- projectedBalanceOpeningAmount
+- projectedBalanceOpeningDate
+- projectedBalanceOpeningIncludedWithdrawalIds
 
 Rules:
-- anchorBalance may validly be 0.
-- unset and zero are distinct.
-- the anchor means: actual balance on anchorDate.
-- estimated today balance = anchor balance + eligible cash-flow events strictly after anchor date through today.
-- events on the anchor date are not applied again.
-- forward projection starts from estimated today and applies events from tomorrow onward.
-- catch-up (anchorDate, today] and future > today must remain disjoint.
-- reconciliation ("עדכן יתרה בפועל") establishes a new anchor using the entered actual balance and today's local calendar date.
+- projectedBalanceOpeningAmount may validly be 0; unset (null) and zero are distinct.
+- The opening balance means: actual balance on projectedBalanceOpeningDate, as entered by the user — this date is user-editable and is not automatically "today."
+- Estimated-today balance is computed by walking every calendar day from the opening date through today, summing each day's unified cash-flow events (generateCashflowEvents) into a running balance. There is no separate catch-up-vs-future split — it is one continuous day-by-day walk, reused for both "today" and the forward forecast view.
+- Events on the opening date itself are treated as already reflected in the opening amount, except a cashWithdrawal item whose id is not present in the captured projectedBalanceOpeningIncludedWithdrawalIds snapshot.
+- Saving/replacing the opening balance always overwrites amount + date + the withdrawal-id snapshot together, using whatever date the user entered in the form — do not assume it is always "today."
 
-Legacy currentBalance:
-- is read-only fallback behavior only.
-- do not invent a historical date for it.
-- do not perform an aggressive migration solely to replace it.
+Legacy currentBalance / anchorBalance / anchorDate:
+- Read-only, inert placeholders only — preserved so existing stored data is never dropped.
+- Do not write to them, read them for any calculation, or perform an aggressive migration to replace them.
+- Do not invent a historical date for the legacy currentBalance.
 
 Do not create a second independent balance/forecast calculation in the UI.
 
@@ -235,7 +246,7 @@ Do not create a second independent balance/forecast calculation in the UI.
 The Home hero/snapshot is the existing monthly "available to spend this month" concept.
 
 ### Insights
-Insights is the authoritative forward-looking cash-flow view based on the Balance Anchor and unified event engine.
+Insights is the authoritative forward-looking cash-flow view based on the Opening Balance model (Section 11) and unified event engine.
 
 It is valid for Home and Insights to show different values because they represent different concepts.
 
