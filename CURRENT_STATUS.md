@@ -846,3 +846,48 @@
 **סקירת ארכיטקטורה סופית (agent נפרד, קריאה-בלבד)**: אישרה GO, עם פער אחד שנמצא ותוקן באותו סבב — `StorageOpenFailure`/`StorageCorruptionFailure` (ב-`database_opener.dart`) לא היו מכוסים בבדיקות כלל; נוסף `test/data/database_opener_test.dart` (4 בדיקות) הסוגר את הפער.
 
 Git: `mobile_flutter/` נשאר untracked כמקודם. לא בוצע commit/push/deploy/tag בסבב הזה.
+
+## הגירת Flutter — Milestones 5–8 (06/09/2026) — כולם CLOSED / PASS
+
+**תיקון עובדתי לסעיף Milestone 4 שמעליו**: המשפט "`mobile_flutter/` נשאר untracked כמקודם" היה נכון בזמן כתיבתו ואינו נכון עוד. מ-06/09/2026 קוד ה-Flutter **מקובע ב-Git** בשני commits על ענף `main` (ראו CHANGELOG.md): `c6a7f5e` — baseline של כל העבודה עד Milestone 7 ועוד שינויי התיעוד שאושרו; `8bb270d` — Milestone 8. ההיסטוריה שמעל נשמרת כפי שהיא, ומתוקנת כאן ברשומה חדשה ולא בשכתוב.
+
+### Milestone 5 — Native Navigation Shell — CLOSED / PASS
+מעטפת ניווט Flutter אמיתית: `Navigator` יחיד (זה שה-`MaterialApp` מספק) + `IndexedStack` + `NavigationHistoryController` (`ChangeNotifier`) + `PopScope`. חמישה מסכים ראשיים (home/forecast/goals/categories/settings). התנהגות Back דטרמיניסטית: `canPop` אמת רק בשורש ההיסטוריה, ואז התנהגות השורש של אנדרואיד ממשיכה כרגיל; הקשה חוזרת על טאב פעיל אינה מוסיפה היסטוריה. **אומת פיזית על מכשיר אנדרואיד אמיתי.**
+
+### Milestone 6 — Core UI Migration — CLOSED / PASS
+חמישה מסכים אמיתיים הוגרו: בית / תחזית / יעדים / קטגוריות / הגדרות. Dependency Injection דרך `AppServices` + `AppServicesScope` (InheritedWidget) — מסך לעולם אינו בונה repository ואינו נוגע ב-Drift; אין חבילת DI צד-שלישי. כל מספר על המסכים מגיע מפונקציית domain שכבר נבדקה — אין אריתמטיקה פיננסית בשכבת ה-UI. **QA פיזי על אנדרואיד עבר.**
+
+### Milestone 7 — Security / Lifecycle / PIN — CLOSED / PASS
+נעילת PIN מקומית: 4–6 ספרות, PBKDF2-HMAC-SHA256 (חבילת `cryptography`), 100,000 איטרציות, salt 16 בתים CSPRNG שמתחדש בכל set/change, verifier 32 בתים, השוואה בזמן קבוע. ה-PIN עצמו לעולם אינו נשמר.
+אחסון מאובטח: רשומה אחת בשם `ff_pin_v1` ב-`flutter_secure_storage` בלבד (Keystore/Keychain), **מחוץ** לתחילית `family_finance_` ולכן מחוץ לסריקת הגיבוי. `AndroidOptions(resetOnError: false)` — ברירת המחדל `true` מוחקת נתונים בשגיאה והייתה מעלה את האפליקציה **לא נעולה**. כשל אחסון => `AuthUnavailable` (נעול), לעולם לא "PIN מבוטל".
+נעילה אוטומטית לפי מחזור-חיים: נועל ב-`paused`/`hidden`/`detached`; **לא** נועל ב-`inactive` (מגירת התראות/דיאלוג הרשאות/שיחה). `autoLockMinutes` של הווב נשמר אך אינו נקרא — סטייה מכוונת ומתועדת.
+`FLAG_SECURE` מוחל באנדרואיד רק כשמוגדר PIN (ערוץ יחיד ב-`MainActivity.kt`) — אומת פיזית (`fl=81810100` → `81812100`, צילום מסך יוצא שחור).
+בידוד גיבוי↔אבטחה: שכבת הגיבוי מחזיקה `KeyValueStore` בלבד ושכבת האבטחה `SecureSecretStore` בלבד; אף אחד מהטיפוסים אינו מופיע בבנאי של השני.
+**לא הועבר** מנגנון "שכחתי PIN" של הווב — היה הופך את הנעילה לעקיפה טריוויאלית. backoff בזיכרון בלבד (0/0/0/5ש/10ש/20ש/30ש תקרה), ללא lockout קבוע, מתאפס בהפעלה מחדש — פשרה מכוונת.
+**QA פיזי על אנדרואיד עבר.** 713/713 בדיקות בסגירת המילסטון.
+
+### Milestone 8 — Native File Import / Export — CLOSED / PASS
+תלות חדשה יחידה ומאושרת: **`file_picker: 12.2.0`** (נעוצה בדיוק). לא נוספה `share_plus` ולא כל חבילה אחרת.
+ייצוא/ייבוא נייטיביים דרך **SAF** באנדרואיד (`ACTION_CREATE_DOCUMENT` / `ACTION_OPEN_DOCUMENT`, דרך `documentsui`) — אין כתיבה ל-`/sdcard`, אין נתיב קשיח, **ולא נוספה שום הרשאת אחסון** (אומת ב-manifest המשולב של ה-APK: רק `INTERNET` מ-manifest הדיבאג של תבנית Flutter ו-`DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` של AndroidX).
+ארכיטקטורה: `BackupFileGateway` (הפשטה) + `FilePickerBackupFileGateway` (ייצור) + `FakeBackupFileGateway` (בדיקות) + `BackupTransferService` (מתאם). שכבת הקבצים אינה יכולה להגיע לשום repository ואינה מייבאת דבר מ-`lib/security` — הפרדה מבנית, לא מוסכמה.
+ולידציה לפני כתיבה: הייבוא מפוצל ל-`prepareImport()` (בחירה→קריאה→פענוח→ולידציה מלאה, **אפס נתיב כתיבה**) ול-`commitImport()` (הנתיב היחיד שכותב, ודורש `BackupImportReady` שרק ולידציה מוצלחת יוצרת). אישור משתמש מפורש נדרש לפני `commitImport`.
+שחזור אטומי: שימוש חוזר ב-`BackupRepository.restore()` הקיים בלבד (transaction של Drift + snapshot/rollback מפצה) — אין מימוש שחזור שני. כשל rollback מדווח כ"לא מובטח", לעולם לא כהצלחה.
+בידוד `ff_pin_v1`: לעולם אינו מיוצא ולעולם אינו משוחזר; `pinHash` הישן של הווב ממשיך לנוע כשדה נתונים בתוך `family_finance_settings` (שימור חוזה) אך לעולם אינו מפעיל/משנה PIN ב-Flutter.
+חוזה הגיבוי לא שונה: `schemaVersion` נשאר 2, המעטפת זהה, הערכים נשארים raw strings, שם הקובץ `familyfinance-backup-YYYY-MM-DD.json` ועימוד דו-רווחי — זהים לחוזה הווב.
+רענון אחרי שחזור: `DataRevision`/`DataRevisionScope` בבעלות `AppBootstrap` (לא global, לא singleton) — ארבעת מסכי התצוגה נטענים מחדש, מסך ההגדרות מרענן את עצמו במקום, ומערכת הניווט לא נבנתה מחדש. אין צורך להפעיל מחדש את האפליקציה.
+**774/774 בדיקות עברו** (713 + 61 חדשות). `dart analyze` נקי, `flutter analyze` (מנתיב ASCII) נקי.
+**QA פיזי עבר** על: Samsung Galaxy A54 5G / SM-A546E / Android 16 / API 36 / `RZCX21DQYCL` — כולל פתיחת בורר ה-SAF, יצירת קובץ אמיתי, round-trip ייצוא→שחזור→ייצוא, דחיית קובץ פגום ללא כל כתיבה, ביטול בכל שלוש נקודות הביטול, ואינטראקציית נעילה/מחזור-חיים.
+
+**אינטראקציית הבורר הנייטיבי עם נעילת ה-PIN (אומתה פיזית, התנהגות מכוונת)**: כשמוגדר PIN, פתיחת הבורר מרקעת את האפליקציה ולכן מדיניות Milestone 7 נועלת אותה; בחזרה מוצג מסך הנעילה — הבורר **אינו עוקף** את שער האבטחה. פעולת השמירה משלימה ברמת הפלטפורמה והקובץ נוצר תקין; הודעת ההצלחה בתוך האפליקציה אובדת כי `AuthGate` אינו בונה את הילד במצב נעול. בייבוא, נעילה בכל שלב לפני `commitImport` משמעה אפס כתיבות. לא נמצא קונפליקט שמצדיק היחלשות של מדיניות האבטחה, ולא בוצע בה שינוי.
+
+### חוסמי שחרור והחלטות פתוחות (נכון ל-06/09/2026, אף אחד לא נסגר)
+1. **`android:allowBackup` לא כובה** (ברירת מחדל `true`) — מסד הנתונים הפיננסי זכאי לגיבוי ענן/D2D בטקסט גלוי. חוסם production, דורש החלטת מוצר.
+2. **`pinHash` הישן של הווב** (SHA-256 ללא salt) יושב בתוך `family_finance_settings` ולכן בכל קובץ גיבוי מיוצא. לא סונן במכוון — סינון הוא שינוי סכימת גיבוי ודורש אישור נפרד.
+3. **release של אנדרואיד עדיין חתום במפתחות debug** (תבנית Flutter) — חוסם production.
+4. **פורמט `exportedAt` שונה בין Flutter לווב** — Flutter כותב ISO-8601 (`DateTime.now().toIso8601String()`), הווב כותב `YYYY-MM-DD HH:mm`. פער קיים מ-Milestone 3, השדה אינפורמטיבי ואינו מאומת בשני הצדדים. דורש הכרעה מפורשת.
+5. **iOS — NOT PHYSICALLY VERIFIED.** ארכיטקטונית מוכן (השכבה המשותפת ניטרלית לפלטפורמה; `IPHONEOS_DEPLOYMENT_TARGET = 15.0` מול הדרישה 14.0 של `file_picker_darwin`), אך לא ניתן לאמת פיזית מ-Windows. אין טענת PASS ל-iOS.
+6. **הגנת recents/פרטיות ל-iOS טרם מומשה** (דורש Swift ב-`AppDelegate`) — פריט פתוח מ-Milestone 7.
+
+### נקודת ההמשך
+**הבא בתור: Milestone 9 — Notifications / Goals Reminder. טרם התחיל.**
+מצב Git בסיום הסבב הזה: ענף `main`, `HEAD` = `8bb270d6c15c93c703d01a2978499711ba68b919`, `origin/main` = `413fd7018db33b82bb02720d942afa3b611ff60b`, ahead 2 / behind 0, עץ עבודה נקי. **לא בוצע push/merge/deploy/tag.** מקור הווב (`app.js`/`index.html`/`styles.css`) לא נגע בו כלל לאורך Milestones 5–8.

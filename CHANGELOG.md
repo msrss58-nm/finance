@@ -476,3 +476,31 @@
 ראו CURRENT_STATUS.md, סעיף "תיקון סופי (03/09/2026)", לפירוט האימות המלא.
 
 **Git**: `app.js` שונה. אין commit/push/deploy/tag.
+
+## 06/09/2026 — הגירת Flutter: baseline ראשון ב-Git (commit `c6a7f5e`)
+
+הרשומה הראשונה בקובץ הזה שאינה על אפליקציית הווב. עד לנקודה הזו כל עבודת ההגירה ל-Flutter (Milestones 1–7) חיה ב-`mobile_flutter/` כתיקייה **untracked** — בלי baseline, בלי diff בין מיילסטונים ובלי rollback. commit `c6a7f5e` ("feat: establish Flutter app baseline through security milestone") מקבע אותה: 186 קבצים, 24,307 שורות נוספו.
+
+נכלל: קוד המקור והבדיקות של `mobile_flutter/` (lib/ , test/ , integration_test/), תשתית android/ ו-ios/ של התבנית, `pubspec.yaml`/`pubspec.lock`, ושינויי התיעוד שאושרו (CLAUDE.md, CURRENT_STATUS.md, TODO.md). הוחרג דרך ה-.gitignore הקיים בלבד (לא נוצר ולא נערך אף `.gitignore`): `.dart_tool/`, `build/`, `android/.gradle/`, `android/local.properties`, `.idea/`, `*.iml`, קבצים מיוצרים ו-gradle wrapper.
+
+בוצעה ביקורת מלאה לפני ה-staging: אפס ארטיפקטי בנייה, אפס APK/AAB/keystore, אפס קובצי DB, אפס נתיבים מכונה-מקומיים, אפס חומר PIN/salt/verifier אמיתי, ואפס נתונים פיננסיים אמיתיים (כל ה-fixtures סינתטיות). מצב באותה נקודה: Milestones 4–7 סגורים, `dart analyze` נקי, `flutter analyze` (מנתיב ASCII) נקי, **713/713 בדיקות עברו**.
+
+**Git**: ענף `main`, `HEAD` = `c6a7f5e82afc0d5dd30f34b2f94ac5d656f5cfcb`, ahead 1 מול `origin/main` (`413fd70`). אין push/merge/deploy/tag. מקור הווב לא נגע בו.
+
+## 06/09/2026 — Milestone 8: ייבוא/ייצוא גיבוי נייטיביים (commit `8bb270d`)
+
+commit `8bb270d` ("feat: add native backup import and export"): 14 קבצים, 2,741 שורות נוספו, 16 נמחקו. **שכבת I/O בלבד מעל חוזה הגיבוי הקיים — הסכימה לא שונתה.**
+
+נוסף: `BackupFileGateway` (הפשטה) + `FilePickerBackupFileGateway` (ייצור, מעל `file_picker: 12.2.0` — התלות החדשה היחידה, נעוצה בדיוק), `BackupTransferService` (מתאם ייצוא/ייבוא), `DataRevision`/`DataRevisionScope` (רענון המסכים אחרי שחזור), ומקטע "גיבוי ושחזור" במסך ההגדרות (עברית RTL, דיאלוג אישור מפורש, שבעה מצבים, שומר נגד שליחה כפולה). נוספו 61 בדיקות.
+
+התנהגות נייטיבית: ייצוא וייבוא עוברים דרך **SAF** באנדרואיד (`ACTION_CREATE_DOCUMENT` / `ACTION_OPEN_DOCUMENT`) — אין כתיבה ל-`/sdcard`, **ולא נוספה שום הרשאת אחסון** (אומת ב-manifest המשולב של ה-APK).
+
+בטיחות נתונים: הייבוא מפוצל כך ש-`prepareImport()` יכול לקרוא, לפענח ולוודא אך **אין ממנו נתיב כתיבה כלל**, ו-`commitImport()` — הנתיב היחיד שכותב — דורש אובייקט שרק ולידציה מוצלחת יוצרת, ואחריו אישור משתמש מפורש. השחזור עצמו הוא שימוש חוזר ב-`BackupRepository.restore()` הקיים (transaction + rollback מפצה); אין מימוש שחזור שני. כשל rollback מדווח כ"לא מובטח", לעולם לא כהצלחה. הודעות הכשל הן ליטרלים קבועים ולעולם אינן מצטטות את תוכן הקובץ המיובא.
+
+תאימות לווב נשמרה במלואה: `schemaVersion` נשאר `2`, המעטפת `{schemaVersion, exportedAt, data}` זהה, ערכי `data` נשארים raw strings בייט-בבייט, שם הקובץ `familyfinance-backup-YYYY-MM-DD.json` והעימוד הדו-רווחי זהים ל-`exportBackupJson()` של הווב. `ff_pin_v1` לעולם אינו מיוצא ולעולם אינו משוחזר; ה-`pinHash` הישן של הווב ממשיך לנוע כשדה נתונים בתוך `family_finance_settings` (שימור חוזה) אך לעולם אינו מפעיל או משנה PIN ב-Flutter.
+
+אימות: `dart analyze` נקי, `flutter analyze` (מנתיב ASCII) נקי, **774/774 בדיקות עברו**. QA פיזי עבר על Samsung Galaxy A54 5G / SM-A546E / Android 16 / API 36 / `RZCX21DQYCL` — כולל round-trip אמיתי, דחיית קובץ פגום ללא כל כתיבה, ביטול בשלוש נקודות, ואימות שהבורר הנייטיבי אינו עוקף את נעילת ה-PIN.
+
+חוסמי שחרור פתוחים שלא נסגרו במכוון: `android:allowBackup=true`, `pinHash` הישן בתוך מטען הגיבוי, חתימת release במפתחות debug, פורמט `exportedAt` שונה מהווב, ו-iOS שלא אומת פיזית. ראו CURRENT_STATUS.md/TODO.md.
+
+**Git**: ענף `main`, `HEAD` = `8bb270d6c15c93c703d01a2978499711ba68b919`, ahead 2 מול `origin/main` (`413fd70`). אין push/merge/deploy/tag. מקור הווב (`app.js`/`index.html`/`styles.css`) לא נגע בו — hash זהה ל-HEAD.
