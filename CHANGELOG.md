@@ -504,3 +504,26 @@ commit `8bb270d` ("feat: add native backup import and export"): 14 קבצים, 2
 חוסמי שחרור פתוחים שלא נסגרו במכוון: `android:allowBackup=true`, `pinHash` הישן בתוך מטען הגיבוי, חתימת release במפתחות debug, פורמט `exportedAt` שונה מהווב, ו-iOS שלא אומת פיזית. ראו CURRENT_STATUS.md/TODO.md.
 
 **Git**: ענף `main`, `HEAD` = `8bb270d6c15c93c703d01a2978499711ba68b919`, ahead 2 מול `origin/main` (`413fd70`). אין push/merge/deploy/tag. מקור הווב (`app.js`/`index.html`/`styles.css`) לא נגע בו — hash זהה ל-HEAD.
+
+## 13/09/2026 — Stage 0: Expo Feasibility Gate — CLOSED / PASS ("feat: establish Expo feasibility baseline")
+
+**הערה:** commits `958991a` (Milestone 9, התראות) ו-`7583e24` (תיקון חוסם M10) קודמים לרשומה זו ולא תועדו כאן בזמנם. לפי אימות המשתמש: 841/841, M10 CLOSED / PASS. Flutter מוקפא כעת כ-oracle.
+
+נוסף `mobile_expo_probe/` — אב-טיפוס היתכנות מבודד ל-Expo (SDK 57, react-native 0.86.3, TypeScript strict, expo-router, מודולי Expo רשמיים בלבד). נתוני דמה בלבד, ללא לוגיקה עסקית. מכיל:
+- שער נעילה ומכונת מצבים;
+- בדיקות SQLite ל-raw, commit ו-rollback;
+- SecureStore;
+- FLAG_SECURE ו-app-switcher;
+- SAF, בורר מסמכים ושיתוף, עם state מחוץ לעץ React;
+- התראות מקומיות;
+- RTL מאולץ;
+- 5 טאבים עם Back דטרמיניסטי;
+- 12 בדיקות יחידה (`node --test`).
+
+אומת פיזית על Samsung Galaxy A54 5G / Android 16 / API 36: כל ה-probes עברו, כולל reboot והחלפת חבילה של התראה. iOS ונתיב EAS לא אומתו פיזית — שער חובה ל-Stage 1.
+
+תקלת סביבה: build נייטיבי מקומי של אנדרואיד נכשל בנתיבים עבריים (פרופיל המשתמש). עבד עם נתיבי ASCII ל-JDK ול-Gradle.
+
+תיקיית העבודה הזמנית ואפליקציית ה-probe במכשיר נוקו. `app.js`/`index.html`/`styles.css` ו-`mobile_flutter/` לא שונו. ראו CURRENT_STATUS.md לפירוט ולהחלטות הפתוחות.
+
+**Git**: commit יחיד מעל `7583e24`; ahead 6 מול `origin/main` (`413fd70`). אין push/deploy/tag. Stage 1 — NOT STARTED.

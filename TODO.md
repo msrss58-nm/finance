@@ -131,6 +131,15 @@
   5. **iOS — NOT PHYSICALLY VERIFIED**, ולא ניתן לאמת מ-Windows. ארכיטקטונית מוכן בלבד.
   6. **הגנת recents/פרטיות ל-iOS טרם מומשה** (דורש Swift ב-`AppDelegate`) — פתוח מ-Milestone 7.
 - **הבא בתור: הגירת Flutter — Milestone 9 — Notifications / Goals Reminder. טרם התחיל.** אין להתחיל לפני קבלת מפרט מלא.
+- **תיקון (13/09/2026):** השורה הקודמת היסטורית. M9 (`958991a`) ותיקון M10 (`7583e24`) מקובעים ב-Git. לפי אימות המשתמש: 841/841, M10 CLOSED / PASS. Flutter **מוקפא כ-oracle** עד cutover ל-Expo. תיעוד מפורט של M9–M10 עדיין חסר — ראו CURRENT_STATUS.md.
+- ~~**Stage 0 — Expo Feasibility Gate**~~ — **CLOSED / PASS (13/09/2026)**. אב-טיפוס `mobile_expo_probe/` אומת פיזית על Samsung A54 / Android 16. פירוט המסקנות ב-CURRENT_STATUS.md.
+- **Stage 1 — Platform Foundation — NOT STARTED.** החלטות פתוחות שיש לסגור בו:
+  1. חבילת KDF: הצעה ומדידה ב-Hermes לפני אימוץ (טרם אושרה).
+  2. התראות מקומיות בלבד: הסרה או חסימה של משטח push/FCM המיותר לפני production.
+  3. UX סופי לייצוא: sharing או בחירת תיקייה רשמיים; ללא חבילת Save As צד-שלישי בשלב זה.
+  4. מדיניות build: build מקומי בנתיבי ASCII מול EAS (EAS הוא הנתיב העיקרי).
+  5. **שער חובה:** אימות פיזי של Development Build של EAS על iPhone 13 לפני סגירת Stage 1.
+  6. (מאושר) נעילה מחמירה של RN ב-background מתקבלת; אין להוסיף native onStop בשלב זה.
 
 ## חשוב
 - **3 בעיות legacy ידועות שזוהו בביקורת הגירה ל-Flutter (05/09/2026) — נדחות במפורש, אינן חלק מיעד השוואת-הגירה (parity)**:

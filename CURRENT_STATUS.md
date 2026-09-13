@@ -891,3 +891,51 @@ Git: `mobile_flutter/` נשאר untracked כמקודם. לא בוצע commit/pus
 ### נקודת ההמשך
 **הבא בתור: Milestone 9 — Notifications / Goals Reminder. טרם התחיל.**
 מצב Git בסיום הסבב הזה: ענף `main`, `HEAD` = `8bb270d6c15c93c703d01a2978499711ba68b919`, `origin/main` = `413fd7018db33b82bb02720d942afa3b611ff60b`, ahead 2 / behind 0, עץ עבודה נקי. **לא בוצע push/merge/deploy/tag.** מקור הווב (`app.js`/`index.html`/`styles.css`) לא נגע בו כלל לאורך Milestones 5–8.
+
+## עדכון (13/09/2026) — Flutter הוקפא כ-oracle; החלטה אסטרטגית: הגירה ל-Expo
+
+**תיקון לנקודת ההמשך שמעל** (נכונה בזמן כתיבתה, אינה נכונה עוד): Milestone 9 (התראות/תזכורת יעדים, commit `958991a`) ותיקון חוסם ה-Milestone 10 (שימור זרם הגיבוי מעבר לנעילה, commit `7583e24`) כבר מקובעים ב-Git. לפי אימות שמסר המשתמש: **841/841 בדיקות, Milestone 10 CLOSED / PASS, QA פיזי באנדרואיד PASS, iOS לא אומת פיזית**. הבדיקות לא הורצו מחדש במסגרת Stage 0. תיעוד מפורט של M9–M10 עדיין חסר בקבצים אלה (פער תיעודי).
+
+**החלטות אסטרטגיות מאושרות:**
+1. ההגירה ממשיכה ל-React Native + Expo.
+2. EAS הוא נתיב ה-build העיקרי לאנדרואיד ול-iOS. Windows נשארת מכונת הפיתוח הראשית.
+3. `mobile_flutter/` מוקפא כמקור-ייחוס מאומת (oracle) עד cutover ל-Expo.
+4. הווב נשאר Production עד אישור cutover מפורש.
+5. יעד Expo: parity מלא, כולל זרימות הכתיבה של הווב.
+6. מקורות סמכות: הווב קובע כללים עסקיים, זרימות כתיבה וחוזה גיבוי. Flutter קובע אבטחה והתנהגות נייטיבית מאושרת. CLAUDE.md והחלטות מוצר מפורשות גוברים.
+
+## Stage 0 — Expo Feasibility Gate — CLOSED / PASS (13/09/2026)
+
+אב-טיפוס מבודד `mobile_expo_probe/`: נתוני דמה בלבד, ללא לוגיקה עסקית, ללא נגיעה בווב או ב-Flutter. Expo SDK 57, react-native 0.86.3, TypeScript strict, מודולי Expo רשמיים בלבד.
+
+**מסקנות מאומתות (מכשיר פיזי: Samsung Galaxy A54 5G / SM-A546E / Android 16 / API 36):**
+- React Native + Expo ישים עבור FamilyFinance PRO. לא נמצאה דרישה קריטית שאינה ישימה.
+- פיתוח מ-Windows עובד: npm, Metro, Hermes, TypeScript, lint ו-expo-doctor פועלים גם מנתיב הריפו העברי.
+- **build נייטיבי מקומי של אנדרואיד דורש נתיבים בתווי ASCII**, כי נתיב פרופיל המשתמש העברי משובש ב-Gradle ו-CMake/prefab. זה נכון לעותק העבודה, ל-JDK ולתיקיית Gradle. EAS הוא נתיב ה-build המיועד.
+- SQLite (`expo-sqlite`): שמירת מחרוזות raw בייט-לבייט, commit, rollback, קריאה דטרמיניסטית ושרידות אחרי restart ו-reboot — ישים.
+- SecureStore (`expo-secure-store`): רשומת PIN סינתטית נשמרת מחוץ ל-SQLite ומחוץ לגיבוי, ושורדת restart ו-reboot — ישים.
+- נעילת מחזור-חיים: שער לפני תוכן רגיש; המסכים המוגנים מוסרים (unmount) בנעילה; אתחול קר נפתח נעול — ישים.
+- פרטיות מסך/recents באנדרואיד: `FLAG_SECURE` רק כשמוגדר PIN, צילום מסך שחור ו-recents ריק — ישים ומאומת.
+- פרטיות app-switcher/מסך ב-iOS: ישימה ארכיטקטונית במודול רשמי (`expo-screen-capture`). **לא אומתה פיזית.**
+- ייבוא/ייצוא ב-SAF ובבורר מסמכים: ישים במודולים רשמיים, **עם הבדלי UX מ-"Save As" של Flutter** (בחירת תיקייה או חלון שיתוף).
+- זרם picker ממתין שורד נעילה, כי ה-state מוחזק מחוץ לעץ React. מאומת לייצוא, לייבוא, לביטול ולשיתוף — שחזור מדויק של תיקון M10.
+- התראות מקומיות: הרשאה ב-opt-in, תזמון, ביטול, alarm לא-מדויק (ללא exact alarm), הקשה שאינה עוקפת נעילה — ישים.
+- **התנהגות reboot והחלפת חבילה אומתה**: ה-alarm נרשם מחדש בלי לפתוח את האפליקציה.
+- Expo Go אינו מספיק כסביבת QA אבטחתית או נייטיבית. **Development Build נדרש לכל QA נייטיבי מחייב.**
+- נתיב EAS iOS מ-Windows ישים ארכיטקטונית (Apple Developer Program בתשלום, רישום ad hoc, Developer Mode, התקנה ב-QR). **לא אומת פיזית.**
+
+**סטייה מאושרת מ-Flutter:** ב-Android, RN מדווח `background` כבר ב-onPause, כך שגם דיאלוג מערכת (למשל בקשת הרשאה) נועל. זו החמרה ולא החלשה; בשלב זה מתקבלת. לא נוסף קוד נייטיבי ל-onStop.
+
+**החלטות פתוחות ל-Stage 1:**
+- חבילת KDF ומדידה ב-Hermes — טרם אושרה חבילה.
+- הקשחת התראות מקומיות בלבד: הסרה או חסימה של משטח push/FCM המיותר לפני production.
+- UX סופי לייצוא: Expo sharing או בחירת תיקייה בשלב ראשון; ללא חבילת Save As צד-שלישי.
+- מדיניות תפעולית: build מקומי בנתיבי ASCII מול EAS.
+- אימות פיזי ב-iOS: **Development Build של EAS על iPhone 13 הוא שער חובה לסגירת Stage 1.**
+
+**ניקוי:** נמחקו תיקיית העבודה הזמנית `C:\ffprobe` (עותק ASCII, JDK, Gradle home, AVD, לוגים, צילומי מסך), אפליקציית ה-probe (`com.familyfinance.expoprobe`) מהמכשיר וקובץ הבדיקה שנוצר ב-Documents. אפליקציית Flutter במכשיר לא נגעה.
+
+### נקודת ההמשך (מעודכנת 13/09/2026)
+- ~~Stage 0 — Expo Feasibility Gate~~ — **CLOSED / PASS**
+- **Stage 1 — Platform Foundation — NOT STARTED.** אין להתחיל לפני הגדרת היקף ואישור.
+- Git: ענף `main`, commit הסגירה של Stage 0 ("feat: establish Expo feasibility baseline") נמצא מעל `7583e24`; ahead 6 / behind 0 מול `origin/main` (`413fd70`). אין push/deploy/tag.
