@@ -643,3 +643,43 @@ legacy נשמר במכוון.
 KDF סופי לאנדרואיד: PBKDF2-HMAC-SHA256, ‏100,000 איטרציות, salt של 16 בתים, verifier של 32 בתים. A54: גזירה 444/447/452ms, אימות 451/446/449ms.
 
 שערים לפני ה-commit: `npm ci`, tsc (אפליקציה + בדיקות), lint, 218/218 בדיקות, parity של Stage 2 ו-oracle של Flutter — 0 רגרסיה, expo-doctor ‏21/21. commit יחיד מעל `154c6af`. הווב, `mobile_flutter/` ו-`mobile_expo_probe/` לא שונו. אין push/deploy/tag. iOS נדחה. Stage 4 — NOT STARTED.
+
+## 14/09/2026 — Stage 4A: Android Release Readiness — OPEN / BLOCKED (ללא commit)
+
+Stage 4 פוצל: 4A (אנדרואיד) התחיל באישור; 4B (iOS + Cutover) נדחה.
+
+תיקונים (בתוך `mobile_expo/` בלבד):
+- **גיבוי אנדרואיד:** plugin חדש `withNoAndroidBackup` — `allowBackup=false` + כללי `dataExtractionRules` / `fullBackupContent` שמוציאים את כל נתוני האפליקציה מגיבוי ענן ומהעברה בין מכשירים. לפני כן, ב-API 31+ מסד ה-SQLite היה עובר בהעברה בין מכשירים.
+- **הרשאות:** נחסמו `USE_BIOMETRIC`, `USE_FINGERPRINT`, `SYSTEM_ALERT_WINDOW`. חסימת `DETECT_SCREEN_CAPTURE` (RC2) גרמה לקריסה בהפעלה — בוטלה ב-RC3 ונשמרה בבדיקה.
+- **build:** משימת `release` בסקריפט ה-build המקומי.
+- 5 בדיקות חדשות (סה"כ 223/223).
+
+ארטיפקט: RC3 — APK של release, לא debuggable, bundle של Hermes מוטמע, ללא Metro, **חתום במפתח debug של התבנית**, מזהה זמני `com.familyfinance.expo.dev`.
+
+QA פיזי על Samsung A54 (Android 16) עבר:
+- שדרוג debug → release והחלפת חבילה עם PIN — ללא אובדן נתונים;
+- הפעלה מחדש, מוות תהליך, התקנה נקייה;
+- PIN / נעילה / FLAG_SECURE / קישור עמוק / בורר קבצים;
+- גיבוי ושחזור (כולל קובץ פגום ושחזור אטומי);
+- תזמון התראות.
+
+לא אומתו ב-release: מסירה והקשה של התראת מערכת, וקובץ JSON במבנה שגוי (מכוסה בבדיקות יחידה).
+
+שערים: `npm ci`, tsc, lint, 223/223, parity ‏0 אי-התאמות, oracle ‏55/0, expo-doctor ‏21/21.
+
+חוסמים פתוחים: מזהה production סופי וחתימת production — דורשים החלטת משתמש. NO-GO ל-cutover. הווב, `mobile_flutter/` ו-`mobile_expo_probe/` לא שונו. אין commit/push/deploy/tag.
+
+## 14/09/2026 — Stage 4A: זהות שחרור סופית + חתימת production — CLOSED / PASS (ללא commit)
+
+- **זהות מאושרת:** "FamilyFinance PRO", ‏`com.familyfinance.pro`, ‏scheme `familyfinance`, ‏1.0.0 / versionCode 1. מזהה ה-iOS לא שונה (4B).
+- **EAS:** פרויקט חדש `@vr47252/familyfinance-pro`. keystore מנוהל של EAS (JKS, ‏SHA-256 `512fed74…90710b`). פרופיל `production-apk`.
+- **build בענן EAS:** רק `mobile_expo` הועלה (‏789KB). לפני כן `build:inspect` חשף שברירת המחדל אורזת את כל הריפו (כולל `Design/`) — נחסם.
+- **APK:** חתום, SHA-256 `9A754759…B162BC92`. החתימה זהה ל-keystore של EAS. לא debuggable. KDF נייטיבי קיים.
+- **QA על A54:**
+  - התקנה נקייה;
+  - מעבר נתונים מאפליקציית ה-dev בגיבוי JSON — ערכים פיננסיים זהים;
+  - ה-PIN לא עבר, והוגדר מחדש;
+  - נעילה, FLAG_SECURE, קישור עמוק והתראות — עברו.
+- **שערים:** 223/223, parity ‏0, oracle ‏55/0, expo-doctor ‏21/21.
+
+אין commit/push/deploy/tag/הגשה לחנות. הווב, `mobile_flutter/` ו-`mobile_expo_probe/` לא שונו.

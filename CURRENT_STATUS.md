@@ -1208,3 +1208,95 @@ Git: `mobile_flutter/` נשאר untracked כמקודם. לא בוצע commit/pus
 - iOS נדחה.
 - **הבא בתור: Stage 4 — Dual-Platform QA + Cutover — NOT STARTED.** אין להתחיל לפני הגדרת היקף ואישור.
 - Git: ‏HEAD `154c6af`, ahead 8 / behind 0. אין push/deploy/tag. הווב נשאר Production.
+
+## Stage 4A — Android Release Readiness — OPEN / BLOCKED (14/09/2026, ללא commit)
+
+**תיקון לנקודת ההמשך שמעל:** Stage 3 קובע ב-commit `7b0b048`. Stage 4 פוצל: **4A** (אנדרואיד בלבד) התחיל באישור המשתמש; **4B** (iOS + Cutover) נדחה. אין push/deploy/tag/פרסום.
+
+**שינויים (כולם בתוך `mobile_expo/`, ללא commit):**
+- `plugins/withNoAndroidBackup.js` (חדש): `allowBackup=false` + `dataExtractionRules` / `fullBackupContent` שמוציאים את כל 9 הדומיינים גם מ-cloud-backup וגם מ-device-transfer. **ממצא:** ב-API 31+ `allowBackup=false` לבדו אינו חוסם העברה בין מכשירים, והכללים של expo-secure-store הוציאו רק את ה-prefs שלו — מסד ה-SQLite היה עובר למכשיר חדש.
+- `app.json`: `configureAndroidBackup:false` ל-expo-secure-store; רישום ה-plugin; חסימת `USE_BIOMETRIC`, `USE_FINGERPRINT`, `SYSTEM_ALERT_WINDOW` (לא בשימוש).
+- **`DETECT_SCREEN_CAPTURE` אסור לחסימה:** חסימתו ב-RC2 גרמה לקריסה בהפעלה (expo-screen-capture רושם observer בטעינת המודול). הוחזר ב-RC3, ונשמר ע"י בדיקה.
+- `scripts/android-local-build.ps1`: משימת `release` (APK ללא Metro, לא debuggable).
+- `test/androidBackup.test.ts` (חדש): 5 בדיקות.
+
+**ארטיפקט:** RC3 — `app-release.apk` מקומי, ‏40,916,768 בתים, SHA-256 `7654B7A5…9FA1BF`, ‏arm64-v8a, bundle של Hermes מוטמע, versionCode 1 / 0.1.0.
+- **חתום במפתח ה-debug של התבנית** (CN=Android Debug) — **מועמד שחרור בלבד, לא חתימת production.**
+- **מזהה זמני:** `com.familyfinance.expo.dev` (וגם השם "FamilyFinance Dev" וה-scheme `familyfinance-dev`) — לא סופי, לא שונה.
+
+**בדיקה סטטית (RC3):** לא debuggable; אין Metro; רכיבים exported: רק `MainActivity` ו-`ProfileInstallReceiver` (מוגן ב-DUMP); אין נקודות כניסה של FCM; dev-launcher/dev-menu — stubs בלבד. הרשאות: INTERNET, VIBRATE, RECEIVE_BOOT_COMPLETED, POST_NOTIFICATIONS, DETECT_SCREEN_CAPTURE, ACCESS_NETWORK_STATE, WAKE_LOCK, הרשאה פנימית של androidx.
+
+**QA פיזי — Samsung A54 / SM-A546E / Android 16 / API 36 / `RZCX21DQYCL` (נתונים סינתטיים):**
+- שדרוג debug → release: 6/6 מפתחות `family_finance_*` זהים בייט-לבייט.
+- החלפת חבילה עם PIN (RC2 → RC3): ה-PIN נשמר, הנתונים זהים, ההתראה המתוזמנת נשמרה.
+- הפעלה מחדש של המכשיר: ההתראה נרשמה מחדש לפני פתיחת האפליקציה; מסך הנעילה ראשון; הנתונים זהים.
+- מוות תהליך / force-stop: מסך הנעילה ראשון.
+- התקנה נקייה: מצב ריק, יתרת התחלה + משיכה, 5 טאבים, Back, הגדרת PIN, נעילה ברקע, PIN שגוי נדחה, קישור עמוק בזמן נעילה לא עוקף, בורר קבצים → נעילה → הגדרות ▸ נתונים. FLAG_SECURE פעיל רק כשמוגדר PIN.
+- גיבוי/שחזור: ייצוא לתיקייה ושיתוף; `schemaVersion` 2; `exportedAt` בפורמט `YYYY-MM-DD HH:mm`; ללא `ff_pin_v1` וללא `ff_*`; ביטול; קובץ פגום נדחה ללא שינוי; שחזור תקין (סקירה, ביטול, אישור) → ערכי הבית זהים; ייצוא אחרי שחזור זהה במקור (רק יומן הפעילות שונה).
+- התראות: בקשת הרשאה, תזמון, ביטול, שמירה אחרי החלפה ואחרי הפעלה מחדש.
+- ביצועים: הפעלה קרה 221–708ms; פתיחת נעילה 1.0–2.3 שניות כולל מדידה; אין ANR; 0 קריסות ב-RC3.
+
+**לא אומת פיזית ב-release:** מסירה/הקשה על התראת מערכת (אין טריגר בדיקה ב-release; אומת ב-Stage 3 על אותו קוד נייטיבי); קובץ JSON תקין במבנה שגוי (לא ניתן לבחירה בבורר; מכוסה בבדיקות יחידה); מראה כרטיס "אחרונים" (לא צולם מטעמי פרטיות).
+
+**אימות אוטומטי:** `npm ci`; tsc (אפליקציה + בדיקות); lint; ‏**223/223 בדיקות**; parity ‏0 אי-התאמות (90,119 השוואות); oracle של Flutter ‏55/0; expo-doctor ‏21/21.
+
+**חוסמים פתוחים (דורשים החלטת משתמש):**
+1. מזהה production סופי (package / שם / scheme / גרסה). מזהה חדש = אפליקציה חדשה; מעבר נתונים רק דרך גיבוי JSON.
+2. חתימת production: keystore / credentials של EAS — לא נוצרו, דורש אישור.
+
+### נקודת ההמשך (מעודכנת 14/09/2026, Stage 4A)
+- Stage 4A — **OPEN / BLOCKED** על מזהה סופי וחתימת production בלבד. **NO-GO ל-cutover באנדרואיד.**
+- Stage 4B — iOS Readiness + Cutover — **DEFERRED**.
+- Git: ‏HEAD `7b0b048`, ahead 9 / behind 0, שינויי 4A ללא commit. הווב נשאר Production.
+
+## Stage 4A — זהות שחרור סופית + חתימת production — CLOSED / PASS (14/09/2026, ללא commit)
+
+**תיקון לנקודת ההמשך שמעל:** שני החוסמים של 4A נסגרו בהחלטות מאושרות של המשתמש.
+
+**זהות (מאושרת):** שם "FamilyFinance PRO", ‏applicationId `com.familyfinance.pro`, ‏scheme `familyfinance`, גרסה 1.0.0, ‏versionCode 1.
+- מזהה ה-iOS (`bundleIdentifier`) לא שונה — iOS נדחה ל-4B.
+- **זו אפליקציה נפרדת** מ-`com.familyfinance.expo.dev`. אין מעבר במקום; נתונים עוברים רק דרך גיבוי JSON.
+
+**EAS:**
+- פרויקט חדש `@vr47252/familyfinance-pro` (ID `08a355db-3469-4264-b2e3-0a1fc6af212d`) בחשבון האישי.
+- לפני היצירה: לחשבון האישי לא היו פרויקטים. בחשבון הצוות קיים `@vr47252s-team/finance` ללא credentials — לא נגעתי בו.
+- **Credentials מנוהלים של EAS:** keystore יחיד מסוג JKS ל-`com.familyfinance.pro`, ‏SHA-256 `512fed74…90710b`. המפתח שמור רק בשרתי Expo ולא נכנס לריפו.
+- פרופיל חדש `production-apk` (יורש מ-`production`, APK להתקנה ל-QA).
+- **ממצא העלאה:** גם עם `EAS_NO_VCS=1`, ‏eas-cli ארז את כל שורש הריפו (כולל `Design/`, ‏Flutter, ‏probe — ‏177MB). אומת עם `build:inspect` לפני העלאה. ה-build בוצע עם `EAS_NO_VCS=1` + `EAS_PROJECT_ROOT=mobile_expo`, ולכן הועלה רק `mobile_expo` (‏165 קבצים, ‏789KB).
+
+**ארטיפקט:** build ‏`26464f64-a3d5-4e1c-81e8-3bfd78547bfa` ב-EAS, APK חתום, ‏94,712,913 בתים, SHA-256 `9A754759…B162BC92`, ‏4 ABIs.
+
+**בדיקה סטטית:**
+- package `com.familyfinance.pro`, ‏1.0.0 / 1, השם "FamilyFinance PRO";
+- חתימת v2 מאומתת, וה-SHA-256 זהה ל-keystore של EAS;
+- לא debuggable; כללי הגיבוי תקינים; ההרשאות והרכיבים זהים ל-RC3;
+- מודול ה-KDF הנייטיבי קיים; bundle של Hermes; אין Metro ואין `DevLauncherActivity`.
+
+**QA פיזי — A54 (נתונים סינתטיים):**
+- **התקנה נקייה:** מצב ריק, ללא נעילה, 0 קריסות.
+- **מעבר נתונים:** ייצוא JSON מאפליקציית ה-dev, ואז שחזור לאפליקציית ה-production.
+  - ערכי הבית זהים (10,000 / 14,500 / 9,530 / 1,000 / 5,230 / 800).
+  - ייצוא מה-production זהה במקור ב-5 מתוך 6 מפתחות (רק יומן הפעילות שונה).
+  - ללא `ff_pin_v1` וללא `ff_*`.
+- **PIN לא עבר:** אחרי השחזור "לא הוגדרה נעילה", ללא נעילה ו-FLAG_SECURE כבוי.
+  - PIN חדש הוגדר, FLAG_SECURE פעיל ונעילה ברקע ואחרי force-stop פועלת.
+  - ה-PIN של אפליקציית ה-dev נדחה; קישור עמוק `familyfinance://goals` בזמן נעילה לא עוקף.
+- **התראות:** בקשת הרשאה, תזמון (alarm אחד), ביטול (0), הפעלה מחדש (1).
+
+**תצפיות (לא חוסמות):**
+1. דיאלוג הרשאת המערכת נחשב מעבר לרקע, ולכן האפליקציה ננעלת ודורשת PIN; אחרי פתיחה חוזרים לבית.
+2. ב-manifest נשאר ה-scheme `exp+familyfinance-pro` של expo-dev-client. אין ב-release dev-launcher, ולכן הוא רק פותח את האפליקציה מאחורי הנעילה. הסרה אפשרית בעתיד.
+3. ה-scheme `https` נמצא ב-`<queries>` בלבד (נראות דפדפן), ואינו מטפל בקישורים.
+4. `eas init` כתב ל-`app.json` גם `extra.router` ושני מפתחות RTL ב-`ios.infoPlist` — שקולים לפלט ה-plugin.
+
+**אימות אוטומטי:** `npm ci`; tsc; lint; ‏223/223; parity ‏0 אי-התאמות; oracle ‏55/0; expo-doctor ‏21/21.
+
+### נקודת ההמשך (מעודכנת 14/09/2026, Stage 4A final)
+- ~~Stage 4A — Android Release Readiness~~ — **CLOSED / PASS**. commit ממתין לאישור.
+- **נדחה:**
+  - AAB לחנות + הגשה ל-Play (לא מאושר);
+  - אימות מסירה/הקשה של התראה ב-release;
+  - הסרת INTERNET ו-`exp+` scheme;
+  - גיבוי מקומי של ה-keystore (פעולת משתמש דרך `eas credentials`).
+- Stage 4B — iOS Readiness + Cutover — **DEFERRED**.
+- Git: ‏HEAD `7b0b048`, ahead 9 / behind 0, ללא commit. הווב נשאר Production.

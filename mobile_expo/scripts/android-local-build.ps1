@@ -26,6 +26,9 @@
   prebuild  = generate android/ only
   manifest  = merge the debug AndroidManifest only (fast config check)
   debug     = assemble the debug (development-client) APK
+  release   = assemble the release APK (embedded JS bundle, no Metro, not
+              debuggable). Signed with the template debug keystore — a
+              local release CANDIDATE, not a production-signed artifact.
 
 .PARAMETER Abi
   ABI to build. Default arm64-v8a (physical devices).
@@ -35,7 +38,7 @@
 #>
 param(
   [string]$AsciiRoot = 'C:\ffbuild',
-  [ValidateSet('prebuild', 'manifest', 'debug')][string]$Task = 'debug',
+  [ValidateSet('prebuild', 'manifest', 'debug', 'release')][string]$Task = 'debug',
   [string]$Abi = 'arm64-v8a',
   [switch]$Install
 )
@@ -90,6 +93,8 @@ try {
   try {
     if ($Task -eq 'manifest') {
       .\gradlew.bat :app:processDebugMainManifest --console=plain
+    } elseif ($Task -eq 'release') {
+      .\gradlew.bat :app:assembleRelease "-PreactNativeArchitectures=$Abi" --console=plain
     } else {
       .\gradlew.bat :app:assembleDebug "-PreactNativeArchitectures=$Abi" --console=plain
     }
@@ -99,7 +104,7 @@ try {
   }
 
   if ($Install) {
-    adb install -r android\app\build\outputs\apk\debug\app-debug.apk
+    adb install -r "android\app\build\outputs\apk\$Task\app-$Task.apk"
     if ($LASTEXITCODE) { throw 'adb install failed' }
   }
 } finally {

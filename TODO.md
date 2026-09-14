@@ -187,6 +187,32 @@
   - נדחה (ללא שינוי): iOS, Apple signing, App Store, KDF על iPhone, מזהה production סופי, 3 בעיות ה-legacy.
 - ~~Stage 3 — Complete Product / Android~~ — **CLOSED / PASS**. commit: "feat: complete Expo Android product" (מעל `154c6af`). אין push/deploy/tag.
 - **הבא בתור: Stage 4 — Dual-Platform QA + Cutover — NOT STARTED.** אין להתחיל לפני הגדרת היקף ואישור. iOS נדחה.
+- **עדכון (14/09/2026): Stage 4A — Android Release Readiness — OPEN / BLOCKED**, ללא commit (דורש אישור). פירוט ב-CURRENT_STATUS.md.
+  - **חוסם 1 — החלטה נדרשת:** מזהה production סופי (package / שם / scheme / versionCode). כרגע `com.familyfinance.expo.dev` — זמני. מזהה חדש = אפליקציה חדשה; מעבר נתונים דרך גיבוי JSON בלבד.
+  - **חוסם 2 — החלטה נדרשת:** חתימת production (credentials מנוהלים של EAS או keystore מקומי). ה-RC חתום במפתח debug של התבנית.
+  - ~~גיבוי אנדרואיד~~ — **נסגר:** כל נתוני האפליקציה מוצאים מגיבוי ענן ומהעברה בין מכשירים (`withNoAndroidBackup`).
+  - ~~הקשחת manifest~~ — **נסגר:** נחסמו הרשאות biometric ו-SYSTEM_ALERT_WINDOW; אין FCM; אין רכיבי dev-client פעילים. `DETECT_SCREEN_CAPTURE` חובה (אחרת קריסה).
+  - **נדחה:**
+    1. הסרת INTERNET (החלטת הקשחה/מוצר);
+    2. אימות מסירה/הקשה של התראת מערכת על build של release;
+    3. קובץ JSON במבנה שגוי — אימות פיזי;
+    4. `pinHash` הישן בגיבוי (שינוי סכימה דורש אישור);
+    5. 3 בעיות ה-legacy;
+    6. פרסום בחנות — לא מאושר.
+  - **סביבה:** daemon של Gradle מ-build קודם נעל קובץ והכשיל `prebuild --clean`. לשקול עצירת daemons בסקריפט לפני prebuild.
+- **הבא בתור: החלטת מזהה סופי + חתימת production, ואז build חתום ו-QA חוזר על A54.** Stage 4B — DEFERRED.
+- **עדכון (14/09/2026, final): ~~Stage 4A — Android Release Readiness~~ — CLOSED / PASS**, ללא commit (דורש אישור). פירוט ב-CURRENT_STATUS.md.
+  - ~~חוסם 1 — מזהה סופי~~ — **נסגר:** "FamilyFinance PRO" / `com.familyfinance.pro` / `familyfinance` / 1.0.0 / versionCode 1.
+  - ~~חוסם 2 — חתימת production~~ — **נסגר:** credentials מנוהלים של EAS, פרויקט `@vr47252/familyfinance-pro`. ה-APK חתום ומאומת על A54.
+  - **פתוח / נדחה (לא חוסם):**
+    1. AAB לחנות והגשה ל-Play — לא מאושר;
+    2. אימות מסירה/הקשה של התראת מערכת ב-release;
+    3. הסרת ה-scheme `exp+familyfinance-pro` (expo-dev-client) והסרת INTERNET — החלטת הקשחה;
+    4. נעילה אחרי דיאלוג הרשאת מערכת (דורש PIN שוב) — לשקול אם זו חוויה רצויה;
+    5. גיבוי מקומי של ה-keystore — פעולת משתמש;
+    6. `pinHash` הישן, 3 בעיות ה-legacy, iOS.
+  - אפליקציית ה-dev (`com.familyfinance.expo.dev`) עדיין מותקנת במכשיר עם נתונים סינתטיים — להסיר כשאין בה צורך.
+- **הבא בתור: אישור commit ל-Stage 4A.** Stage 4B — DEFERRED.
 
 ## חשוב
 - **3 בעיות legacy ידועות שזוהו בביקורת הגירה ל-Flutter (05/09/2026) — נדחות במפורש, אינן חלק מיעד השוואת-הגירה (parity)**:

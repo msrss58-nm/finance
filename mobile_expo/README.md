@@ -98,9 +98,16 @@ committed.
 
 ## Identifiers
 
-`com.familyfinance.expo.dev` (Android package and iOS bundle identifier) and
-the display name "FamilyFinance Dev" are **non-final development
-identifiers**. Final production identifiers require explicit approval.
+Android release identity (approved in Stage 4A): display name
+"FamilyFinance PRO", application id `com.familyfinance.pro`, URL scheme
+`familyfinance`, version 1.0.0 / versionCode 1, EAS project
+`@vr47252/familyfinance-pro`. The production signing key is managed by EAS;
+it never enters this repository.
+
+`com.familyfinance.pro` is a different Android application from the earlier
+development id `com.familyfinance.expo.dev`: data moves between them only
+through the JSON backup (Settings ▸ Data). The iOS bundle identifier is still
+the development one and is decided with iOS (Stage 4B).
 
 ## Security notes
 
