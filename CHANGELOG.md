@@ -527,3 +527,34 @@ commit `8bb270d` ("feat: add native backup import and export"): 14 קבצים, 2
 תיקיית העבודה הזמנית ואפליקציית ה-probe במכשיר נוקו. `app.js`/`index.html`/`styles.css` ו-`mobile_flutter/` לא שונו. ראו CURRENT_STATUS.md לפירוט ולהחלטות הפתוחות.
 
 **Git**: commit יחיד מעל `7583e24`; ahead 6 מול `origin/main` (`413fd70`). אין push/deploy/tag. Stage 1 — NOT STARTED.
+
+## 13/09/2026 — Stage 1: Platform Foundation — OPEN / BLOCKED (ללא commit)
+
+נוסף `mobile_expo/` — אפליקציית Expo האמיתית, שלב תשתית:
+- ‏SQLite KV (STRICT, מבוסס גרסה, טרנזקציות).
+- ‏SecretStore עם fail-closed ומרקר נגד החזרת null שקטה ב-Keystore.
+- מכונת מצבי אבטחה ושער `Stack.Protected`, עם מנעול placeholder סינתטי — **לא PIN**.
+- פרטיות מסך דרך `expo-screen-capture`.
+- התראות מקומיות, עם plugin שמסיר את משטח FCM ואת `aps-environment`.
+- שכבת קבצים (בורר, שיתוף, SAF) עם coordinator ששורד נעילה.
+- 5 טאבים עם היסטוריה, RTL ו-EAS profiles.
+- סקריפט build מקומי בנתיבי ASCII.
+- ‏69 בדיקות `node --test`.
+
+אימות: tsc ו-lint נקיים, 69/69 בדיקות, expo-doctor 21/21. QA פיזי ב-Samsung A54 / Android 16 — PASS בכל פריטי התשתית.
+
+חוסמים לסגירה:
+- iPhone 13 לא נבנה ולא אומת — חסר חשבון Expo ו-Apple Developer.
+- KDF לא אושר: ‏PBKDF2 ב-JS טהור לוקח ~14.4 שניות ב-Hermes.
+
+הווב, `mobile_flutter/` ו-`mobile_expo_probe/` לא שונו. HEAD `8428bd6`, ahead 6. אין push/deploy/tag.
+
+## 14/09/2026 — Stage 1: Platform Foundation — ANDROID PASS / iOS DEFERRED ("feat: establish Expo platform foundation")
+
+החלטת המשתמש: עבודת iOS / iPhone 13 נדחית, ללא Apple Developer Program כעת וללא עבודת App Store. לכן Stage 1 נסגר **לאנדרואיד בלבד**. iOS לא אומת פיזית, והפריטים שלו עוברים הלאה: EAS dev build, ‏QA נייטיבי, signing ו-KDF על iPhone.
+
+KDF נשאר פתוח: JS טהור איטי מדי ב-Hermes (כ-14.4 שניות על A54), ולא אושרה החלשת פרמטרים.
+
+רגרסיה לפני ה-commit: `npm ci`, tsc (אפליקציה + בדיקות), lint, 69/69 בדיקות, expo-doctor 21/21, ו-smoke על A54 — הפעלה מוצלחת.
+
+ה-commit כולל את `mobile_expo/` ואת עדכוני התיעוד בלבד. הווב, `mobile_flutter/` ו-`mobile_expo_probe/` לא שונו. אין push/deploy/tag. Stage 2 — NOT STARTED.

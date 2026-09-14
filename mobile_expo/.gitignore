@@ -1,0 +1,45 @@
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Generated native projects (Continuous Native Generation — never committed)
+/ios
+/android
+
+# Signing material and credentials — must never enter the repository
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.pem
+*.mobileprovision
+credentials.json
+google-services.json
+GoogleService-Info.plist
+
+# Build outputs
+*.apk
+*.aab
+*.ipa
+
+# Native build caches
+.kotlin/
+*.orig.*
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+
+# local env files
+.env*.local
+
+# typescript
+*.tsbuildinfo

@@ -939,3 +939,75 @@ Git: `mobile_flutter/` נשאר untracked כמקודם. לא בוצע commit/pus
 - ~~Stage 0 — Expo Feasibility Gate~~ — **CLOSED / PASS**
 - **Stage 1 — Platform Foundation — NOT STARTED.** אין להתחיל לפני הגדרת היקף ואישור.
 - Git: ענף `main`, commit הסגירה של Stage 0 ("feat: establish Expo feasibility baseline") נמצא מעל `7583e24`; ahead 6 / behind 0 מול `origin/main` (`413fd70`). אין push/deploy/tag.
+
+## Stage 1 — Platform Foundation — OPEN / BLOCKED (13/09/2026)
+
+**תיקון לנקודת ההמשך שמעל:** Stage 1 התחיל באישור המשתמש. נבנתה `mobile_expo/` — אפליקציית Expo האמיתית, **תשתית בלבד**: ללא לוגיקה עסקית, ללא מסכי מוצר, ללא PIN אמיתי. **לא בוצע commit** (ממתין לאישור ולסגירת השערים).
+
+**מה נבנה:**
+- Expo SDK 57.0.22, react-native 0.86.3, React 19.2.3, TypeScript 6.0.3 strict (+`noUncheckedIndexedAccess`, `verbatimModuleSyntax`, `erasableSyntaxOnly`), expo-router 57.0.21. תלויות: רק המודולים הרשמיים המאושרים. `.npmrc` עם `legacy-peer-deps=true` — אחרת npm מתקין אוטומטית את react-native-reanimated/worklets (נייטיב צד-שלישי שאינו מאושר). `@expo/ui` (רשמי, תלות של expo-router) נכלל.
+- מבנה: שכבות טהורות (`core`, `data`, `security`, `navigation`, `notifications`, `backup`) ללא React/RN/Expo — נאכף ב-ESLint; גישה נייטיבית רק ב-`src/platform`; composition root ב-`src/composition`. **לא `src/app`**: Expo Router מתייחס ל-`src/app` כשורש נתיבים ומתעלם מ-`app/` (נמצא בהרצה).
+- אחסון: SQLite, טבלת `kv` STRICT, `user_version=1`, טרנזקציות עם rollback, שמירת raw מדויקת, דחיית lone surrogate במקום שיבוש שקט, סירוב לפתוח מסד מגרסה חדשה יותר. אין שינוי סכימה פיננסית.
+- אחסון מאובטח: `SecretStore` נפרד מ-SQLite, Result מוקלד, fail-closed. `ff_pin_v1` שמור; אם קיים — `unavailable` עד אישור KDF. **ממצא:** expo-secure-store באנדרואיד מחזיר `null` (ומוחק) כשמפתח Keystore מבוטל — לכן נוסף מרקר לא-סודי ב-SQLite: "מרקר קיים + סוד חסר" = חסימה, לא "אין נעילה".
+- מעטפת אבטחה: מכונת מצבים (initializing / notConfigured / locked / unlocking / unlocked / unavailable), backoff כמו ה-oracle, תוצאה מיושנת אחרי נעילה נזרקת. המנעול הוא **placeholder סינתטי (קוד 2468) — אינו אימות PIN**.
+- פרטיות מסך: `expo-screen-capture` (FLAG_SECURE באנדרואיד; screenshot + app-switcher ב-iOS) כשנעילה מוגדרת, וגם במצב כשל.
+- התראות מקומיות בלבד: gateway, מזהים בבעלות, whitelist ל-payload, ניתוב מושהה עד unlock. plugin מקומי `withLocalOnlyNotifications` מסיר את רכיבי FCM/Firebase מה-manifest ואת `aps-environment` ב-iOS (סדר ה-plugins קריטי; נבדק).
+- קבצים: בורר מסמכים + UTF-8 קפדני + BOM + תקרה 32MiB, ייצוא בשיתוף או לתיקיית SAF. הפעולה מוחזקת ב-coordinator מחוץ למסכים, התוכן בזיכרון בלבד.
+- ניווט: 5 טאבים, `backBehavior: history`, intents מושהים.
+- EAS: פרופילים development / preview / production (placeholder, ללא submit). **מזהים זמניים `com.familyfinance.expo.dev` — אינם סופיים.**
+- build מקומי: `mobile_expo/scripts/android-local-build.ps1` (עותק ASCII ב-`C:\ffbuild`, ‏JDK ו-Gradle בנתיבי ASCII). EAS נשאר הנתיב העיקרי.
+
+**אימות:** tsc (אפליקציה + בדיקות) נקי, lint נקי, **69/69 בדיקות** (`node --test`, כולל SQLite אמיתי דרך `node:sqlite` ו-TabRouter של expo-router), expo-doctor 21/21. build debug מקומי: 28:54 דקות.
+
+**QA פיזי — Samsung Galaxy A54 5G / Android 16 — PASS:** התקנה והפעלה; RTL (טאבים מימין לשמאל, יישור, סכומים ללא חיתוך ₪, טקסט מעורב); ניווט (היסטוריה דטרמיניסטית, הקשה חוזרת ללא כפילות, transient ← modal ← היסטוריה, Back בשורש יוצא); SQLite self-test 6/6 ושרידות אחרי force-stop; SecureStore שורד restart; נעילה ב-background, קוד שגוי ונכון; FLAG_SECURE נדלק ונכבה עם הנעילה; צילום מסך שחור ו-recents ריק; התראה (הרשאה, תזמון, מסירה, הקשה בזמן נעילה → Goals אחרי unlock); ייצוא SAF, ייבוא זהה בייט-לבייט, ביטול בורר ושיתוף — כולם שורדים נעילה וחוזרים להגדרות. manifest ממוזג: אין רכיבי FCM, אין c2dm/badge, `allowBackup=false`.
+
+**iPhone 13 / EAS — חוסם, לא אומת:** `eas whoami` = לא מחובר. לא נוצר פרויקט EAS, לא נרשם מכשיר, לא נוצרו certificates. דרוש: חשבון Expo + התחברות, חברות Apple Developer Program בתשלום, אישור המזהה הזמני ב-App ID.
+
+**KDF — לא אושר, נדרשת החלטה:** `@noble/hashes` 2.4.0 (MIT, ללא תלויות) נכון מול OpenSSL, אבל 100k איטרציות לוקחות **~14.4 שניות ב-Hermes על ה-A54** (dev וגם production JS; bytecode של release לא נמדד); V8: 356ms; bundle +145KB; `crypto.getRandomValues` אינו קיים. מסקנה: PBKDF2 ב-JS טהור אינו ישים לפתיחת נעילה. המלצה: מודול Expo מקומי קטן העוטף את PBKDF2 של מערכת ההפעלה + `expo-crypto` ל-salt — דורש אישור לקוד נייטיבי. חלופה: `react-native-quick-crypto` (נייטיב צד-שלישי).
+
+**חוב/ממצאים פתוחים:** הרשאות שנותרו ב-manifest (SYSTEM_ALERT_WINDOW, USE_BIOMETRIC/USE_FINGERPRINT, ACCESS_NETWORK_STATE, WAKE_LOCK, INTERNET, DETECT_SCREEN_CAPTURE, CHANGE_WIFI_MULTICAST_STATE) ורכיבי dev-client/ML Kit — לבדוק ב-manifest של release לפני production. אייקוני טאבים placeholder. **תקרית:** `@noble/hashes` הותקן בשוגג לתוך `mobile_expo` (cwd שגוי) — בוטל מיד; ה-lockfile אומת כזהה לעותק שלפני התקרית.
+
+### נקודת ההמשך (מעודכנת 13/09/2026, Stage 1)
+- **Stage 1 — Platform Foundation — OPEN / BLOCKED.** אנדרואיד PASS; חסרים: build ואימות פיזי ב-iPhone 13, והחלטת KDF.
+- `mobile_expo/` לא ב-commit. `mobile_expo_probe/`, הווב ו-Flutter לא שונו.
+- Git: `main`, HEAD `8428bd6`, ahead 6 / behind 0 מול `origin/main` (`413fd70`). אין push/deploy/tag. Stage 2 — לא התחיל.
+
+## Stage 1 — סגירת אנדרואיד (14/09/2026) — ANDROID: PASS / iOS: DEFERRED
+
+**החלטת משתמש (14/09/2026):** עבודת iOS / iPhone 13 נדחית במפורש לשלב מאוחר יותר.
+- לא נדרשת כעת הרשמה ל-Apple Developer Program או תשלום.
+- התקדמות אנדרואיד אינה נחסמת בגלל iOS.
+- **אין הרשאה לעבודת App Store.**
+
+הסעיף "OPEN / BLOCKED" שמעל הוא היסטורי. המצב המעודכן:
+
+- **Stage 1 — Platform Foundation: ANDROID: PASS · iOS: DEFERRED / NOT PHYSICALLY VERIFIED.**
+- זו **אינה** סגירה חוצת-פלטפורמות. iOS מתוכנן ארכיטקטונית בלבד.
+
+**פריטי iOS שעוברים הלאה:**
+- Development Build של EAS ל-iPhone 13;
+- QA ל-SecureStore;
+- QA למחזור-חיים ופרטיות (app-switcher);
+- QA להתראות מקומיות;
+- QA לבורר הקבצים;
+- provisioning / signing של Apple;
+- מדידת KDF על iPhone.
+
+**KDF — פתוח:**
+- PBKDF2 ב-JS טהור איטי מדי ב-Hermes על A54 (כ-14.4 שניות נמדדו).
+- המימוש הסופי והאישור שלו פתוחים.
+- **לא אושרה החלשה של פרמטרי האבטחה המקבילים ל-Flutter** (PBKDF2-HMAC-SHA256, 100,000 איטרציות, salt של 16 בתים, verifier של 32 בתים).
+- עבודת Stage 2 (עסקי/נתונים) אינה תלויה ב-PIN/KDF הסופי.
+
+**פתוחים נוספים:**
+- מזהים סופיים;
+- הקשחת manifest של release;
+- אייקוני טאבים;
+- `C:\ffbuild` (כ-5GB, מחוץ לריפו).
+
+**רגרסיה לפני commit:** `npm ci`, tsc, lint, בדיקות, expo-doctor, ו-smoke על A54 — ראו CHANGELOG.
+
+### נקודת ההמשך (מעודכנת 14/09/2026)
+- ~~Stage 1 — Platform Foundation~~ — **ANDROID: PASS / iOS: DEFERRED**. commit: "feat: establish Expo platform foundation" (מעל `8428bd6`).
+- **Stage 2 — Business/Data Parity — NOT STARTED.** אין להתחיל לפני הגדרת היקף ואישור.
+- לא בוצע push, deploy או tag. הווב נשאר Production.

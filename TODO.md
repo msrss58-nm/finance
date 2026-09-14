@@ -140,6 +140,23 @@
   4. מדיניות build: build מקומי בנתיבי ASCII מול EAS (EAS הוא הנתיב העיקרי).
   5. **שער חובה:** אימות פיזי של Development Build של EAS על iPhone 13 לפני סגירת Stage 1.
   6. (מאושר) נעילה מחמירה של RN ב-background מתקבלת; אין להוסיף native onStop בשלב זה.
+- **עדכון (13/09/2026): Stage 1 — Platform Foundation — OPEN / BLOCKED.** `mobile_expo/` נבנה ואנדרואיד אומת פיזית (PASS). לא בוצע commit. פירוט ב-CURRENT_STATUS.md. פתוח:
+  1. **שער iPhone 13:** התחברות לחשבון Expo, חברות Apple Developer Program, אישור מזהה, `eas device:create`, build פיתוח ב-EAS, התקנה ו-QA פיזי.
+  2. **KDF:** noble ב-JS טהור איטי מדי (~14.4 שניות ב-Hermes על A54). להחליט: מודול Expo מקומי שעוטף PBKDF2 של מערכת ההפעלה + `expo-crypto` (מומלץ), או `react-native-quick-crypto`.
+  3. מזהים סופיים (package / bundle id / שם) — ממתין לאישור.
+  4. הקשחת manifest של release: הרשאות שנותרו, רכיבי dev-client/ML Kit, INTERNET.
+  5. אייקוני טאבים; ניקוי `C:\ffbuild` (~5GB) כשלא נדרש עוד build מקומי.
+  6. ~~FCM/push~~ — הוסר ב-plugin (manifest + `aps-environment`), אומת ב-manifest הממוזג ובאינטרוספקציה.
+  7. ~~UX ייצוא~~ — שיתוף + תיקיית SAF, אומתו פיזית.
+- **עדכון (14/09/2026): Stage 1 — ANDROID: PASS / iOS: DEFERRED.** לפי החלטת המשתמש iOS נדחה, ואין הרשאה לעבודת App Store. פריט 1 שמעל עובר לשלב מאוחר ואינו חוסם.
+  - **נדחה ל-iOS:**
+    - Development Build של EAS ל-iPhone 13;
+    - QA ל-SecureStore, למחזור-חיים ופרטיות, להתראות ולבורר קבצים;
+    - provisioning / signing של Apple;
+    - מדידת KDF על iPhone.
+  - **KDF — פתוח:** JS טהור איטי מדי (כ-14.4 שניות ב-Hermes על A54). אין החלשת פרמטרים. המימוש הסופי מחכה לאישור. Stage 2 אינו תלוי בו.
+  - פריטים 3–5 שמעל נשארים פתוחים.
+- **הבא בתור: Stage 2 — Business/Data Parity — NOT STARTED.** אין להתחיל לפני הגדרת היקף ואישור.
 
 ## חשוב
 - **3 בעיות legacy ידועות שזוהו בביקורת הגירה ל-Flutter (05/09/2026) — נדחות במפורש, אינן חלק מיעד השוואת-הגירה (parity)**:
