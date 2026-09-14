@@ -13,6 +13,8 @@ export type NotificationFailure = { readonly kind: NotificationFailureKind; read
 /** Every notification id this app may create or cancel. Nothing else is ever touched. */
 export const OWNED_NOTIFICATION_IDS = {
   foundationTest: 'ff-foundation-test',
+  /** The monthly Goals reminder (one at a time; see goalsReminderScheduler.ts). */
+  goalsReminder: 'ff-goals-reminder',
 } as const;
 export type OwnedNotificationId = (typeof OWNED_NOTIFICATION_IDS)[keyof typeof OWNED_NOTIFICATION_IDS];
 export const ALL_OWNED_NOTIFICATION_IDS: readonly OwnedNotificationId[] = Object.values(OWNED_NOTIFICATION_IDS);

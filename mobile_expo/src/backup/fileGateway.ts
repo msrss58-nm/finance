@@ -39,11 +39,17 @@ export interface FileGateway {
   /** True where a folder (SAF) export exists — Android only. */
   readonly supportsFolderExport: boolean;
   pickTextDocument(): Promise<FileResult<PickedTextDocument>>;
-  /** Hands the file to the OS share sheet. `ok` = sheet closed; the destination is unknown to the app. */
-  shareJson(fileName: string, text: string): Promise<FileResult<void>>;
+  /**
+   * Hands the file to the OS share sheet. `ok` = sheet closed; the destination
+   * is unknown to the app. `mimeType` defaults to JSON (backups); CSV exports pass their own.
+   */
+  shareJson(fileName: string, text: string, mimeType?: string): Promise<FileResult<void>>;
   /** Android: user picks a folder, the file is created there and read back. */
-  saveJsonToFolder(fileName: string, text: string): Promise<FileResult<{ readonly fileName: string }>>;
+  saveJsonToFolder(fileName: string, text: string, mimeType?: string): Promise<FileResult<{ readonly fileName: string }>>;
 }
+
+export const JSON_MIME_TYPE = 'application/json';
+export const CSV_MIME_TYPE = 'text/csv';
 
 /** Pure decode step shared by every gateway: size, emptiness, strict UTF-8, one BOM. */
 export function decodePickedBytes(bytes: Uint8Array, maxBytes: number = MAX_IMPORT_BYTES): Result<string, FileFailure> {

@@ -31,6 +31,8 @@ export const DEVICE_LOCAL_KEYS = {
   securityMarker: 'ff_security_marker_v1',
   /** Foundation diagnostics: survives-restart check. */
   diagnosticsMarker: 'ff_diag_persistence_v1',
+  /** Goals-reminder OS notification preference (per install; same key as the Flutter oracle). */
+  goalsReminderPrefs: 'ff_goals_reminder_v1',
 } as const;
 
 /**

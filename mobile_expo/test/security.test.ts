@@ -156,7 +156,7 @@ test('marker read failure fails closed', async () => {
   assert.equal(auth.state.get().kind, 'unavailable');
 });
 
-test('a real ff_pin_v1 record cannot be verified before the KDF is approved: fail closed', async () => {
+test('an incomplete ff_pin_v1 record is unusable: fail closed (never "no PIN")', async () => {
   const { make, secrets } = setup();
   secrets.values.set(SECRET_KEYS.pinRecord, '{"v":1,"kdf":"pbkdf2-hmac-sha256"}');
   const auth = make();

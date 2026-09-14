@@ -592,3 +592,54 @@ legacy נשמר במכוון.
 - **"סכום עד ההכנסה הבאה":** לוגיקה פנימית בלבד.
 
 הווב, `mobile_flutter/` ו-`mobile_expo_probe/` לא שונו. commit יחיד מעל `abcff87` ("feat: port financial business logic to Expo"). אין push/deploy/tag. Stage 3 — Complete Product / Android — NOT STARTED.
+
+## 14/09/2026 — Stage 3: Complete Product / Android — OPEN / BLOCKED (PIN/KDF בלבד, ללא commit)
+
+נוסף המוצר המלא לאנדרואיד מעל שכבת הדומיין של Stage 2, בלי לשנות סמנטיקה עסקית:
+- 5 מסכים אמיתיים (בית, תחזית, יעדים, קטגוריות, הגדרות) ומסלולים משניים (טופס תנועה, קטגוריה, יעד, רכיב, יתרת התחלה, נושאי הגדרות).
+- זרימות כתיבה בדומיין (`itemWrites`, `categoryWrites`, `goalWrites`, `openingBalanceInput`, `tileOrder`, `csvExport`) ו-`FamilyFinanceRepository.commit()` — כל פעולה בטרנזקציית SQLite אחת, ללא דריסת ערך שמור פגום, שמירת שדות לא מוכרים.
+- `FinanceController` / `BackupController` / `GoalsReminderSession` ו-view-models ב-`src/presentation` — ה-UI אינו מחשב נתונים פיננסיים.
+- תזכורת היעדים כהתראת מערכת מקומית (2 לחודש, 09:00, תוכן כללי).
+- 77 בדיקות חדשות (סה"כ 201).
+
+שני פגמים נמצאו ב-QA הפיזי ותוקנו:
+- **בית:** סכום בכרטיס "הכנסות" נשבר באמצע המספר (`₪14,50`/`0`) — נוסף `fit` ל-`AppText` (שורה אחת, התאמת גודל).
+- **מסלולים משניים מתחת לסרגל הניווט של המערכת:** ב-Android 16 (edge-to-edge) כפתור השמירה בטפסים צויר מתחת לסרגל, והקשה עליו הפעילה "חזרה" של המערכת — הטופס נסגר בלי לשמור. נוסף inset תחתון (`contentStyle.paddingBottom`) לכל המסלולים שאינם טאבים ב-`app/_layout.tsx`.
+
+**חוסם יחיד:** הגדרת PIN במוצר תלויה ב-KDF הסופי, שנשאר החלטה פתוחה. מעטפת האבטחה (fail-closed, נעילה ברקע, FLAG_SECURE, Back / התראה / בורר קבצים אינם עוקפים) אומתה פיזית עם מנעול התשתית של Stage 1 בלבד.
+
+אימות: `npm ci`, tsc (אפליקציה + בדיקות), lint, 201/201 בדיקות (כולל פריטי ה-parity של Stage 2 — 0 רגרסיה), expo-doctor 21/21, ו-QA פיזי מלא על Galaxy A54 (SM-A546E, Android 16 / API 36) עם נתונים סינתטיים בלבד.
+
+הווב, `mobile_flutter/` ו-`mobile_expo_probe/` לא שונו. אין commit/push/deploy/tag. Stage 4 — NOT STARTED.
+
+## 14/09/2026 — Stage 3 Finalization: נאמנות UI + PIN/KDF סופי לאנדרואיד — CLOSED / PASS (ללא commit)
+
+**בדיקת נאמנות UI/ניווט:** בדיקה בקריאה בלבד מול `index.html`, `styles.css`, `app.js`, `index-preview-v2.html`, `Design/` ו-Flutter. בכל המקורות המאושרים הניווט הראשי הוא סרגל תחתון (`.bottom-nav`, ‏`position: fixed; bottom: 0`) עם 5 פריטים: בית, תחזית, יעדים, קטגוריות, הגדרות. `styles.css` קובע במפורש שאין פריסה נפרדת למסך רחב, ואין בו sidebar/drawer. **תפריט צד ימני לא קיים במוצר המאושר**, ולכן לא נבנה. סרגל ה-Expo תואם: אותם יעדים ואותו סדר ב-RTL. הפלטה (בהיר/כהה ו-6 הצבעים) זהה 1:1 ל-`styles.css`.
+
+תיקוני נאמנות שבוצעו:
+- כותרת ה-Web ‏(`.app-header`): "FamilyFinance" / "ניהול תקציב משפחתי", ממורכזת, בכל מסך ראשי.
+- כותרות מסך כמו ב-Web: "תחזית", "יעדים", "ניהול קטגוריות", "הגדרות".
+- כפתור "+" צף במרכז התחתון (כמו `.fab`), וטקסט כרטיס היתרה ממורכז (כמו `.hero-gauge`).
+- מסך הנעילה לפי `lock-card` של ה-Web (🔒, "האפליקציה נעולה", "הזן/י PIN לפתיחה", "קוד שגוי, נסה/י שוב", "פתח"), ונמנע מהמקלדת.
+- מסך האבחון (פיתוח בלבד) קיבל inset תחתון — כפתור בו צויר מתחת לסרגל הניווט.
+
+**PIN/KDF סופי:** מודול Expo מקומי `modules/ff-pin-kdf` ‏(Kotlin, ‏Expo Modules API) — ‏`SecretKeyFactory("PBKDF2WithHmacSHA256")`, ‏`SecureRandom`, ‏`MessageDigest.isEqual`. PBKDF2-HMAC-SHA256, ‏100,000 איטרציות, salt של 16 בתים, verifier של 32 בתים; המינימום נאכף בקוד הנייטיבי. אין מימוש JS ואין fallback — מודול חסר ⇒ `kdfUnavailable` והאפליקציה ננעלת (fail closed). רשומת `ff_pin_v1` זהה לחוזה של Flutter, נשמרת ב-SecureStore בלבד, ומפוענחת בקפדנות. זרימות: הגדרה (4–6 ספרות + אימות, ללא דריסה), שינוי והסרה לאחר אימות הקוד הנוכחי. "שכחתי את הקוד" של ה-Web **לא** הועבר: הוא מסיר PIN בלי אימות, כלומר עוקף את הנעילה.
+
+**בנצ'מרק על A54 (נייטיבי):** וקטור ידוע תואם ל-Node. גזירה 444/447/452ms, אימות 451/446/449ms. PIN שגוי נדחה, ופרמטרים חלשים (1,000 איטרציות) נדחים בקוד הנייטיבי.
+
+**בדיקות:** 17 בדיקות PIN/KDF חדשות (סה"כ 218/218), כולל parity של Stage 2 ו-oracle של Flutter ללא רגרסיה. `npm ci`, tsc (אפליקציה + בדיקות), lint ו-expo-doctor ‏21/21 עברו.
+
+**QA פיזי — Galaxy A54 (SM-A546E, Android 16 / API 36):** הגדרה, ולידציה, שינוי (קוד נוכחי שגוי נדחה), הסרה; נעילה ברקע, אחרי הפעלה מחדש, PIN שגוי, Back; הקשה על התראה ובורר קבצים בזמן נעילה — ללא עקיפה; FLAG_SECURE (צילום מסך שחור רק כש-PIN פעיל); smoke של כל המסכים והטפסים.
+
+הווב, `mobile_flutter/` ו-`mobile_expo_probe/` לא שונו. אין commit/push/deploy/tag. iOS נשאר נדחה. Stage 4 — NOT STARTED.
+
+## 14/09/2026 — Stage 3 checkpoint commit ("feat: complete Expo Android product") — CLOSED / PASS
+
+החלטות מוצר שאושרו לפני ה-commit:
+- **ניווט:** הסרגל התחתון עם 5 פריטים (בית, תחזית, יעדים, קטגוריות, הגדרות) הוא הסמכותי. ההנחה על תפריט צד ימני הייתה שגויה — לא יתווסף sidebar / drawer.
+- **"שכחתי את הקוד":** זרימת ה-Web שמסירה PIN בלי אימות לא מועברת. שחזור מאובטח — החלטת מוצר עתידית נפרדת.
+- **נעילה אוטומטית:** כל מעבר לרקע נועל מיד. אין נעילה לפי דקות.
+
+KDF סופי לאנדרואיד: PBKDF2-HMAC-SHA256, ‏100,000 איטרציות, salt של 16 בתים, verifier של 32 בתים. A54: גזירה 444/447/452ms, אימות 451/446/449ms.
+
+שערים לפני ה-commit: `npm ci`, tsc (אפליקציה + בדיקות), lint, 218/218 בדיקות, parity של Stage 2 ו-oracle של Flutter — 0 רגרסיה, expo-doctor ‏21/21. commit יחיד מעל `154c6af`. הווב, `mobile_flutter/` ו-`mobile_expo_probe/` לא שונו. אין push/deploy/tag. iOS נדחה. Stage 4 — NOT STARTED.

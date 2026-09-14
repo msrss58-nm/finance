@@ -61,6 +61,23 @@ declare module 'node:fs' {
   export function mkdtempSync(prefix: string): string;
   export function rmSync(path: string, options?: { recursive?: boolean; force?: boolean }): void;
   export function readFileSync(path: string | URL, encoding: 'utf8'): string;
+  export function readdirSync(path: string | URL, options: { recursive: true }): string[];
+}
+
+declare module 'node:crypto' {
+  interface Bytes extends Uint8Array {
+    toString(encoding?: 'base64'): string;
+  }
+  export function pbkdf2Sync(password: string, salt: Uint8Array, iterations: number, keylen: number, digest: 'sha256'): Bytes;
+  export function randomBytes(size: number): Bytes;
+  export function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean;
+}
+
+declare module 'node:buffer' {
+  interface Bytes extends Uint8Array {
+    toString(encoding?: 'base64'): string;
+  }
+  export const Buffer: { from(data: string, encoding: 'base64'): Bytes };
 }
 
 declare module 'node:os' {

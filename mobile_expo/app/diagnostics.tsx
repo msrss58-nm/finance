@@ -7,21 +7,68 @@ import { useCallback, useEffect, useState } from 'react';
 import { BackHandler, StyleSheet, View } from 'react-native';
 
 import { useServices } from '../src/composition/ServicesContext.tsx';
+import { buildSyntheticBackup } from '../src/composition/syntheticDataset.ts';
 import { ltr } from '../src/core/bidi.ts';
 import { runPersistenceSelfTest, type SelfTestCheck } from '../src/data/persistenceSelfTest.ts';
 import { DEVICE_LOCAL_KEYS } from '../src/data/storageKeys.ts';
 import { OWNED_NOTIFICATION_IDS } from '../src/notifications/notificationGateway.ts';
 import { readDirectionInfo } from '../src/platform/deviceInfo.ts';
+import { expoPinKdf } from '../src/platform/expoPinKdf.ts';
+import { KDF_KNOWN_ANSWER } from '../src/security/pinKdfSelfTest.ts';
 import { SECURITY_FAILURE_MESSAGES } from '../src/security/securityTypes.ts';
 import { describeAuthState } from '../src/ui/authText.ts';
 import { Body, Button, ErrorText, Muted, Row, Screen, Section } from '../src/ui/components.tsx';
+import { FileOperationPanel } from '../src/ui/FileOperationPanel.tsx';
+import { ConfirmDialog } from '../src/ui/kit.tsx';
 import { colors, spacing } from '../src/ui/theme.ts';
 import { useStore } from '../src/ui/useStore.ts';
 
 const yesNo = (v: boolean) => (v ? 'כן' : 'לא');
 
 export default function DiagnosticsScreen() {
-  const { kv, auth, notifications, notificationInit } = useServices();
+  const { kv, auth, notifications, notificationInit, finance, files } = useServices();
+  const [seedConfirm, setSeedConfirm] = useState(false);
+  const [seedMessage, setSeedMessage] = useState<string | null>(null);
+  const [kdfResult, setKdfResult] = useState<string | null>(null);
+
+  // Native KDF self-test + timing: the public known-answer vector, then 3
+  // derivations and 3 verifications at 100,000 iterations with a synthetic
+  // input. Shows only verdicts and milliseconds — never a salt or verifier.
+  const runKdfCheck = async () => {
+    setKdfResult('running…');
+    const v = KDF_KNOWN_ANSWER;
+    const known = await expoPinKdf.deriveVerifier(v.pin, v.saltB64, v.iterations);
+    if (!known.ok) {
+      setKdfResult('vector: FAIL (' + known.error.kind + ')');
+      return;
+    }
+    const derive: number[] = [];
+    const verify: number[] = [];
+    let saltB64 = '';
+    let verifierB64 = '';
+    for (let i = 0; i < 3; i++) {
+      const salt = await expoPinKdf.generateSalt();
+      if (!salt.ok) return setKdfResult('salt: FAIL (' + salt.error.kind + ')');
+      saltB64 = salt.value;
+      let t0 = Date.now();
+      const d = await expoPinKdf.deriveVerifier('13579', saltB64, v.iterations);
+      derive.push(Date.now() - t0);
+      if (!d.ok) return setKdfResult('derive: FAIL (' + d.error.kind + ')');
+      verifierB64 = d.value;
+      t0 = Date.now();
+      const good = await expoPinKdf.verifyPin('13579', saltB64, v.iterations, verifierB64);
+      verify.push(Date.now() - t0);
+      if (!good.ok || good.value !== true) return setKdfResult('verify: FAIL');
+    }
+    const wrong = await expoPinKdf.verifyPin('97531', saltB64, v.iterations, verifierB64);
+    const weak = await expoPinKdf.deriveVerifier('13579', saltB64, 1000);
+    setKdfResult(
+      'vector=' + (known.value === v.verifierB64 ? 'MATCH' : 'MISMATCH') +
+        ' derive=' + derive.join('/') + 'ms verify=' + verify.join('/') + 'ms' +
+        ' wrongPin=' + (wrong.ok ? String(wrong.value) : 'error') +
+        ' weakParams=' + (weak.ok ? 'ACCEPTED' : 'refused'),
+    );
+  };
   const authState = useStore(auth.state);
   const privacy = useStore(auth.privacyStatus);
   const direction = readDirectionInfo();
@@ -149,6 +196,12 @@ export default function DiagnosticsScreen() {
         {securityMessage !== null ? <Muted testID="diag-security-message">{securityMessage}</Muted> : null}
       </Section>
 
+      <Section title="KDF של PIN (וקטור וזמנים)">
+        <Muted>וקטור ציבורי סינתטי מול המודול הנייטיבי, ואז 3 גזירות ו-3 אימותים ב-100,000 איטרציות.</Muted>
+        <Button label="הרצת בדיקת KDF" testID="diag-kdf-run" onPress={() => void runKdfCheck()} />
+        {kdfResult !== null ? <Muted testID="diag-kdf-result">{ltr(kdfResult)}</Muted> : null}
+      </Section>
+
       <Section title="התראות מקומיות">
         {notificationInit.ok ? null : <ErrorText>אתחול ההתראות נכשל ({notificationInit.error.kind})</ErrorText>}
         <Row label="הרשאה" value={ltr(permission)} testID="diag-notif-permission" />
@@ -189,6 +242,28 @@ export default function DiagnosticsScreen() {
         />
         {notifyMessage !== null ? <Muted testID="diag-notif-message">{notifyMessage}</Muted> : null}
       </Section>
+
+      <Section title="נתונים סינתטיים (פיתוח)">
+        <Muted>מחליף את הנתונים הפיננסיים במכשיר בנתוני בדיקה, דרך מסלול השחזור המאומת והאטומי. למכשיר בדיקה בלבד.</Muted>
+        <Button label="טעינת נתונים סינתטיים" tone="danger" testID="diag-seed" onPress={() => setSeedConfirm(true)} />
+        {seedMessage !== null ? <Muted testID="diag-seed-message">{seedMessage}</Muted> : null}
+      </Section>
+
+      <FileOperationPanel files={files} />
+
+      <ConfirmDialog
+        visible={seedConfirm}
+        title="להחליף את הנתונים בנתוני בדיקה?"
+        message="כל הנתונים הפיננסיים הנוכחיים יוחלפו."
+        confirmLabel="החלפה"
+        destructive
+        onCancel={() => setSeedConfirm(false)}
+        onConfirm={() => {
+          setSeedConfirm(false);
+          void finance.restoreBackup(buildSyntheticBackup(new Date()), true).then((o) => setSeedMessage(o.ok ? `נטענו ${o.count ?? 0} מפתחות` : o.message));
+        }}
+        testID="diag-seed-dialog"
+      />
     </Screen>
   );
 }

@@ -1,0 +1,6 @@
+{
+  "name": "ff-pin-kdf",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local Expo module: the ff_pin_v1 PIN KDF over Android platform cryptography."
+}

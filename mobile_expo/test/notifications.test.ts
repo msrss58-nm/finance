@@ -43,5 +43,5 @@ test('a pending file-operation return outranks a notification tap, not vice vers
 });
 
 test('owned notification ids are an explicit closed set', () => {
-  assert.deepEqual([...ALL_OWNED_NOTIFICATION_IDS], ['ff-foundation-test']);
+  assert.deepEqual([...ALL_OWNED_NOTIFICATION_IDS], ['ff-foundation-test', 'ff-goals-reminder']);
 });

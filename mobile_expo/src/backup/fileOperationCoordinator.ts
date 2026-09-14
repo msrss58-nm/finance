@@ -70,13 +70,16 @@ export class FileOperationCoordinator {
     }
   }
 
-  async startExport(mode: 'share' | 'folder', fileName: string, text: string): Promise<void> {
+  async startExport(mode: 'share' | 'folder', fileName: string, text: string, mimeType?: string): Promise<void> {
     if (this.busy) return;
     const operation: FileOperation = mode === 'share' ? 'exportShare' : 'exportFolder';
     this.#state.set({ phase: 'working', operation });
     let result: FileResult<unknown>;
     try {
-      result = mode === 'share' ? await this.#gateway.shareJson(fileName, text) : await this.#gateway.saveJsonToFolder(fileName, text);
+      result =
+        mode === 'share'
+          ? await this.#gateway.shareJson(fileName, text, mimeType)
+          : await this.#gateway.saveJsonToFolder(fileName, text, mimeType);
     } catch {
       result = { status: 'failed', failure: { kind: mode === 'share' ? 'share' : 'write' } };
     }

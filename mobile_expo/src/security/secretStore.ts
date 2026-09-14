@@ -9,7 +9,7 @@
 import type { Result } from '../core/result.ts';
 
 export const SECRET_KEYS = {
-  /** Reserved for the real PIN verifier record (format fixed by the Flutter oracle). Not written in Stage 1. */
+  /** The PIN verifier record (format fixed by the Flutter oracle — see pinRecord.ts). */
   pinRecord: 'ff_pin_v1',
   /** Stage 1 placeholder lock record — see lockVerifier.ts. NOT authentication. */
   foundationLock: 'ff_foundation_lock_v0',

@@ -26,6 +26,13 @@ import { causeTypeOf } from '../core/result.ts';
 const EXPORT_DIR = 'ff-exports';
 const JSON_MIME = 'application/json';
 
+/** iOS Uniform Type Identifier for the share sheet. */
+function utiFor(mimeType: string): string {
+  if (mimeType === JSON_MIME) return 'public.json';
+  if (mimeType === 'text/csv') return 'public.comma-separated-values-text';
+  return 'public.plain-text';
+}
+
 function failed(kind: FileFailureKind, e?: unknown): { readonly status: 'failed'; readonly failure: FileFailure } {
   return { status: 'failed', failure: e === undefined ? { kind } : { kind, causeType: causeTypeOf(e) } };
 }
@@ -89,7 +96,7 @@ export function createExpoFileGateway(): FileGateway {
       }
     },
 
-    async shareJson(fileName: string, text: string): Promise<FileResult<void>> {
+    async shareJson(fileName: string, text: string, mimeType: string = JSON_MIME): Promise<FileResult<void>> {
       try {
         if (!(await Sharing.isAvailableAsync())) return failed('shareUnavailable');
       } catch (e) {
@@ -104,14 +111,14 @@ export function createExpoFileGateway(): FileGateway {
         return failed('write', e);
       }
       try {
-        await Sharing.shareAsync(file.uri, { mimeType: JSON_MIME, UTI: 'public.json', dialogTitle: 'ייצוא' });
+        await Sharing.shareAsync(file.uri, { mimeType, UTI: utiFor(mimeType), dialogTitle: 'ייצוא' });
         return { status: 'ok', value: undefined };
       } catch (e) {
         return failed('share', e);
       }
     },
 
-    async saveJsonToFolder(fileName: string, text: string): Promise<FileResult<{ readonly fileName: string }>> {
+    async saveJsonToFolder(fileName: string, text: string, mimeType: string = JSON_MIME): Promise<FileResult<{ readonly fileName: string }>> {
       if (Platform.OS !== 'android') return failed('unsupported');
       let dir: Directory;
       try {
@@ -120,7 +127,7 @@ export function createExpoFileGateway(): FileGateway {
         return isPickerCancelled(e) ? { status: 'cancelled' } : failed('pick', e);
       }
       try {
-        const file = dir.createFile(fileName, JSON_MIME);
+        const file = dir.createFile(fileName, mimeType);
         file.write(text);
         // Read back: success is claimed only for bytes that are really there.
         if ((await file.text()) !== text) return failed('write');

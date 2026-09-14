@@ -1,0 +1,230 @@
+// Home screen view model (pure) — app.js renderHomeScreenFromRealData(),
+// renderCategoryTileGridHtml(), renderHomeNotificationsFromRealData() and the
+// ATM saved list, with the approved Stage 2/3 decisions:
+//   - hero = projected balance for today (the Opening Balance engine);
+//   - "סך הכול הוצאות" = the 5th→4th period's expenses WITHOUT cash
+//     withdrawals; withdrawals are shown as their own figure (correction A);
+//   - in-app alerts = exceptional items only (decision C);
+//   - "מה צפוי לרדת" = outgoing bank charges in the next 10 days, nearest
+//     first, no cash withdrawals, nothing already shown as an alert (B).
+// "Amount until next income" is deliberately NOT part of this view.
+
+import {
+  getCategoryMonthlyTotals,
+  getFixedBankVsCreditSplit,
+  getLoanBankVsPayrollSplit,
+  getLoansBalanceSummary,
+  getMonthSnapshot,
+  getRecentActivity,
+  getVariableRemainingBalance,
+} from '../domain/aggregates.ts';
+import { computeInAppAlerts } from '../domain/alerts.ts';
+import { parseLocalDateStr } from '../domain/dates.ts';
+import { getForecastPeriodBounds, getProjectedBalanceToday } from '../domain/forecast.ts';
+import { getHomePeriodOutflows } from '../domain/homeTotals.ts';
+import { FF_KEYS } from '../domain/keys.ts';
+import { roundLoanSplitForDisplay } from '../domain/numbers.ts';
+import { isPlainObject } from '../domain/raw.ts';
+import { getProjectedBalanceOpeningConfig } from '../domain/settings.ts';
+import { homeTileDisplayLabel, reconcileTileOrder } from '../domain/tileOrder.ts';
+import { getUpcomingCharges } from '../domain/upcomingCharges.ts';
+import type { FinanceSnapshot } from '../state/financeController.ts';
+import { formatAmount, formatDate, formatDateStr, formatDayMonth, formatSignedAmount, relativeDaysText, toneOf, type Tone } from './format.ts';
+import { txRowView, type TxRowView } from './transactionsView.ts';
+
+export type HeroView = {
+  readonly state: 'unconfigured' | 'future' | 'available';
+  readonly amountText: string;
+  readonly tone: Tone;
+  readonly status: string;
+};
+
+export type HomeTile =
+  | {
+      readonly kind: 'category';
+      readonly key: string;
+      readonly label: string;
+      readonly amountText: string;
+      readonly red: boolean;
+      readonly breakdown: readonly string[];
+      readonly updatedLine: string | null;
+    }
+  | { readonly kind: 'variableRemaining'; readonly key: 'variable-remaining'; readonly label: string; readonly amountText: string }
+  | { readonly kind: 'loanBalance'; readonly key: 'loan-balance'; readonly label: string; readonly amountText: string; readonly view: 'total' | 'principal' };
+
+export type AlertRow = { readonly key: string; readonly title: string; readonly detail: string; readonly amountText: string | null };
+export type ChargeRow = { readonly key: string; readonly title: string; readonly dateText: string; readonly whenText: string; readonly amountText: string };
+export type WithdrawalRow = { readonly key: string; readonly id: unknown; readonly amountText: string; readonly dateText: string; readonly notes: string };
+
+export type HomeView = {
+  readonly hero: HeroView;
+  readonly incomeText: string;
+  readonly expensesText: string;
+  readonly withdrawalsText: string;
+  /** The 5th→4th period the expense/withdrawal figures cover, e.g. "5.9–4.10". */
+  readonly periodText: string;
+  readonly tiles: readonly HomeTile[];
+  /** The reconciled category order (for the reorder mode). */
+  readonly tileOrder: readonly string[];
+  readonly tileOrderLabels: readonly { readonly key: string; readonly label: string }[];
+  readonly alerts: readonly AlertRow[];
+  readonly upcoming: readonly ChargeRow[];
+  readonly recent: readonly TxRowView[];
+  readonly withdrawalsThisMonth: readonly WithdrawalRow[];
+  readonly corruptBanner: string | null;
+};
+
+export const HOME_TEXT = {
+  heroLabel: 'יתרה צפויה להיום',
+  unconfiguredAmount: 'לא הוגדרה',
+  unconfiguredStatus: 'כדי לחשב יתרה יומית יש להגדיר יתרת התחלה פעם אחת.',
+  availableStatus: 'מחושב לפי יתרת ההתחלה והתנועות המתוכננות עד היום — אינה יתרת בנק מאומתת.',
+  corrupt: 'חלק מהנתונים השמורים במכשיר פגומים. הם לא שונו ולא נמחקו, ושינויים בהם לא יישמרו עד שישוחזר גיבוי תקין (הגדרות ← נתונים).',
+} as const;
+
+/** app.js formatCreditSettlementUpdatedLabel(): a plain string split, never a Date. */
+export function formatCreditSettlementUpdatedLabel(dateStr: unknown): string {
+  const parts = (typeof dateStr === 'string' ? dateStr : '').split('-');
+  if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) return 'עודכן: —';
+  return 'עודכן: ' + parts[2] + '.' + parts[1] + '.' + parts[0];
+}
+
+const RED_TILE_KEYS = new Set(['fixed', 'variable', 'loan', 'dated']);
+
+export function buildHomeView(s: FinanceSnapshot): HomeView {
+  const { data, now } = s;
+  const { items, categoryConfig, settings } = data;
+
+  // Hero: the projected balance for today (never a fabricated 0).
+  const opening = getProjectedBalanceOpeningConfig(settings);
+  const projected = getProjectedBalanceToday(items, now, opening, categoryConfig);
+  let hero: HeroView;
+  if (!projected.configured) {
+    hero = { state: 'unconfigured', amountText: HOME_TEXT.unconfiguredAmount, tone: 'neutral', status: HOME_TEXT.unconfiguredStatus };
+  } else if (projected.state === 'future') {
+    hero = { state: 'future', amountText: '—', tone: 'neutral', status: 'החישוב יתחיל בתאריך ' + formatDateStr(projected.openingDateStr) + '.' };
+  } else {
+    hero = { state: 'available', amountText: formatAmount(projected.projectedBalance), tone: toneOf(projected.projectedBalance), status: HOME_TEXT.availableStatus };
+  }
+
+  const outflows = getHomePeriodOutflows(items, now, categoryConfig);
+
+  // Category tiles (app.js renderCategoryTileGridHtml()).
+  const tileOrder = reconcileTileOrder(data.raw[FF_KEYS.categoryTileOrder] ?? null, categoryConfig);
+  const totals = getCategoryMonthlyTotals(items, categoryConfig, now);
+  const fixedSplit = getFixedBankVsCreditSplit(items, now);
+  const loanSplit = roundLoanSplitForDisplay(getLoanBankVsPayrollSplit(items, now).bank, getLoanBankVsPayrollSplit(items, now).payroll);
+  const loanBalance = getLoansBalanceSummary(items, now);
+  const tiles: HomeTile[] = [];
+  for (const key of tileOrder) {
+    const cfg = categoryConfig[key];
+    if (!isPlainObject(cfg)) continue;
+    const rawTotal = totals[key] || 0;
+    if (key !== 'dated' && cfg.baseType === 'dated' && !rawTotal) continue;
+    const label = homeTileDisplayLabel(key, categoryConfig);
+    const red = RED_TILE_KEYS.has(key);
+    if (key === 'dated') {
+      tiles.push({
+        kind: 'category',
+        key,
+        label,
+        amountText: rawTotal ? formatAmount(rawTotal) : 'הזן חיוב',
+        red,
+        breakdown: [],
+        updatedLine: formatCreditSettlementUpdatedLabel(settings.creditCardSettlementUpdatedAt),
+      });
+    } else if (key === 'fixed') {
+      tiles.push({
+        kind: 'category',
+        key,
+        label,
+        amountText: formatAmount(rawTotal),
+        red,
+        breakdown: ['מהבנק: ' + formatAmount(fixedSplit.bank), 'באשראי: ' + formatAmount(fixedSplit.credit)],
+        updatedLine: null,
+      });
+    } else if (key === 'loan') {
+      tiles.push({
+        kind: 'category',
+        key,
+        label,
+        amountText: formatAmount(loanSplit.total),
+        red,
+        breakdown: ['מהבנק: ' + formatAmount(loanSplit.bank), 'דרך תלוש השכר: ' + formatAmount(loanSplit.payroll)],
+        updatedLine: null,
+      });
+    } else {
+      tiles.push({ kind: 'category', key, label, amountText: formatAmount(rawTotal), red, breakdown: [], updatedLine: null });
+    }
+    if (key === 'variable') {
+      tiles.push({
+        kind: 'variableRemaining',
+        key: 'variable-remaining',
+        label: 'יתרת תשלומים שונים',
+        amountText: formatAmount(getVariableRemainingBalance(items, categoryConfig, now)),
+      });
+    }
+    if (key === 'loan') {
+      const view = data.loanBalanceView;
+      tiles.push({
+        kind: 'loanBalance',
+        key: 'loan-balance',
+        label: 'יתרת הלוואות',
+        amountText: formatAmount(view === 'principal' ? loanBalance.principal : loanBalance.total),
+        view,
+      });
+    }
+  }
+
+  // In-app alerts (exceptional items), then the charges they must not repeat.
+  const alerts = computeInAppAlerts({ items, settings, now, categoryConfig, lastAutoArchivedTitles: s.lastAutoArchivedTitles });
+  const alertRows: AlertRow[] = alerts.map((a, i) => {
+    const n = typeof a.amount === 'number' ? a.amount : Number(a.amount);
+    return { key: a.kind + ':' + i, title: a.title, detail: a.detail, amountText: a.amount != null && isFinite(n) ? formatAmount(n) : null };
+  });
+  const upcoming: ChargeRow[] = getUpcomingCharges({ items, now, categoryConfig, alerts }).map((c) => ({
+    key: c.type + '|' + String(c.itemId) + '|' + c.dateKey,
+    title: typeof c.title === 'string' ? c.title : String(c.title ?? ''),
+    dateText: formatDate(c.date),
+    whenText: relativeDaysText(c.date, now),
+    amountText: formatSignedAmount(-c.amount),
+  }));
+
+  // Cash withdrawals dated in the current calendar month (app.js getHomeAtmSavedWithdrawalsThisMonth()).
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const withdrawals = items
+    .filter((it) => isPlainObject(it) && it.type === 'cashWithdrawal' && !it.isArchived && it.start)
+    .filter((it) => {
+      const d = parseLocalDateStr(it.start);
+      return !!d && d.getFullYear() === y && d.getMonth() === m;
+    })
+    .sort((a, b) => (parseLocalDateStr(a.start) as Date).getTime() - (parseLocalDateStr(b.start) as Date).getTime())
+    .map((it, i) => ({
+      key: String(it.id) + ':' + i,
+      id: it.id,
+      amountText: formatAmount(typeof it.amount === 'number' ? it.amount : 0),
+      dateText: formatDateStr(it.start),
+      notes: typeof it.notes === 'string' ? it.notes : '',
+    }));
+
+  const corrupt = data.corruptKeys.some((k) => k === FF_KEYS.data || k === FF_KEYS.categoryConfig || k === FF_KEYS.settings);
+
+  const bounds = getForecastPeriodBounds(now);
+
+  return {
+    hero,
+    incomeText: formatAmount(getMonthSnapshot(items, now).income),
+    expensesText: formatAmount(outflows.expenses),
+    withdrawalsText: formatAmount(outflows.withdrawals),
+    periodText: formatDayMonth(bounds.periodStart) + '–' + formatDayMonth(bounds.periodEnd),
+    tiles,
+    tileOrder,
+    tileOrderLabels: tileOrder.map((key) => ({ key, label: homeTileDisplayLabel(key, categoryConfig) })),
+    alerts: alertRows,
+    upcoming,
+    recent: getRecentActivity(items, 4).map((it, i) => txRowView(it, categoryConfig, now, i)),
+    withdrawalsThisMonth: withdrawals,
+    corruptBanner: corrupt ? HOME_TEXT.corrupt : null,
+  };
+}
