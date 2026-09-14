@@ -41,6 +41,18 @@ declare module 'node:sqlite' {
   }
 }
 
+declare module 'node:vm' {
+  export class Script {
+    constructor(code: string, options?: { filename?: string });
+    runInContext(context: object): unknown;
+  }
+  export function createContext(sandbox: object): object;
+  const vm: { Script: typeof Script; createContext: typeof createContext };
+  export default vm;
+}
+
+declare const process: { env: Record<string, string | undefined> };
+
 declare module 'node:module' {
   export function createRequire(url: string): (id: string) => unknown;
 }

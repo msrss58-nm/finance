@@ -17,7 +17,7 @@ module.exports = defineConfig([
     // Expo so they run under plain Node tests and stay portable. Native access
     // lives only in src/platform (adapters); React only in app/,
     // src/composition and src/ui.
-    files: ['src/core/**', 'src/data/**', 'src/security/**', 'src/navigation/**', 'src/notifications/**', 'src/backup/**'],
+    files: ['src/core/**', 'src/data/**', 'src/domain/**', 'src/security/**', 'src/navigation/**', 'src/notifications/**', 'src/backup/**'],
     rules: {
       'no-restricted-imports': [
         'error',

@@ -19,7 +19,12 @@ app/                    Expo Router routes (thin: wiring + presentation)
   diagnostics.tsx       foundation diagnostics — development builds only
 src/
   core/                 pure helpers: Result, observable store, strict UTF-8, bidi, currency display
-  data/                 KeyValueStore contract + SQLite implementation, storage key registry
+  domain/               Stage 2 business/data logic — a line-by-line TypeScript port of the Web
+                        app.js (cash-flow engine, Opening Balance, Forecast, loans, Home totals,
+                        in-app alerts, "מה צפוי לרדת", Goals/FIFO, backup contract). Raw stored
+                        objects stay authoritative; "today" is always an explicit parameter.
+  data/                 KeyValueStore contract + SQLite implementation, storage key registry,
+                        FamilyFinanceRepository (raw-preserving reads/writes, atomic restore)
   security/             auth state machine, controller, secret-store contract, privacy policy
   navigation/           tab registry, deferred navigation intents
   notifications/        local-notification contract, tap routing
@@ -30,6 +35,9 @@ src/
 plugins/                config plugins (CNG) — withLocalOnlyNotifications.js
 scripts/                android-local-build.ps1 (ASCII-path local Android build)
 test/                   Node test runner suites (+ node:sqlite driver, fakes)
+  parity/               read-only Node VM harness around the UNMODIFIED ../app.js: seeded
+                        scenarios compared Web ↔ Expo (Asia/Jerusalem + America/New_York)
+  oracle/               vectors ported from the frozen Flutter oracle's tests
 ```
 
 Import boundaries (enforced by ESLint): `core`, `data`, `security`,
