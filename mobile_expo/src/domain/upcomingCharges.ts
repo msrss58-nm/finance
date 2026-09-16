@@ -10,8 +10,12 @@
 //     runs through today), consistent with the engine's "next event" rule.
 //   - A cash withdrawal is NOT a charge (approved decision A: not an expense),
 //     so it is excluded.
-//   - Anything already surfaced by the in-app alerts is not repeated here:
-//     an upcomingPayment alert suppresses the matching (type, itemId, date).
+//   - APPROVED 16/09/2026 (supersedes the earlier de-duplication rule): the list is
+//     COMPLETE — every qualifying bank outflow in the window appears, even when the
+//     same item also produced an in-app alert. Alerts mean "needs attention now";
+//     they are not a second copy of this list and no longer remove rows from it.
+//     Before this, anything due tomorrow was silently dropped whenever the
+//     "תשלום צפוי מחר" notification was on.
 //   - Deterministic: sorted by compareCashflowEvents; duplicate keys collapse.
 
 import type { InAppAlert } from './alerts.ts';
@@ -50,13 +54,6 @@ export function getUpcomingCharges(input: UpcomingChargesInput): UpcomingCharge[
   const rangeStart = monthStartOf(todayZero);
   const monthsCount = (windowEnd.getFullYear() - rangeStart.getFullYear()) * 12 + (windowEnd.getMonth() - rangeStart.getMonth()) + 1;
 
-  const suppressed = new Set<string>();
-  for (const alert of input.alerts) {
-    if (alert.kind === 'upcomingPayment' && alert.date !== null) {
-      suppressed.add(chargeKey(alert.itemType, alert.itemId, cashflowDateKey(alert.date)));
-    }
-  }
-
   const events = generateCashflowEvents(input.items, rangeStart, monthsCount, input.categoryConfig)
     .filter((ev) => {
       const d = cashflowDateOnly(ev.date);
@@ -69,7 +66,7 @@ export function getUpcomingCharges(input: UpcomingChargesInput): UpcomingCharge[
   for (const ev of events) {
     const dateKey = cashflowDateKey(ev.date);
     const key = chargeKey(ev.type, ev.itemId, dateKey);
-    if (suppressed.has(key) || seen.has(key)) continue;
+    if (seen.has(key)) continue;
     seen.add(key);
     result.push({ date: cashflowDateOnly(ev.date), dateKey, amount: -ev.amount, itemId: ev.itemId, type: ev.type, title: ev.title });
   }

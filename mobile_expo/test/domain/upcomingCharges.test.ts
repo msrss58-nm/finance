@@ -1,5 +1,6 @@
-// "מה צפוי לרדת" (approved decision B) and its interaction with the in-app
-// alerts (decision C). Window: strictly after today through today + 10.
+// "מה צפוי לרדת (ב־10 הימים הבאים)" — approved decision B, with the 16/09/2026
+// correction: the list is COMPLETE. An in-app alert no longer removes a charge from it.
+// Window: strictly after today through today + 10.
 process.env.TZ = 'Asia/Jerusalem';
 
 import assert from 'node:assert/strict';
@@ -31,25 +32,41 @@ const items: Record<string, unknown>[] = [
 
 const summary = (list: { dateKey: string; itemId: unknown; amount: number }[]) => list.map((c) => `${c.dateKey}#${String(c.itemId)}=${c.amount}`);
 
-test('window, sorting (nearest first, same-day by type), exclusions and alert de-duplication', () => {
+test('window, sorting (nearest first, same-day by type) and exclusions; an alerted charge is still listed', () => {
   const alerts = computeInAppAlerts({ items, settings, now, categoryConfig: cc, lastAutoArchivedTitles: [] });
-  assert.deepEqual(alerts.map((a) => [a.kind, a.itemId]), [['upcomingPayment', 1]]);
+  // APPROVED 16/09/2026: income 12 (the 15th, in 2 days) also alerts under the today+14 income rule.
+  assert.deepEqual(alerts.map((a) => [a.kind, a.itemId]), [
+    ['upcomingPayment', 1],
+    ['upcomingIncome', 12],
+  ]);
   const upcoming = getUpcomingCharges({ items, now, categoryConfig: cc, alerts });
-  assert.deepEqual(summary(upcoming), ['2026-09-18#9=90', '2026-09-18#8=2000', '2026-09-20#5=500', '2026-09-23#2=230']);
+  assert.deepEqual(summary(upcoming), [
+    '2026-09-14#1=100', // tomorrow — present even though it also raised an alert
+    '2026-09-18#9=90',
+    '2026-09-18#8=2000',
+    '2026-09-20#5=500',
+    '2026-09-23#2=230',
+  ]);
+  // excluded: credit-only variable (6) / dated purchase (7) / fixed (11), income (12),
+  // the cash withdrawal (10), today (4) and day 11 (3).
+  for (const id of [3, 4, 6, 7, 10, 11, 12]) assert.ok(!upcoming.some((c) => c.itemId === id), 'excluded: ' + id);
 });
 
-test('without an overlapping alert the item appears (nothing is dropped silently)', () => {
-  const upcoming = getUpcomingCharges({ items, now, categoryConfig: cc, alerts: [] });
-  assert.equal(summary(upcoming)[0], '2026-09-14#1=100');
-  const noPaymentAlerts = computeInAppAlerts({ items, settings: { notifications: { ...settings.notifications, upcomingPayment: false } }, now, categoryConfig: cc, lastAutoArchivedTitles: [] });
-  assert.equal(summary(getUpcomingCharges({ items, now, categoryConfig: cc, alerts: noPaymentAlerts }))[0], '2026-09-14#1=100');
+test('a charge due tomorrow appears whether or not the payment alert is enabled', () => {
+  const withAlerts = getUpcomingCharges({ items, now, categoryConfig: cc, alerts: computeInAppAlerts({ items, settings, now, categoryConfig: cc, lastAutoArchivedTitles: [] }) });
+  const alertsOff = computeInAppAlerts({ items, settings: { notifications: { ...settings.notifications, upcomingPayment: false } }, now, categoryConfig: cc, lastAutoArchivedTitles: [] });
+  const withoutAlerts = getUpcomingCharges({ items, now, categoryConfig: cc, alerts: alertsOff });
+  assert.equal(summary(withAlerts)[0], '2026-09-14#1=100');
+  assert.deepEqual(summary(withAlerts), summary(withoutAlerts), 'the alert state never changes the charge list');
 });
 
-test('an item never appears in both lists', () => {
-  const alerts = computeInAppAlerts({ items, settings, now, categoryConfig: cc, lastAutoArchivedTitles: ['הלוואה ישנה'] });
-  const upcoming = getUpcomingCharges({ items, now, categoryConfig: cc, alerts });
-  const alerted = new Set(alerts.filter((a) => a.itemId !== null).map((a) => a.itemId));
-  assert.ok(upcoming.every((c) => !alerted.has(c.itemId)));
+test('the day-10 edge is inside and day 11 is outside; a past charge is gone', () => {
+  const edge = [
+    { id: 1, type: 'fixed', title: 'day10', amount: 10, day: 23, where: 'bank' },
+    { id: 2, type: 'fixed', title: 'day11', amount: 20, day: 24, where: 'bank' },
+    { id: 3, type: 'fixed', title: 'yesterday', amount: 30, day: 12, where: 'bank' },
+  ];
+  assert.deepEqual(summary(getUpcomingCharges({ items: edge, now, categoryConfig: cc, alerts: [] })), ['2026-09-23#1=10']);
 });
 
 test('empty list when there is nothing to show', () => {

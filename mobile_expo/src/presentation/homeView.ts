@@ -15,28 +15,24 @@ import {
   getLoanBankVsPayrollSplit,
   getLoansBalanceSummary,
   getMonthSnapshot,
-  getRecentActivity,
   getVariableRemainingBalance,
 } from '../domain/aggregates.ts';
 import { computeInAppAlerts } from '../domain/alerts.ts';
-import { parseLocalDateStr } from '../domain/dates.ts';
+import type { CashflowEvent } from '../domain/cashflow.ts';
+import { cashflowDateKey, parseLocalDateStr } from '../domain/dates.ts';
 import { getForecastPeriodBounds, getProjectedBalanceToday } from '../domain/forecast.ts';
 import { getHomePeriodOutflows } from '../domain/homeTotals.ts';
 import { FF_KEYS } from '../domain/keys.ts';
 import { roundLoanSplitForDisplay } from '../domain/numbers.ts';
-import { isPlainObject } from '../domain/raw.ts';
+import { isPlainObject, type RawItem } from '../domain/raw.ts';
+import { getRecentCashflowActivity } from '../domain/recentActivity.ts';
 import { getProjectedBalanceOpeningConfig } from '../domain/settings.ts';
 import { homeTileDisplayLabel, reconcileTileOrder } from '../domain/tileOrder.ts';
 import { getUpcomingCharges } from '../domain/upcomingCharges.ts';
 import type { FinanceSnapshot } from '../state/financeController.ts';
 import { formatAmount, formatDate, formatDateStr, formatDayMonth, formatSignedAmount, relativeDaysText, toneOf, type Tone } from './format.ts';
-import { txRowView, type TxRowView } from './transactionsView.ts';
+import { ITEM_ICON_BY_TYPE, txRowView, type TxRowView } from './transactionsView.ts';
 
-/**
- * Home's recent-activity row (app.js renderTxList() over mapItemToHomeTxRow()): the
- * start date or "-", the settlement note — but no installment lines and no
- * "נכנס ב-/יורד ב-" day text, which belong to the Transactions screen only.
- */
 /**
  * Home-only: tiles the user asked not to see there (approved 16/09/2026), matched on the
  * displayed label. Presentation only — the categories, their items, the stored tile order
@@ -44,11 +40,31 @@ import { txRowView, type TxRowView } from './transactionsView.ts';
  */
 const HIDDEN_HOME_TILE_LABELS: ReadonlySet<string> = new Set(['רכישות', 'מנויים']);
 
-function homeRecentRowView(...args: Parameters<typeof txRowView>): TxRowView {
-  const [item] = args;
-  const row = txRowView(...args);
-  const startDate = item.start ? new Date(item.start as string) : null;
-  return { ...row, dateText: startDate && !isNaN(startDate.getTime()) ? formatDate(startDate) : '-', installment: [] };
+/**
+ * One "פעילות אחרונה" row (approved 16/09/2026): a cash-flow event that has already
+ * occurred. The row keeps the Web Home look — icon, title, the settlement note, no
+ * installment lines — but the date and amount come from the EVENT, so a scheduled
+ * charge shows the date it was due, not the item's stored start.
+ */
+function recentEventRow(
+  ev: CashflowEvent,
+  items: readonly RawItem[],
+  categoryConfig: Parameters<typeof txRowView>[1],
+  now: Date,
+  index: number,
+): TxRowView {
+  const key = String(ev.itemId ?? 'noid') + ':' + ev.type + ':' + cashflowDateKey(ev.date) + ':' + index;
+  const dateText = formatDate(ev.date);
+  const amountText = formatAmount(ev.amount);
+  const tone: TxRowView['tone'] = ev.amount >= 0 ? 'income' : 'expense';
+  const item = items.find((it) => isPlainObject(it) && it.id === ev.itemId);
+  if (!item) {
+    const title = typeof ev.title === 'string' ? ev.title : String(ev.title ?? '');
+    return { key, id: ev.itemId ?? null, icon: ITEM_ICON_BY_TYPE[ev.type] ?? '💳', title, dateText, amountText, tone, isArchived: false, installment: [], note: null, editable: false };
+  }
+  // Reuse the existing row builder so icon / note / editable / archived stay exactly as before.
+  const base = txRowView(item, categoryConfig, now, index);
+  return { ...base, key, dateText, amountText, tone, installment: [] };
 }
 
 export type HeroView = {
@@ -244,7 +260,7 @@ export function buildHomeView(s: FinanceSnapshot): HomeView {
     tileOrderLabels: tileOrder.map((key) => ({ key, label: homeTileDisplayLabel(key, categoryConfig) })).filter((t) => !HIDDEN_HOME_TILE_LABELS.has(t.label)),
     alerts: alertRows,
     upcoming,
-    recent: getRecentActivity(items, 4).map((it, i) => homeRecentRowView(it, categoryConfig, now, i)),
+    recent: getRecentCashflowActivity(items, now, categoryConfig, 4).map((ev, i) => recentEventRow(ev, items, categoryConfig, now, i)),
     withdrawalsThisMonth: withdrawals,
     corruptBanner: corrupt ? HOME_TEXT.corrupt : null,
   };

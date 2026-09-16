@@ -35,13 +35,17 @@ test('Home: hero, expenses WITHOUT withdrawals, withdrawals shown apart, alerts,
   assert.equal(v.expensesText, formatAmount(6500), 'rent 4000 + committee 300 + card bills 1500 + 700; no withdrawals');
   assert.equal(v.withdrawalsText, formatAmount(500));
   assert.equal(v.periodText, '5.9–4.10');
+  // APPROVED 16/09/2026: income alerts cover today+14, so the salary due on the 15th alerts as
+  // "מחר" and October's occurrence (15.10) is outside the window.
   assert.deepEqual(v.alerts.map((a) => [a.title, a.detail]), [
     ['תשלום צפוי מחר', 'שכירות'],
     ['הכנסה צפויה מחר', 'משכורת'],
   ]);
-  // Rent (tomorrow) is already an alert; withdrawals, the payroll loan and credit items are not bank charges;
+  // APPROVED 16/09/2026: the list is complete — rent is due tomorrow and appears even though it
+  // also raised an alert. Withdrawals, the payroll loan and credit items are not bank charges;
   // the Sep 25 card bill is outside today+10; Sep 24 is the inclusive edge.
   assert.deepEqual(v.upcoming.map((c) => [c.title, c.dateText, c.amountText]), [
+    ['שכירות', '15.9.2026', formatSignedAmount(-4000)],
     ['ועד', '20.9.2026', formatSignedAmount(-300)],
     ['ביטוח', '24.9.2026', formatSignedAmount(-700)],
   ]);
@@ -84,18 +88,34 @@ test('Home: the "רכישות" / "מנויים" tiles are not rendered, while th
   assert.equal(v.expensesText, formatAmount(4340), 'rent 4000 + subscription 40 + purchase 300');
 });
 
-test('Home recent activity is the Web Home row (app.js renderTxList): date or "-", no installment or day text', async () => {
+test('Home recent activity is derived from cash-flow events that already occurred, most recent first', async () => {
+  const s = await snapshotOf({ family_finance_data: JSON.stringify(HOME_ITEMS), family_finance_settings: OPENING }, NOW);
+  const v = buildHomeView(s);
+  // NOW = 14.9.2026: the 10.9 withdrawal, then August's committee / rent / salary events.
+  // Netflix (credit) and the payroll loan never create a bank event; nothing dated later than today.
+  assert.deepEqual(v.recent.map((r) => [r.title, r.dateText, r.amountText]), [
+    ['משיכת מזומן', '10.9.2026', formatAmount(-200)],
+    ['ועד', '20.8.2026', formatAmount(-300)],
+    ['שכירות', '15.8.2026', formatAmount(-4000)],
+    ['משכורת', '15.8.2026', formatAmount(10000)],
+  ]);
+  assert.equal(v.recent.length, 4, 'the existing 4-row limit is preserved');
+  assert.deepEqual(v.recent.map((r) => r.installment), [[], [], [], []], 'no installment lines on Home');
+  const keys = v.recent.map((r) => r.key);
+  assert.equal(new Set(keys).size, keys.length, 'no double counting');
+});
+
+test('Home recent activity keeps the settlement note and shows the event date', async () => {
   const items = [
-    { id: 1, type: 'income', displayCategory: 'income', title: 'משכורת', amount: 3500, day: '28', isArchived: false },
-    { id: 2, type: 'loan', displayCategory: 'loan', title: 'רכב', amount: 100, day: '13', total: '2', start: '2026-08-13', isArchived: false },
-    { id: 3, type: 'dated', displayCategory: 'dated', title: 'מקרר', amount: 3, start: '2026-09-20', notes: 'הערה', isArchived: false },
+    { id: 1, type: 'income', displayCategory: 'income', title: 'משכורת', amount: 3500, day: '10', isArchived: false },
+    { id: 3, type: 'dated', displayCategory: 'dated', title: 'מקרר', amount: 3, start: '2026-09-12', notes: 'הערה', isArchived: false },
   ];
   const v = buildHomeView(await snapshotOf({ family_finance_data: JSON.stringify(items) }, NOW));
   const by = (title: string) => v.recent.find((r) => r.title === title);
-  assert.equal(by('משכורת')?.dateText, '-', 'no "נכנס ב-28 לחודש" on Home');
-  assert.deepEqual(by('רכב')?.installment, [], 'no installment lines on Home');
-  assert.match(by('רכב')?.dateText ?? '', /^\d{1,2}\.\d{1,2}\.2026$/);
   assert.equal(by('מקרר')?.note, 'הערה', 'the credit-card settlement note stays');
+  assert.equal(by('מקרר')?.dateText, '12.9.2026', 'the event date, not "-"');
+  assert.equal(by('משכורת')?.dateText, '10.9.2026', 'a scheduled income that has passed shows its date');
+  assert.equal(by('משכורת')?.amountText, formatAmount(3500));
 });
 
 test('Home hero is never a fabricated 0: unconfigured and future opening states', async () => {

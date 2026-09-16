@@ -7,9 +7,18 @@
 // deterministically.
 
 import type { CategoryConfig } from './categoryConfig.ts';
+import { compareCashflowEvents, generateCashflowEvents } from './cashflow.ts';
+import { cashflowDateKey, cashflowDateOnly, monthStartOf } from './dates.ts';
 import type { RawItem } from './raw.ts';
 import { resolveEffectiveDay } from './resolvers.ts';
 import type { NotificationFlags } from './settings.ts';
+
+/**
+ * APPROVED 16/09/2026: a future income raises an alert while it is within
+ * today < income date <= today + 14 calendar days. Once its date arrives it stops being
+ * a future alert and becomes eligible for "פעילות אחרונה" instead.
+ */
+export const INCOME_ALERT_WINDOW_DAYS = 14;
 
 export type InAppAlertKind = 'upcomingPayment' | 'upcomingIncome' | 'completedObligation';
 
@@ -59,20 +68,33 @@ export function computeInAppAlerts(input: InAppAlertInput): InAppAlert[] {
     }
   }
   if (settings.notifications.upcomingIncome) {
-    for (const it of items) {
-      if (!it || it.isArchived) continue;
-      if (it.type !== 'income') continue;
-      if (resolveEffectiveDay(it, categoryConfig) === tomorrowDay) {
-        notes.push({
-          kind: 'upcomingIncome',
-          title: 'הכנסה צפויה מחר',
-          detail: ((it.title as string) || '') as string,
-          amount: it.amount,
-          itemId: it.id,
-          itemType: 'income',
-          date: tomorrow,
-        });
-      }
+    // Real income cash-flow events only, strictly after today through today + 14,
+    // nearest first, one alert per (item, date).
+    const todayZero = cashflowDateOnly(now);
+    const windowEnd = new Date(todayZero.getFullYear(), todayZero.getMonth(), todayZero.getDate() + INCOME_ALERT_WINDOW_DAYS);
+    const rangeStart = monthStartOf(todayZero);
+    const monthsCount = (windowEnd.getFullYear() - rangeStart.getFullYear()) * 12 + (windowEnd.getMonth() - rangeStart.getMonth()) + 1;
+    const seen = new Set<string>();
+    const incomeEvents = generateCashflowEvents(items, rangeStart, monthsCount, categoryConfig)
+      .filter((ev) => {
+        const d = cashflowDateOnly(ev.date);
+        return ev.type === 'income' && d > todayZero && d <= windowEnd;
+      })
+      .sort(compareCashflowEvents);
+    for (const ev of incomeEvents) {
+      const dateZero = cashflowDateOnly(ev.date);
+      const key = String(ev.itemId) + '|' + cashflowDateKey(dateZero);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      notes.push({
+        kind: 'upcomingIncome',
+        title: dateZero.getTime() === tomorrow.getTime() ? 'הכנסה צפויה מחר' : 'הכנסה צפויה',
+        detail: typeof ev.title === 'string' ? ev.title : String(ev.title ?? ''),
+        amount: ev.amount,
+        itemId: ev.itemId,
+        itemType: 'income',
+        date: dateZero,
+      });
     }
   }
   if (settings.notifications.completedObligation && lastAutoArchivedTitles.length) {

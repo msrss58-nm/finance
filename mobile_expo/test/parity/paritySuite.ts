@@ -238,17 +238,36 @@ export async function compareScenario(s: Scenario, stats: ParityStats): Promise<
 
   // ---- in-app alerts + "מה צפוי לרדת" ----
   const alerts = computeInAppAlerts({ items, settings, now, categoryConfig: cc, lastAutoArchivedTitles: sweep.archivedTitles });
-  same(ctx, 'computeHomeNotifications', W.call('computeHomeNotifications'), alerts.map((a) => ({ title: a.title, detail: a.detail, amount: a.amount })));
-  cover(ctx, 'alertsNonEmpty', alerts.length > 0);
-  const upcoming = getUpcomingCharges({ items, now, categoryConfig: cc, alerts });
-  const alertedKeys = new Set(alerts.filter((a) => a.kind === 'upcomingPayment').map((a) => `${String(a.itemType)}|${String(a.itemId)}`));
-  const tomorrowKey = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
+  // APPROVED 16/09/2026: income alerts now cover today+14 (real income events), so they deliberately
+  // differ from the Web's "tomorrow only" rule. The payment / completed-obligation alerts are still
+  // compared against the Web verbatim; the income alerts are checked as an approved deviation below.
+  const webAlerts = W.call('computeHomeNotifications') as { title: string; detail: string; amount: unknown }[];
+  const notIncome = (a: { title: string }) => a.title !== 'הכנסה צפויה מחר' && a.title !== 'הכנסה צפויה';
+  same(
+    ctx,
+    'computeHomeNotifications (payment + completed)',
+    Array.from(webAlerts).filter(notIncome),
+    alerts.filter((a) => a.kind !== 'upcomingIncome').map((a) => ({ title: a.title, detail: a.detail, amount: a.amount })),
+  );
+  const incomeAlerts = alerts.filter((a) => a.kind === 'upcomingIncome');
+  const todayZeroT = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const windowEndT = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 14).getTime();
   deviation(
     ctx,
-    'upcoming never repeats an alerted (type,item,date)',
-    upcoming.every((c) => !(alertedKeys.has(`${c.type}|${String(c.itemId)}`) && c.date.getTime() === tomorrowKey)),
-    'duplicate between alerts and upcoming',
+    'income alerts are real income events inside today+14',
+    incomeAlerts.every((a) => a.date !== null && a.date.getTime() > todayZeroT && a.date.getTime() <= windowEndT),
+    'income alert outside the approved window',
   );
+  const incomeKeys = incomeAlerts.map((a) => `${String(a.itemId)}|${a.date === null ? '' : a.date.getTime()}`);
+  deviation(ctx, 'income alerts have no duplicate (item,date)', new Set(incomeKeys).size === incomeKeys.length, 'duplicate income alert');
+  cover(ctx, 'incomeAlertsNonEmpty', incomeAlerts.length > 0);
+  cover(ctx, 'alertsNonEmpty', alerts.length > 0);
+  const upcoming = getUpcomingCharges({ items, now, categoryConfig: cc, alerts });
+  // APPROVED 16/09/2026 (supersedes "an alert removes the charge"): "מה צפוי לרדת" is the COMPLETE
+  // list of qualifying bank outflows in the window; an in-app alert no longer drops a row from it.
+  // What must still hold is that the list itself never repeats the same (type, item, date).
+  const upcomingKeys = upcoming.map((c) => `${c.type}|${String(c.itemId)}|${c.dateKey}`);
+  deviation(ctx, 'upcoming has no duplicate (type,item,date)', new Set(upcomingKeys).size === upcomingKeys.length, 'duplicate charge rows');
   deviation(ctx, 'upcoming contains no cash withdrawal', upcoming.every((c) => c.type !== 'cashWithdrawal'), 'withdrawal listed as a charge');
   cover(ctx, 'upcomingNonEmpty', upcoming.length > 0);
 
