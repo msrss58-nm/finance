@@ -57,7 +57,7 @@ test('home: the Web section order, the 2-column snapshot and no extra snapshot c
     'testID="home-expenses"',
     'testID="home-tiles"',
     'title="🔔 התראות (בתוך האפליקציה)"',
-    'title="מה צפוי לרדת"',
+    'title="מה צפוי לרדת (ב־10 הימים הבאים)"',
     'title="פעילות אחרונה"',
     'title="🏧 משיכת מזומן"',
     'testID="home-atm-row"',
@@ -65,6 +65,13 @@ test('home: the Web section order, the 2-column snapshot and no extra snapshot c
   assert.ok(isAscending(order), 'Home follows index.html #screen-home order');
   assert.doesNotMatch(home, /testID="home-withdrawals"/, 'no third "cash withdrawals" snapshot card');
   assert.match(home, /LinearGradient/, 'the hero keeps the Web gradient');
+});
+
+test('opening balance: the form dates a new entry TODAY, so an updated balance anchors at the update point', () => {
+  const form = src('../app/opening-balance.tsx');
+  assert.match(form, /useState\(todayStr\(snapshot\.now\)\)/, 'date defaults to today, also when replacing');
+  assert.doesNotMatch(form, /existing \? existing\.dateStr :/, 'never carries the old anchor date forward');
+  assert.match(form, /<DateField label="תאריך יתרת התחלה"/, 'the date stays user-editable');
 });
 
 test('navigation: the approved 5-item bottom navigation, in order, and no drawer', () => {

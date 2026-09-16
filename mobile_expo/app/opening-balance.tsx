@@ -25,7 +25,10 @@ function OpeningBalanceForm({ snapshot }: { snapshot: FinanceSnapshot }) {
   const router = useRouter();
   const existing = getProjectedBalanceOpeningConfig(snapshot.data.settings);
   const [amount, setAmount] = useState(existing ? String(existing.amount) : '');
-  const [dateStr, setDateStr] = useState(existing ? existing.dateStr : todayStr(snapshot.now));
+  // Approved rule (16/09/2026): an updated balance is authoritative AT THE UPDATE POINT, so the
+  // date defaults to today even when replacing — carrying the old anchor date forward would
+  // re-anchor in the past and replay every event since then. The field stays user-editable.
+  const [dateStr, setDateStr] = useState(todayStr(snapshot.now));
   const [inputError, setInputError] = useState<{ field: 'amount' | 'date'; message: string } | null>(null);
   const [pendingReplace, setPendingReplace] = useState<{ amount: number; dateStr: string } | null>(null);
   const write = useWrite();

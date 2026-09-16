@@ -169,7 +169,7 @@ function HomeContent({ snapshot }: { snapshot: FinanceSnapshot }) {
         <AttentionItem key={a.key} title={a.title} detail={a.detail} amount={a.amountText} amountColor={t.c.warning} testID="home-alert" />
       ))}
 
-      <SectionTitle title="מה צפוי לרדת" />
+      <SectionTitle title="מה צפוי לרדת (ב־10 הימים הבאים)" />
       {view.upcoming.map((c) => (
         <AttentionItem key={c.key} title={c.title} detail={c.whenText + ' · ' + c.dateText} amount={c.amountText} amountColor={t.c.danger} testID="home-upcoming" />
       ))}
