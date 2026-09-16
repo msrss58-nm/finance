@@ -32,6 +32,25 @@ import type { FinanceSnapshot } from '../state/financeController.ts';
 import { formatAmount, formatDate, formatDateStr, formatDayMonth, formatSignedAmount, relativeDaysText, toneOf, type Tone } from './format.ts';
 import { txRowView, type TxRowView } from './transactionsView.ts';
 
+/**
+ * Home's recent-activity row (app.js renderTxList() over mapItemToHomeTxRow()): the
+ * start date or "-", the settlement note — but no installment lines and no
+ * "נכנס ב-/יורד ב-" day text, which belong to the Transactions screen only.
+ */
+/**
+ * Home-only: tiles the user asked not to see there (approved 16/09/2026), matched on the
+ * displayed label. Presentation only — the categories, their items, the stored tile order
+ * and every total keep counting exactly as before, and no other screen is affected.
+ */
+const HIDDEN_HOME_TILE_LABELS: ReadonlySet<string> = new Set(['רכישות', 'מנויים']);
+
+function homeRecentRowView(...args: Parameters<typeof txRowView>): TxRowView {
+  const [item] = args;
+  const row = txRowView(...args);
+  const startDate = item.start ? new Date(item.start as string) : null;
+  return { ...row, dateText: startDate && !isNaN(startDate.getTime()) ? formatDate(startDate) : '-', installment: [] };
+}
+
 export type HeroView = {
   readonly state: 'unconfigured' | 'future' | 'available';
   readonly amountText: string;
@@ -122,6 +141,7 @@ export function buildHomeView(s: FinanceSnapshot): HomeView {
     const rawTotal = totals[key] || 0;
     if (key !== 'dated' && cfg.baseType === 'dated' && !rawTotal) continue;
     const label = homeTileDisplayLabel(key, categoryConfig);
+    if (HIDDEN_HOME_TILE_LABELS.has(label)) continue;
     const red = RED_TILE_KEYS.has(key);
     if (key === 'dated') {
       tiles.push({
@@ -204,7 +224,8 @@ export function buildHomeView(s: FinanceSnapshot): HomeView {
       key: String(it.id) + ':' + i,
       id: it.id,
       amountText: formatAmount(typeof it.amount === 'number' ? it.amount : 0),
-      dateText: formatDateStr(it.start),
+      // app.js renderHomeAtmSavedList() shows the stored 'YYYY-MM-DD' string as-is.
+      dateText: typeof it.start === 'string' ? it.start : '',
       notes: typeof it.notes === 'string' ? it.notes : '',
     }));
 
@@ -220,10 +241,10 @@ export function buildHomeView(s: FinanceSnapshot): HomeView {
     periodText: formatDayMonth(bounds.periodStart) + '–' + formatDayMonth(bounds.periodEnd),
     tiles,
     tileOrder,
-    tileOrderLabels: tileOrder.map((key) => ({ key, label: homeTileDisplayLabel(key, categoryConfig) })),
+    tileOrderLabels: tileOrder.map((key) => ({ key, label: homeTileDisplayLabel(key, categoryConfig) })).filter((t) => !HIDDEN_HOME_TILE_LABELS.has(t.label)),
     alerts: alertRows,
     upcoming,
-    recent: getRecentActivity(items, 4).map((it, i) => txRowView(it, categoryConfig, now, i)),
+    recent: getRecentActivity(items, 4).map((it, i) => homeRecentRowView(it, categoryConfig, now, i)),
     withdrawalsThisMonth: withdrawals,
     corruptBanner: corrupt ? HOME_TEXT.corrupt : null,
   };

@@ -60,6 +60,8 @@ export const BACKUP_MESSAGES = {
   exportCancelled: 'הייצוא בוטל — לא נוצר קובץ.',
   fileBusy: 'פעולת קובץ אחרת עדיין פתוחה.',
   importCancelled: 'לא נבחר קובץ — לא בוצע שינוי.',
+  /** app.js checkPastedRestoreBackup() with an empty textarea. */
+  pasteEmpty: 'לא הודבק תוכן גיבוי.',
   invalidBackup: 'קובץ הגיבוי אינו תקין — לא בוצע שינוי.',
   restoreCancelled: 'השחזור בוטל — לא בוצע שינוי.',
   resetWord: 'יש להקליד בדיוק את המילה "איפוס" כדי לאשר',
@@ -167,6 +169,27 @@ export class BackupController {
         if (fs.outcome === 'cancelled') this.#message('info', BACKUP_MESSAGES.importCancelled);
         else if (fs.outcome === 'failed') this.#message('error', (fs.failureKind ? FILE_FAILURE_MESSAGES[fs.failureKind] : 'קריאת הקובץ נכשלה') + ' — לא בוצע שינוי.');
       }
+    } finally {
+      this.#end();
+    }
+  }
+
+  /**
+   * app.js checkPastedRestoreBackup(): the "📋 הדבק גיבוי" fallback. The pasted
+   * text goes through the SAME parse / validate / preview pipeline as a picked
+   * file — no second restore engine. Returns true when a preview is now waiting.
+   */
+  async checkPastedBackup(text: string): Promise<boolean> {
+    if (!this.#begin('import')) return false;
+    try {
+      this.#pendingBackup = null;
+      this.#set({ preview: null, deleteExistingGoals: false });
+      if (!text || !text.trim()) {
+        this.#message('info', BACKUP_MESSAGES.pasteEmpty);
+        return false;
+      }
+      await this.#processText(text);
+      return this.#state.get().preview !== null;
     } finally {
       this.#end();
     }

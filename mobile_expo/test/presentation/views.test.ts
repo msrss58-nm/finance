@@ -45,9 +45,10 @@ test('Home: hero, expenses WITHOUT withdrawals, withdrawals shown apart, alerts,
     ['ועד', '20.9.2026', formatSignedAmount(-300)],
     ['ביטוח', '24.9.2026', formatSignedAmount(-700)],
   ]);
+  // app.js renderHomeAtmSavedList() shows the stored 'YYYY-MM-DD' string as-is.
   assert.deepEqual(v.withdrawalsThisMonth.map((w) => [w.dateText, w.amountText]), [
-    ['10.9.2026', formatAmount(200)],
-    ['16.9.2026', formatAmount(300)],
+    ['2026-09-10', formatAmount(200)],
+    ['2026-09-16', formatAmount(300)],
   ]);
   assert.deepEqual(v.tiles.map((t) => t.key), ['fixed', 'variable', 'variable-remaining', 'loan', 'loan-balance', 'dated']);
   const dated = v.tiles.find((t) => t.key === 'dated');
@@ -56,6 +57,45 @@ test('Home: hero, expenses WITHOUT withdrawals, withdrawals shown apart, alerts,
   assert.equal(dated.updatedLine, 'עודכן: —');
   assert.equal(v.corruptBanner, null);
   assert.equal(JSON.stringify(v).includes('ההכנסה הבאה'), false, '"amount until next income" is not exposed');
+});
+
+test('Home: the "רכישות" / "מנויים" tiles are not rendered, while their categories, order and totals stay intact', async () => {
+  const config = JSON.stringify({
+    income: { label: '💰 הכנסות', baseType: 'income' },
+    fixed: { label: '🏡 הוצאות קבועות', baseType: 'fixed' },
+    custom_fixed: { label: '🧾 מנויים', baseType: 'fixed' },
+    creditPurchase: { label: '💳 רכישות', baseType: 'dated' },
+  });
+  const items = [
+    { id: 1, type: 'fixed', displayCategory: 'fixed', title: 'שכירות', amount: 4000, day: '15', where: 'bank', isArchived: false },
+    { id: 2, type: 'fixed', displayCategory: 'custom_fixed', title: 'ספוטיפיי', amount: 40, day: '6', where: 'bank', isArchived: false },
+    { id: 3, type: 'dated', displayCategory: 'creditPurchase', title: 'אוזניות', amount: 300, start: '2026-09-10', where: 'bank', isArchived: false },
+  ];
+  const v = buildHomeView(await snapshotOf({ family_finance_data: JSON.stringify(items), family_finance_cat_config: config }, NOW));
+  // The built-in keys are backfilled by resolveCategoryConfig(); only the two hidden labels are missing.
+  assert.deepEqual(
+    v.tiles.map((t) => t.label),
+    ['הוצאות קבועות', 'תשלומים החודש', 'יתרת תשלומים שונים', 'תשלומי הלוואות החודש', 'יתרת הלוואות', 'חיוב כרטיס אשראי'],
+    'no "מנויים" / "רכישות" tile',
+  );
+  assert.equal(v.tileOrderLabels.some((t) => t.label === 'מנויים' || t.label === 'רכישות'), false, 'not offered in the reorder list either');
+  // Display-only: the categories still exist in the stored order and their money still counts.
+  assert.ok(v.tileOrder.includes('custom_fixed') && v.tileOrder.includes('creditPurchase'));
+  assert.equal(v.expensesText, formatAmount(4340), 'rent 4000 + subscription 40 + purchase 300');
+});
+
+test('Home recent activity is the Web Home row (app.js renderTxList): date or "-", no installment or day text', async () => {
+  const items = [
+    { id: 1, type: 'income', displayCategory: 'income', title: 'משכורת', amount: 3500, day: '28', isArchived: false },
+    { id: 2, type: 'loan', displayCategory: 'loan', title: 'רכב', amount: 100, day: '13', total: '2', start: '2026-08-13', isArchived: false },
+    { id: 3, type: 'dated', displayCategory: 'dated', title: 'מקרר', amount: 3, start: '2026-09-20', notes: 'הערה', isArchived: false },
+  ];
+  const v = buildHomeView(await snapshotOf({ family_finance_data: JSON.stringify(items) }, NOW));
+  const by = (title: string) => v.recent.find((r) => r.title === title);
+  assert.equal(by('משכורת')?.dateText, '-', 'no "נכנס ב-28 לחודש" on Home');
+  assert.deepEqual(by('רכב')?.installment, [], 'no installment lines on Home');
+  assert.match(by('רכב')?.dateText ?? '', /^\d{1,2}\.\d{1,2}\.2026$/);
+  assert.equal(by('מקרר')?.note, 'הערה', 'the credit-card settlement note stays');
 });
 
 test('Home hero is never a fabricated 0: unconfigured and future opening states', async () => {

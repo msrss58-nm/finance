@@ -1,15 +1,21 @@
-// A category page (app.js Transactions screen filtered by category), or all
-// transactions (key "all"). Row tap = edit (active items only, as on the Web);
-// ⋮ = archive / restore / permanent delete (confirmed).
+// A category page — index.html #screen-transactions filtered by a category (or all
+// transactions, key "all"): the .category-filter-chip (name — monthly total, ✏️ /
+// 🗑️ / ✕), the (disabled) search bar, the תנועות פעילות / ארכיון toggle and the
+// .tx-row list. Row tap = edit (active items only, as on the Web); ⋮ = archive /
+// restore / permanent delete (confirmed).
+//
+// Native adaptations (reported): ⋮ opens an action sheet (Web: a dropdown); the
+// category's ✏️ opens the category form (Web: inline form in the chip).
 
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 
 import { useServices } from '../../src/composition/ServicesContext.tsx';
 import { buildTransactionsView, type TxRowView } from '../../src/presentation/transactionsView.ts';
 import type { FinanceSnapshot } from '../../src/state/financeController.ts';
-import { ActionSheet, AppText, Banner, Btn, ButtonRow, Card, Choice, ConfirmDialog, EmptyState, Fab, ScreenScroll } from '../../src/ui/kit.tsx';
+import { ActionSheet, Banner, Btn, ConfirmDialog, EmptyState, Fab, FilterToggle, ScreenScroll } from '../../src/ui/kit.tsx';
+import { useTheme } from '../../src/ui/theme.ts';
 import { TxRow } from '../../src/ui/TxRow.tsx';
 import { useSafePush, useWrite, WithFinance } from '../../src/ui/useFinance.tsx';
 
@@ -21,8 +27,35 @@ export default function CategoryRoute() {
   return <WithFinance>{(s) => <CategoryContent snapshot={s} categoryKey={raw === 'all' ? null : raw} />}</WithFinance>;
 }
 
+function ChipAction({ label, danger = false, onPress, testID }: { label: string; danger?: boolean; onPress: () => void; testID: string }) {
+  const t = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      hitSlop={6}
+      testID={testID}
+      style={({ pressed }) => ({
+        minHeight: 32,
+        justifyContent: 'center',
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: danger ? t.c.danger : t.c.border,
+        backgroundColor: t.c.bg,
+        opacity: pressed ? 0.8 : 1,
+      })}
+    >
+      <Text style={{ fontSize: t.fs(12), color: danger ? t.c.danger : t.c.text }}>{label}</Text>
+    </Pressable>
+  );
+}
+
 function CategoryContent({ snapshot, categoryKey }: { snapshot: FinanceSnapshot; categoryKey: string | null }) {
   const { finance } = useServices();
+  const t = useTheme();
   const router = useRouter();
   const push = useSafePush();
   const [archived, setArchived] = useState(false);
@@ -57,25 +90,33 @@ function CategoryContent({ snapshot, categoryKey }: { snapshot: FinanceSnapshot;
         }
       >
         {categoryKey !== null ? (
-          <Card accent="primary" testID="category-header">
-            <AppText bold>{view.title}</AppText>
-            {view.baseTypeText ? (
-              <AppText variant="caption" tone="muted">
-                {'סוג: ' + view.baseTypeText}
-              </AppText>
-            ) : null}
-            {view.monthTotalText ? <AppText testID="category-total">{view.monthTotalText}</AppText> : null}
-            <ButtonRow>
-              <Btn label="✏️ עריכה" tone="secondary" compact onPress={() => push({ pathname: '/category-form', params: { key: categoryKey } })} testID="category-edit" />
-              {view.canDelete ? <Btn label="🗑️ מחיקה" tone="ghost" compact onPress={() => setDeleteCategory(true)} testID="category-delete" /> : null}
-            </ButtonRow>
-          </Card>
+          <View
+            testID="category-header"
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', backgroundColor: t.c.primaryBg, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 12 }}
+          >
+            <Text testID="category-total" style={{ flexShrink: 1, fontSize: t.fs(12.5), fontWeight: '600', color: t.c.primaryDark, textAlign: 'left' }}>
+              {view.title + (view.monthTotalText ? ' — ' + view.monthTotalText : '')}
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <ChipAction label="✏️ עריכה" onPress={() => push({ pathname: '/category-form', params: { key: categoryKey } })} testID="category-edit" />
+              {view.canDelete ? <ChipAction label="🗑️ מחיקה" danger onPress={() => setDeleteCategory(true)} testID="category-delete" /> : null}
+              <Pressable accessibilityRole="button" accessibilityLabel="סגירת הסינון" onPress={() => router.back()} hitSlop={10} testID="category-close">
+                <Text style={{ fontSize: 14, fontWeight: '700', color: t.c.primaryDark, paddingHorizontal: 2 }}>✕</Text>
+              </Pressable>
+            </View>
+          </View>
         ) : null}
-        <Choice
-          label="תצוגה"
+        <TextInput
+          editable={false}
+          placeholder="חיפוש תנועה... (לא פעיל בשלב זה)"
+          placeholderTextColor={t.c.textMuted}
+          accessibilityLabel="חיפוש (לא פעיל)"
+          style={{ paddingVertical: 10, paddingHorizontal: 14, borderWidth: 1, borderColor: t.c.border, borderRadius: 10, fontSize: t.fs(14), backgroundColor: t.c.surface, color: t.c.text, textAlign: 'right' }}
+        />
+        <FilterToggle
           options={[
-            { value: 'active', label: 'תנועות פעילות (' + view.activeCount + ')' },
-            { value: 'archived', label: 'ארכיון (' + view.archivedCount + ')' },
+            { value: 'active', label: 'תנועות פעילות' },
+            { value: 'archived', label: 'ארכיון' },
           ]}
           value={archived ? 'archived' : 'active'}
           onChange={(v) => setArchived(v === 'archived')}
@@ -102,8 +143,8 @@ function CategoryContent({ snapshot, categoryKey }: { snapshot: FinanceSnapshot;
             : [
                 ...(menuFor.editable ? [{ key: 'edit', label: '✏️ עריכה', onPress: () => edit(menuFor) }] : []),
                 menuFor.isArchived
-                  ? { key: 'restore', label: '↩️ שחזר', onPress: () => void write.run(() => finance.unarchiveItem(menuFor.id)) }
-                  : { key: 'archive', label: '🗄️ העבר לארכיון', onPress: () => void write.run(() => finance.archiveItem(menuFor.id)) },
+                  ? { key: 'restore', label: 'שחזר', onPress: () => void write.run(() => finance.unarchiveItem(menuFor.id)) }
+                  : { key: 'archive', label: 'העבר לארכיון', onPress: () => void write.run(() => finance.archiveItem(menuFor.id)) },
                 { key: 'delete', label: '🗑️ מחק לצמיתות', tone: 'danger' as const, onPress: () => setDeleteRow(menuFor) },
               ]
         }
@@ -126,7 +167,7 @@ function CategoryContent({ snapshot, categoryKey }: { snapshot: FinanceSnapshot;
       <ConfirmDialog
         visible={deleteCategory}
         title="מחיקת קטגוריה"
-        message="למחוק קטגוריה זו? קטגוריה שיש לה תנועות (כולל בארכיון) לא תימחק."
+        message="למחוק קטגוריה זו?"
         confirmLabel="אישור מחיקה"
         destructive
         busy={write.busy}

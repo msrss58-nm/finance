@@ -61,6 +61,7 @@ declare module 'node:fs' {
   export function mkdtempSync(prefix: string): string;
   export function rmSync(path: string, options?: { recursive?: boolean; force?: boolean }): void;
   export function readFileSync(path: string | URL, encoding: 'utf8'): string;
+  export function readFileSync(path: string | URL): Uint8Array;
   export function readdirSync(path: string | URL, options: { recursive: true }): string[];
 }
 

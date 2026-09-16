@@ -34,8 +34,13 @@ export type Palette = {
   readonly success: string;
   readonly primary: string;
   readonly primaryDark: string;
-  /** Tinted surface behind primary-colored content (chips, insight cards). */
+  /**
+   * styles.css --color-primary-bg: the light primary tint (nav pill, filter chip,
+   * ATM "+" / edit buttons). Like the Web it stays light in dark mode.
+   */
   readonly primaryBg: string;
+  /** styles.css --color-insight-card-bg: tinted cards; the only tint dark mode darkens. */
+  readonly insightCardBg: string;
   /** The primary color used as TEXT on the surface. */
   readonly primaryText: string;
   readonly onPrimary: string;
@@ -84,6 +89,9 @@ const PRIMARY: Readonly<
   graphite: { primary: '#3f4650', primaryDark: '#2c3138', primaryBg: '#eceef1', darkText: '#b9c0cc', darkBg: '#282b30' },
 };
 
+/** styles.css .settings-color-<key> swatch backgrounds (each palette's primary). */
+export const PRIMARY_SWATCH = Object.fromEntries(Object.entries(PRIMARY).map(([k, v]) => [k, v.primary])) as Readonly<Record<PrimaryColorKey, string>>;
+
 export type Theme = {
   readonly dark: boolean;
   readonly c: Palette;
@@ -107,7 +115,8 @@ export function buildTheme(appearance: AppearanceInput, systemDark: boolean): Th
       ...base,
       primary: p.primary,
       primaryDark: p.primaryDark,
-      primaryBg: dark ? p.darkBg : p.primaryBg,
+      primaryBg: p.primaryBg,
+      insightCardBg: dark ? p.darkBg : p.primaryBg,
       primaryText: dark ? p.darkText : p.primary,
       onPrimary: '#ffffff',
     },

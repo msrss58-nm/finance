@@ -1,209 +1,247 @@
-// Forecast: the 5th→4th period (approved decision D) from the Stage 2 engine.
-// Days before the opening date stay unavailable ("—"); cash withdrawals are
-// shown apart from expenses (correction A). No 6-month view.
+// Forecast — index.html #screen-insights: "תחזית", the "האירוע הכספי הבא"
+// insight card, then (with an opening balance) the "📈 יתרה יומית צפויה" box with
+// the Web's step chart and the "📋 פירוט יומי" box with the day table in its
+// narrow (≤480px) labelled-card layout, then the two tracking insight cards.
+// Every figure comes from buildForecastView() (Stage 2 engine); the 5th→4th
+// period, "—" before the opening date, no 6-month view.
+//
+// Approved correction A fitted into the Web table: a day's expenses exclude cash
+// withdrawals, which appear as their own labelled cell on the days that have one.
 
-import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { useMemo, useState, type ReactNode } from 'react';
+import { Pressable, Text, View } from 'react-native';
 
 import { buildForecastView, FORECAST_TEXT, type ForecastChart, type ForecastDayRow } from '../../src/presentation/forecastView.ts';
+import type { Tone } from '../../src/presentation/format.ts';
 import type { FinanceSnapshot } from '../../src/state/financeController.ts';
-import { AppText, Badge, Btn, Card, ScreenScroll, SectionTitle, TOUCH } from '../../src/ui/kit.tsx';
-import { useTheme } from '../../src/ui/theme.ts';
+import { Btn, ScreenScroll, SectionTitle, TOUCH, webShadow } from '../../src/ui/kit.tsx';
+import { useTheme, type Theme } from '../../src/ui/theme.ts';
 import { useSafePush, WithFinance } from '../../src/ui/useFinance.tsx';
 
 export default function ForecastScreen() {
   return <WithFinance>{(s) => <ForecastContent snapshot={s} />}</WithFinance>;
 }
 
+function toneColorOf(t: Theme, tone: Tone | 'income' | 'expense'): string {
+  if (tone === 'positive' || tone === 'income') return t.c.success;
+  if (tone === 'negative' || tone === 'expense') return t.c.danger;
+  return t.c.text;
+}
+
+/** styles.css .insight-note */
+function Note({ children, style }: { children: string; style?: object }) {
+  const t = useTheme();
+  return <Text style={[{ fontSize: t.fs(12.5), color: t.c.text, opacity: 0.82, lineHeight: t.fs(19.4), textAlign: 'left' }, style]}>{children}</Text>;
+}
+
+/** styles.css .insight-card (icon circle + title / value / note), --color-insight-card-bg. */
+function InsightCard({ icon, title, value, valueColor, note, testID }: { icon: string; title: string; value: string; valueColor?: string; note: string; testID?: string }) {
+  const t = useTheme();
+  return (
+    <View
+      testID={testID}
+      style={[{ flexDirection: 'row', alignItems: 'flex-start', gap: 14, backgroundColor: t.c.insightCardBg, borderRadius: 14, padding: 16, borderStartWidth: 4, borderStartColor: t.c.primary }, webShadow]}
+    >
+      <View style={[{ width: 38, height: 38, borderRadius: 19, backgroundColor: t.c.surface, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }, webShadow]}>
+        <Text style={{ fontSize: 18 }}>{icon}</Text>
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={{ fontSize: t.fs(11.5), color: t.c.textMuted, letterSpacing: 0.3, fontWeight: '600', textAlign: 'left' }}>{title}</Text>
+        <Text style={{ fontSize: t.fs(21), fontWeight: '800', marginTop: 5, letterSpacing: -0.2, color: valueColor ?? t.c.text, textAlign: 'left', writingDirection: 'ltr' }}>{value}</Text>
+        <Note style={{ marginTop: 6 }}>{note}</Note>
+      </View>
+    </View>
+  );
+}
+
+/** styles.css .preview-forecast-box */
+function Box({ children, testID }: { children: ReactNode; testID?: string }) {
+  const t = useTheme();
+  return (
+    <View testID={testID} style={[{ backgroundColor: t.c.surface, borderRadius: 14, padding: 16 }, webShadow]}>
+      {children}
+    </View>
+  );
+}
+
+function BoxTitle({ text, marginBottom }: { text: string; marginBottom: number }) {
+  const t = useTheme();
+  return <Text style={{ fontSize: t.fs(15), fontWeight: '700', letterSpacing: -0.1, marginBottom, color: t.c.text, textAlign: 'left' }}>{text}</Text>;
+}
+
 function ForecastContent({ snapshot }: { snapshot: FinanceSnapshot }) {
+  const t = useTheme();
   const view = useMemo(() => buildForecastView(snapshot), [snapshot]);
   const push = useSafePush();
   const [expanded, setExpanded] = useState<string | null>(null);
 
   return (
     <ScreenScroll testID="screen-forecast">
-      <SectionTitle title="תחזית" />
-      <Card accent="primary" testID="forecast-next-event">
-        <AppText variant="caption" tone="muted" bold>
-          האירוע הכספי הבא
-        </AppText>
-        <AppText variant="heading" tone={view.nextEvent.tone}>
-          {view.nextEvent.valueText}
-        </AppText>
-        <AppText variant="small">{view.nextEvent.note}</AppText>
-      </Card>
+      <SectionTitle title="תחזית" first />
+      <InsightCard icon="📊" title="האירוע הכספי הבא" value={view.nextEvent.valueText} valueColor={toneColorOf(t, view.nextEvent.tone)} note={view.nextEvent.note} testID="forecast-next-event" />
 
       {!view.configured ? (
-        <Card testID="forecast-unconfigured">
-          <AppText>{FORECAST_TEXT.unconfigured}</AppText>
+        <View testID="forecast-unconfigured" style={{ gap: 8 }}>
+          <Note>{FORECAST_TEXT.unconfigured}</Note>
           <Btn label="הגדר יתרת התחלה" onPress={() => push('/opening-balance')} testID="forecast-setup-opening" />
-        </Card>
+        </View>
       ) : (
         <>
-          <SectionTitle title={'📈 יתרה יומית צפויה'} />
-          <AppText variant="small" bold testID="forecast-period">
-            {view.periodLabel}
-          </AppText>
-          <AppText variant="caption" tone="muted">
-            {FORECAST_TEXT.basis}
-          </AppText>
-          {view.chart ? <Chart chart={view.chart} /> : null}
-
-          <SectionTitle title="📋 פירוט יומי" />
-          <AppText variant="caption" tone="muted">
-            הקשה על יום מציגה את התנועות שלו.
-          </AppText>
-          {view.rows.map((row) => (
-            <DayRow key={row.key} row={row} expanded={expanded === row.key} onToggle={() => setExpanded((k) => (k === row.key ? null : row.key))} />
-          ))}
+          <Box testID="forecast-chart-box">
+            <BoxTitle text={'📈 יתרה יומית צפויה — ' + view.periodLabel} marginBottom={4} />
+            <Note style={{ marginBottom: 8 }}>{FORECAST_TEXT.basis}</Note>
+            {view.chart ? <StepChart chart={view.chart} /> : null}
+            {view.chart ? <Note>{view.chart.kind === 'empty' ? view.chart.message : view.chart.summary}</Note> : null}
+          </Box>
+          <Box testID="forecast-table-box">
+            <BoxTitle text="📋 פירוט יומי" marginBottom={10} />
+            {view.rows.map((row) => (
+              <DayRow key={row.key} row={row} expanded={expanded === row.key} onToggle={() => setExpanded((k) => (k === row.key ? null : row.key))} />
+            ))}
+          </Box>
         </>
       )}
 
-      <SectionTitle title="מעקב" />
       {view.insights.map((c) => (
-        <Card key={c.title} accent="primary">
-          <AppText variant="caption" tone="muted" bold>
-            {c.title}
-          </AppText>
-          <AppText variant="heading">{c.value}</AppText>
-          <AppText variant="small">{c.note}</AppText>
-        </Card>
+        <InsightCard key={c.title} icon="📊" title={c.title} value={c.value} note={c.note} />
       ))}
     </ScreenScroll>
   );
 }
 
+/** One labelled cell of the narrow layout (.forecast-day-cell::before = data-label). */
+function Cell({ label, value, color, wide = false, bold = false, testID }: { label: string; value: string; color: string; wide?: boolean; bold?: boolean; testID?: string }) {
+  const t = useTheme();
+  return (
+    <View style={{ width: wide ? '100%' : '50%', paddingEnd: 10 }}>
+      <Text style={{ fontSize: t.fs(10), fontWeight: '500', color: t.c.textMuted, textAlign: 'left' }}>{label}</Text>
+      <Text testID={testID} style={{ fontSize: t.fs(12.5), fontWeight: bold ? '600' : '400', color, textAlign: 'left', writingDirection: wide ? 'rtl' : 'ltr' }}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+/** .forecast-day-row in the Web's narrow layout: a labelled date across the row, then labelled cells two per line. */
 function DayRow({ row, expanded, onToggle }: { row: ForecastDayRow; expanded: boolean; onToggle: () => void }) {
   const t = useTheme();
   const unavailable = row.availability === 'unavailable';
-  const parts = unavailable
-    ? ['אין נתון לפני יתרת ההתחלה']
-    : [
-        'הכנסות ' + row.incomeText,
-        'הוצאות ' + row.expensesText,
-        ...(row.withdrawalsText ? ['משיכות ' + row.withdrawalsText] : []),
-        ...(row.availability === 'opening' ? [] : ['שינוי ' + row.netText]),
-      ];
+  const netColor = unavailable || row.netText === '—' ? t.c.text : row.netText.includes('-') ? t.c.danger : row.netText.includes('+') ? t.c.success : t.c.text;
   return (
-    <View
-      testID={`forecast-day-${row.key}`}
-      style={{
-        backgroundColor: row.isToday ? t.c.primaryBg : t.c.surface,
-        borderRadius: 12,
-        borderWidth: row.isToday ? 1.5 : StyleSheet.hairlineWidth,
-        borderColor: row.isToday ? t.c.primary : t.c.border,
-      }}
-    >
+    <View testID={`forecast-day-${row.key}`} style={{ borderBottomWidth: 1, borderBottomColor: t.c.border }}>
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded }}
-        accessibilityLabel={row.dateText + ', יתרה צפויה ' + row.balanceText}
+        accessibilityLabel={row.dateText + (unavailable ? ', אין נתון לפני יתרת ההתחלה' : ', יתרה צפויה ' + row.balanceText)}
         onPress={onToggle}
-        style={{ minHeight: TOUCH + 8, padding: 10, gap: 2 }}
+        style={({ pressed }) => ({
+          minHeight: TOUCH,
+          paddingVertical: 10,
+          paddingHorizontal: 4,
+          borderRadius: 8,
+          backgroundColor: row.isToday ? t.c.insightCardBg : pressed ? t.c.bg : 'transparent',
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          rowGap: 4,
+        })}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <AppText bold style={{ flex: 1 }}>
-            {row.dateText + (row.isToday ? ' · היום' : '')}
-          </AppText>
-          <AppText bold tone={row.balanceTone} style={{ flexShrink: 0 }} testID={`forecast-balance-${row.key}`}>
-            {row.balanceText}
-          </AppText>
-        </View>
-        <AppText variant="caption" tone="muted">
-          {parts.join(' · ')}
-        </AppText>
+        <Cell label="תאריך" value={row.dateText} color={t.c.text} wide bold />
+        <Cell label="הכנסות" value={row.incomeText} color={unavailable ? t.c.text : t.c.success} />
+        <Cell label="הוצאות" value={row.expensesText} color={unavailable ? t.c.text : t.c.danger} />
+        {row.withdrawalsText ? <Cell label="משיכות" value={row.withdrawalsText} color={t.c.warning} /> : null}
+        <Cell label="שינוי יומי" value={row.netText} color={netColor} />
+        <Cell label="יתרה צפויה" value={row.balanceText} color={unavailable ? t.c.text : toneColorOf(t, row.balanceTone)} testID={`forecast-balance-${row.key}`} />
       </Pressable>
       {expanded ? (
-        <View style={{ paddingHorizontal: 10, paddingBottom: 10, gap: 6 }} testID={`forecast-details-${row.key}`}>
-          {row.openingNote ? (
-            <AppText variant="caption" tone="muted">
-              {row.openingNote}
-            </AppText>
-          ) : null}
+        <View style={{ backgroundColor: t.c.bg, paddingTop: 4, paddingHorizontal: 12, paddingBottom: 10 }} testID={`forecast-details-${row.key}`}>
+          {row.openingNote ? <Note>{row.openingNote}</Note> : null}
           {row.events.map((ev) => (
-            <View key={ev.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-                <AppText variant="small">{ev.title}</AppText>
-                {ev.kind === 'withdrawal' ? <Badge text="משיכה — לא הוצאה" tone="warning" /> : null}
-                {ev.includedInOpening ? <Badge text="כלול ביתרת ההתחלה" tone="muted" /> : null}
-              </View>
-              <AppText variant="small" bold tone={ev.kind === 'income' ? 'positive' : ev.kind === 'withdrawal' ? 'warning' : 'negative'} style={{ flexShrink: 0 }}>
-                {ev.amountText}
-              </AppText>
+            <View key={ev.key} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, paddingVertical: 4 }}>
+              <Text style={{ flex: 1, fontSize: t.fs(12.5), color: t.c.text, textAlign: 'left' }}>
+                {ev.title}
+                {ev.includedInOpening ? <Text style={{ opacity: 0.82 }}> (כלול ביתרת ההתחלה)</Text> : null}
+                {ev.kind === 'withdrawal' ? <Text style={{ opacity: 0.82 }}> (משיכה — לא הוצאה)</Text> : null}
+              </Text>
+              <Text style={{ fontSize: t.fs(12.5), fontWeight: '700', color: ev.kind === 'income' ? t.c.success : t.c.danger, writingDirection: 'ltr', flexShrink: 0 }}>{ev.amountText}</Text>
             </View>
           ))}
-          {row.emptyNote ? (
-            <AppText variant="caption" tone="muted">
-              {row.emptyNote}
-            </AppText>
-          ) : null}
+          {row.emptyNote ? <Note>{row.emptyNote}</Note> : null}
         </View>
       ) : null}
     </View>
   );
 }
 
-const CHART_HEIGHT = 130;
-
-/** The Web's approved projected-daily-balance chart, drawn with views (no chart package). */
-function Chart({ chart }: { chart: ForecastChart }) {
+/**
+ * The Web's step chart (app.js renderMonthlyCashflowChart(): viewBox 300×170,
+ * padL 40 / padR 8 / padT 14 / padB 20): a 16%-opacity rectangle per day from the
+ * baseline to its balance, a 2px staircase outline in the text colour, a dashed
+ * zero line when the range crosses 0, and 7-unit min / max / first / last labels.
+ * Drawn with Views scaled to the available width. With nothing to plot the Web
+ * keeps the (empty) chart area and explains below it — so does this.
+ */
+function StepChart({ chart }: { chart: ForecastChart }) {
   const t = useTheme();
+  const [width, setWidth] = useState(0);
+  const k = width / 300;
+  const H = 170 * k;
   if (chart.kind === 'empty') {
-    return (
-      <Card>
-        <AppText variant="small" tone="muted">
-          {chart.message}
-        </AppText>
-      </Card>
-    );
+    return <View testID="forecast-chart-empty" onLayout={(e) => setWidth(e.nativeEvent.layout.width)} style={{ width: '100%', height: H || 170 }} />;
   }
-  const crossing = chart.min <= 0 && chart.max >= 0;
-  const base = crossing ? 0 : chart.min;
-  const range = chart.max - chart.min || 1;
-  const topH = (CHART_HEIGHT * (chart.max - base)) / range;
-  const bottomH = CHART_HEIGHT - topH;
-  const byIndex = new Map(chart.points.map((p) => [p.index, p.value]));
-  const columns = Array.from({ length: chart.totalDays }, (_, i) => i + 1);
+  const padL = 40 * k;
+  const padR = 8 * k;
+  const padT = 14 * k;
+  const padB = 20 * k;
+  const innerW = 300 * k - padL - padR;
+  const innerH = H - padT - padB;
+  const minV = chart.min;
+  const maxV = chart.max;
+  const range = maxV - minV || 1;
+  const xOf = (i: number) => padL + (i / chart.totalDays) * innerW;
+  const yOf = (v: number) => padT + innerH - ((v - minV) / range) * innerH;
+  const crossing = minV <= 0 && maxV >= 0;
+  const baselineY = crossing ? yOf(0) : yOf(minV);
+  const label = { position: 'absolute' as const, fontSize: 7 * k, color: t.c.textMuted };
+  const stroke = 2;
+  const shapes: ReactNode[] = [];
+  const first = chart.points[0];
+  if (width > 0 && first) {
+    let prevX = xOf(first.index);
+    let prevY = yOf(first.value);
+    chart.points.forEach((p, i) => {
+      const x = xOf(p.index);
+      const y = yOf(p.value);
+      const fill = p.value >= 0 ? t.c.success : t.c.danger;
+      shapes.push(
+        <View
+          key={'r' + i}
+          style={{ position: 'absolute', left: Math.min(prevX, x), top: Math.min(y, baselineY), width: Math.max(1, Math.abs(x - prevX)), height: Math.max(1, Math.abs(baselineY - y)), backgroundColor: fill, opacity: 0.16 }}
+        />,
+      );
+      shapes.push(<View key={'h' + i} style={{ position: 'absolute', left: Math.min(prevX, x), top: prevY - stroke / 2, width: Math.max(stroke, Math.abs(x - prevX)), height: stroke, backgroundColor: t.c.text }} />);
+      shapes.push(<View key={'v' + i} style={{ position: 'absolute', left: x - stroke / 2, top: Math.min(prevY, y) - stroke / 2, width: stroke, height: Math.abs(y - prevY) + stroke, backgroundColor: t.c.text }} />);
+      prevX = x;
+      prevY = y;
+    });
+  }
   return (
-    <Card testID="forecast-chart" accessibilityLabel={chart.summary}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        <AppText variant="caption" tone="muted">
-          {chart.maxText}
-        </AppText>
-        <AppText variant="caption" tone="muted">
-          {'מינימום ' + chart.minText}
-        </AppText>
-      </View>
-      <View style={{ height: CHART_HEIGHT, flexDirection: 'row', alignItems: 'stretch' }} accessible accessibilityLabel={chart.summary}>
-        {columns.map((index) => {
-          const v = byIndex.get(index);
-          const up = v !== undefined && v > base ? (CHART_HEIGHT * (v - base)) / range : 0;
-          const down = v !== undefined && v < base ? (CHART_HEIGHT * (base - v)) / range : 0;
-          const color = v !== undefined && v >= 0 ? t.c.success : t.c.danger;
-          return (
-            <View key={index} style={{ flex: 1, marginHorizontal: 0.5 }}>
-              <View style={{ height: topH, justifyContent: 'flex-end' }}>
-                {v !== undefined && up === 0 && down === 0 ? <View style={{ height: 1.5, backgroundColor: color }} /> : null}
-                {up > 0 ? <View style={{ height: Math.max(1.5, up), backgroundColor: color, opacity: 0.75, borderTopLeftRadius: 2, borderTopRightRadius: 2 }} /> : null}
-              </View>
-              <View style={{ height: bottomH, borderTopWidth: crossing ? StyleSheet.hairlineWidth : 0, borderTopColor: t.c.textMuted }}>
-                {down > 0 ? <View style={{ height: Math.max(1.5, down), backgroundColor: t.c.danger, opacity: 0.75 }} /> : null}
-              </View>
-            </View>
-          );
-        })}
-      </View>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        <AppText variant="caption" tone="muted">
-          {chart.firstLabel}
-        </AppText>
-        <AppText variant="caption" tone="muted">
-          {chart.lastLabel}
-        </AppText>
-      </View>
-      <AppText variant="caption" tone="muted">
-        {chart.summary}
-      </AppText>
-    </Card>
+    <View
+      testID="forecast-chart"
+      accessible
+      accessibilityLabel={chart.summary}
+      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+      style={{ width: '100%', height: H || 170, position: 'relative', direction: 'ltr' }}
+    >
+      {width > 0 ? (
+        <>
+          {crossing ? <View style={{ position: 'absolute', left: padL, width: innerW, top: baselineY, borderTopWidth: 1, borderStyle: 'dashed', borderTopColor: t.c.border }} /> : null}
+          {shapes}
+          <Text style={[label, { left: padL, top: padT - 2 - 8 * k }]}>{chart.maxText}</Text>
+          <Text style={[label, { left: padL, top: H - padB + 12 * k - 8 * k }]}>{chart.minText}</Text>
+          <Text style={[label, { left: padL, top: H - 4 * k - 8 * k }]}>{chart.firstLabel}</Text>
+          <Text style={[label, { right: padR, top: H - 4 * k - 8 * k }]}>{chart.lastLabel}</Text>
+        </>
+      ) : null}
+    </View>
   );
 }

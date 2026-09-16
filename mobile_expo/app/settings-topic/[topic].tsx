@@ -10,12 +10,11 @@ import { useServices } from '../../src/composition/ServicesContext.tsx';
 import { FONT_SIZE_OPTIONS, PRIMARY_COLOR_OPTIONS, resolveAppearance, THEME_OPTIONS, type AppearanceField } from '../../src/domain/appearance.ts';
 import { getProjectedBalanceOpeningConfig, type NotificationFlags } from '../../src/domain/settings.ts';
 import type { GoalsReminderStatus } from '../../src/notifications/goalsReminderScheduler.ts';
-import { formatAmount, formatDate, formatDateStr } from '../../src/presentation/format.ts';
-import { buildActivityRows, isSettingsTopicKey, SETTINGS_TOPICS, type SettingsTopicKey } from '../../src/presentation/settingsView.ts';
+import { formatAmount, formatDate } from '../../src/presentation/format.ts';
+import { buildActivityRows, isSettingsTopicKey, SETTINGS_TOPICS, WHATS_NEW, type SettingsTopicKey } from '../../src/presentation/settingsView.ts';
 import { SECURITY_FAILURE_MESSAGES } from '../../src/security/securityTypes.ts';
 import type { RestorePreview } from '../../src/state/backupController.ts';
 import type { FinanceSnapshot } from '../../src/state/financeController.ts';
-import { describeAuthState } from '../../src/ui/authText.ts';
 import {
   AppText,
   Banner,
@@ -23,13 +22,17 @@ import {
   ButtonRow,
   Card,
   Choice,
+  ColorSwatchRow,
+  Divider,
   EmptyState,
   Field,
   LabelValue,
+  PillToggleRow,
   ScreenScroll,
   ToggleRow,
   useBackCloses,
 } from '../../src/ui/kit.tsx';
+import { PRIMARY_SWATCH } from '../../src/ui/theme.ts';
 import { useSafePush, useWrite, WithFinance } from '../../src/ui/useFinance.tsx';
 import { useStore } from '../../src/ui/useStore.ts';
 
@@ -138,13 +141,9 @@ function SecurityTopic({ snapshot }: { snapshot: FinanceSnapshot }) {
     });
   };
   return (
+    // app.js buildSettingsPinSectionHtml() + buildAutoLockSectionHtml(): flat on the page, no cards.
     <ScreenScroll testID="settings-security">
-      <Card>
-        <AppText bold>מצב נעילה</AppText>
-        <AppText testID="security-state">{describeAuthState(state)}</AppText>
-      </Card>
-      <Card testID="security-pin">
-        <AppText bold>קוד PIN</AppText>
+      <>
         <AppText variant="small" tone="muted" testID="security-pin-hint">
           {pinOn
             ? 'PIN פעיל. הנתונים המקומיים אינם מוצפנים — זו נעילת פרטיות למסך בלבד.'
@@ -158,7 +157,7 @@ function SecurityTopic({ snapshot }: { snapshot: FinanceSnapshot }) {
               <Btn label="בטל PIN" tone="secondary" onPress={() => open('remove')} flex testID="pin-open-remove" />
             </ButtonRow>
           ) : state.kind === 'notConfigured' ? (
-            <Btn label="+ הגדר PIN" tone="secondary" onPress={() => open('set')} testID="pin-open-set" />
+            <Btn label="+ הגדר PIN" tone="dashed" onPress={() => open('set')} testID="pin-open-set" />
           ) : null
         ) : (
           <>
@@ -198,18 +197,21 @@ function SecurityTopic({ snapshot }: { snapshot: FinanceSnapshot }) {
             קוד PIN שהוגדר בגרסת הדפדפן אינו מועבר לאפליקציה ואינו פעיל בה.
           </AppText>
         ) : null}
-      </Card>
-      <Card>
-        <AppText bold>נעילה אוטומטית והגנת מסך</AppText>
-        <AppText variant="small">
-          כאשר PIN פעיל: האפליקציה ננעלת מיד בכל מעבר לרקע, צילומי מסך נחסמים והתוכן מוסתר במסך האפליקציות האחרונות. הקשה על התראה או חזרה מבורר קבצים אינן עוקפות את הנעילה.
-        </AppText>
-        <LabelValue
-          label="הגנת מסך כעת"
-          value={privacy.mode === 'protected' ? 'פעילה' : privacy.mode === 'open' ? 'כבויה (אין נעילה מוגדרת)' : '—'}
-          testID="security-privacy"
-        />
-      </Card>
+      </>
+      {/* Native deviation: Android locks immediately on every move to the background (no timeout select). */}
+      <AppText bold style={{ marginTop: 6 }}>
+        נעילה אוטומטית
+      </AppText>
+      <AppText variant="small" tone="muted">
+        {pinOn
+          ? 'האפליקציה ננעלת מיד בכל מעבר לרקע, צילומי מסך נחסמים והתוכן מוסתר במסך האפליקציות האחרונות. הקשה על התראה או חזרה מבורר קבצים אינן עוקפות את הנעילה.'
+          : 'יש להפעיל PIN כדי להשתמש בנעילה אוטומטית.'}
+      </AppText>
+      <LabelValue
+        label="הגנת מסך כעת"
+        value={privacy.mode === 'protected' ? 'פעילה' : privacy.mode === 'open' ? 'כבויה (אין נעילה מוגדרת)' : '—'}
+        testID="security-privacy"
+      />
     </ScreenScroll>
   );
 }
@@ -222,9 +224,9 @@ function AppearanceTopic({ snapshot }: { snapshot: FinanceSnapshot }) {
   return (
     <ScreenScroll testID="settings-appearance">
       <Choice label="ערכת נושא" options={THEME_OPTIONS.map((o) => ({ value: o.key, label: o.label }))} value={a.theme} onChange={set('theme')} testID="appearance-theme" />
-      <Choice
+      <ColorSwatchRow
         label="צבע ראשי"
-        options={PRIMARY_COLOR_OPTIONS.map((o) => ({ value: o.key, label: o.label }))}
+        options={PRIMARY_COLOR_OPTIONS.map((o) => ({ value: o.key, label: o.label, color: PRIMARY_SWATCH[o.key] }))}
         value={a.primaryColor}
         onChange={set('primaryColor')}
         testID="appearance-color"
@@ -277,33 +279,31 @@ function NotificationsTopic({ snapshot }: { snapshot: FinanceSnapshot }) {
     void (on ? reminderScheduler.enable() : reminderScheduler.disable()).finally(() => setBusy(false));
   };
   return (
+    // app.js buildNotificationsSectionHtml(): the hint, then label + "פעיל"/"כבוי" pill rows.
     <ScreenScroll testID="settings-notifications">
-      <Card>
-        <AppText bold>התראות בתוך האפליקציה</AppText>
-        <AppText variant="caption" tone="muted">
-          מוצגות במסך הבית כשהאפליקציה פתוחה — אינן התראות מערכת.
-        </AppText>
-        {IN_APP_ALERTS.map((d) => (
-          <ToggleRow key={d.key} label={d.label} value={flags[d.key]} disabled={write.busy} onChange={(v) => void write.run(() => finance.setInAppAlert(d.key, v))} testID={`alert-toggle-${d.key}`} />
-        ))}
-      </Card>
-      <Card>
-        <AppText bold>תזכורת יעדים (התראת מערכת)</AppText>
-        <ToggleRow
-          label="תזכורת חודשית ב-2 לחודש בשעה 09:00"
-          value={status.prefs.enabled}
-          disabled={busy}
-          onChange={toggleReminder}
-          hint="ההתראה כללית ואינה מציגה סכומים או שמות יעדים. הקשה עליה פותחת את מסך היעדים לאחר ביטול הנעילה."
-          testID="reminder-toggle"
-        />
-        <AppText variant="small" testID="reminder-status">
-          {reminderStatusText(status)}
-        </AppText>
-        {status.prefs.enabled && status.permission !== null && status.permission !== 'granted' ? (
-          <Btn label="פתיחת הגדרות המערכת" tone="secondary" onPress={() => void Linking.openSettings()} testID="reminder-open-settings" />
-        ) : null}
-      </Card>
+      <AppText variant="small" tone="muted">
+        התראות אלה מוצגות בתוך האפליקציה בלבד, כשהיא פתוחה — אינן התראות מערכת (Push).
+      </AppText>
+      {IN_APP_ALERTS.map((d) => (
+        <PillToggleRow key={d.key} label={d.label} value={flags[d.key]} disabled={write.busy} onChange={(v) => void write.run(() => finance.setInAppAlert(d.key, v))} testID={`alert-toggle-${d.key}`} />
+      ))}
+      {/* Native addition (approved Stage 3): the Goals system reminder. */}
+      <Divider />
+      <AppText bold>תזכורת יעדים (התראת מערכת)</AppText>
+      <PillToggleRow
+        label="תזכורת חודשית ב-2 לחודש בשעה 09:00"
+        value={status.prefs.enabled}
+        disabled={busy}
+        onChange={toggleReminder}
+        hint="ההתראה כללית ואינה מציגה סכומים או שמות יעדים. הקשה עליה פותחת את מסך היעדים לאחר ביטול הנעילה."
+        testID="reminder-toggle"
+      />
+      <AppText variant="small" tone="muted" testID="reminder-status">
+        {reminderStatusText(status)}
+      </AppText>
+      {status.prefs.enabled && status.permission !== null && status.permission !== 'granted' ? (
+        <Btn label="פתיחת הגדרות המערכת" tone="secondary" onPress={() => void Linking.openSettings()} testID="reminder-open-settings" />
+      ) : null}
       {write.failure ? <Banner tone="error" text={write.failure.message} /> : null}
     </ScreenScroll>
   );
@@ -314,39 +314,70 @@ function DataTopic() {
   const s = useStore(backup.state);
   const [resetOpen, setResetOpen] = useState(false);
   const [resetText, setResetText] = useState('');
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState('');
   const busy = s.busy !== null;
   const closeReset = useCallback(() => setResetOpen(false), []);
+  const closePaste = useCallback(() => {
+    setPasteOpen(false);
+    setPasteText('');
+  }, []);
   const cancelRestore = useCallback(() => backup.cancelRestore(), [backup]);
   useBackCloses(resetOpen, closeReset);
-  useBackCloses(s.preview !== null && !resetOpen, cancelRestore);
+  useBackCloses(pasteOpen && !resetOpen, closePaste);
+  useBackCloses(s.preview !== null && !resetOpen && !pasteOpen, cancelRestore);
 
+  // app.js openRestorePastePanel(): a pending preview is dropped first.
+  const openPaste = () => {
+    if (s.preview !== null) backup.cancelRestore();
+    backup.dismissMessage();
+    setPasteText('');
+    setPasteOpen(true);
+  };
+  const checkPaste = () => {
+    void backup.checkPastedBackup(pasteText).then((ok) => {
+      if (ok) closePaste();
+    });
+  };
+
+  // app.js buildDataSectionHtml(): the action stack, then the paste panel and the
+  // restore preview / result DIRECTLY below it — where the user just tapped —
+  // then the danger zone. The preview used to render at the top of the screen,
+  // out of view once the user had scrolled down to "שחזור", so a correctly
+  // picked backup looked like "nothing happened" (Stage 3/4A recovery, A54).
   return (
     <ScreenScroll testID="settings-data">
+      {files.supportsFolderExport ? (
+        <Btn label="⬇️ גיבוי (הורדת קובץ JSON)" tone="dashed" busy={s.busy === 'export'} disabled={busy} onPress={() => void backup.exportBackup('folder')} testID="data-export-folder" />
+      ) : null}
+      <Btn label="📤 גיבוי (שיתוף קובץ JSON)" tone="dashed" disabled={busy} onPress={() => void backup.exportBackup('share')} testID="data-export-share" />
+      <Btn
+        label="⬆️ שחזור מגיבוי"
+        tone="dashed"
+        busy={s.busy === 'import' && !pasteOpen}
+        disabled={busy || s.preview !== null}
+        onPress={() => {
+          closePaste();
+          void backup.startImport();
+        }}
+        testID="data-import"
+      />
+      <Btn label="📋 הדבק גיבוי" tone="dashed" disabled={busy} onPress={openPaste} testID="data-paste" />
+      <Btn label="📄 ייצוא תנועות ל-CSV" tone="dashed" busy={s.busy === 'csv'} disabled={busy} onPress={() => void backup.exportCsv('share')} testID="data-export-csv" />
+      {pasteOpen ? (
+        <Card testID="data-paste-panel">
+          <Field label="פתח את קובץ הגיבוי, העתק את כל תוכנו והדבק כאן." value={pasteText} onChangeText={setPasteText} multiline testID="data-paste-text" />
+          <ButtonRow>
+            <Btn label="בדוק גיבוי" busy={s.busy === 'import'} onPress={checkPaste} flex testID="data-paste-check" />
+            <Btn label="ביטול" tone="secondary" onPress={closePaste} flex testID="data-paste-cancel" />
+          </ButtonRow>
+        </Card>
+      ) : null}
       {s.message ? <Banner tone={s.message.tone} text={s.message.text} onDismiss={() => backup.dismissMessage()} testID="data-message" /> : null}
       {s.preview ? <RestorePreviewCard preview={s.preview} /> : null}
-      <Card>
-        <AppText bold>גיבוי</AppText>
-        <AppText variant="caption" tone="muted">
-          קובץ JSON עם כל הנתונים הכספיים וההגדרות (ללא נתוני נעילה). אותו פורמט כמו בגרסת הדפדפן.
-        </AppText>
-        <Btn label="⬇️ גיבוי — שיתוף קובץ" busy={s.busy === 'export'} disabled={busy} onPress={() => void backup.exportBackup('share')} testID="data-export-share" />
-        {files.supportsFolderExport ? (
-          <Btn label="📁 גיבוי — שמירה בתיקייה" tone="secondary" disabled={busy} onPress={() => void backup.exportBackup('folder')} testID="data-export-folder" />
-        ) : null}
-      </Card>
-      <Card>
-        <AppText bold>שחזור</AppText>
-        <AppText variant="caption" tone="muted">
-          בחירת קובץ גיבוי. לפני כל שינוי תוצג סקירה ויידרש אישור מפורש; קובץ פגום נדחה בלי לשנות דבר.
-        </AppText>
-        <Btn label="⬆️ שחזור מגיבוי" tone="secondary" busy={s.busy === 'import'} disabled={busy || s.preview !== null} onPress={() => void backup.startImport()} testID="data-import" />
-      </Card>
-      <Card>
-        <AppText bold>ייצוא תנועות</AppText>
-        <Btn label="📄 ייצוא תנועות ל-CSV" tone="secondary" busy={s.busy === 'csv'} disabled={busy} onPress={() => void backup.exportCsv('share')} testID="data-export-csv" />
-      </Card>
-      <Card accent="danger">
-        <AppText bold>איפוס כל הנתונים</AppText>
+      {/* .settings-danger-zone: a top border, then the outlined danger button / inline confirm. */}
+      <Divider />
+      <>
         {!resetOpen ? (
           <Btn
             label="🗑️ איפוס כל הנתונים"
@@ -381,7 +412,7 @@ function DataTopic() {
             </ButtonRow>
           </>
         )}
-      </Card>
+      </>
     </ScreenScroll>
   );
 }
@@ -440,17 +471,14 @@ function OpeningBalanceTopic({ snapshot }: { snapshot: FinanceSnapshot }) {
       <AppText variant="small" tone="muted">
         היתרה משמשת נקודת התחלה חד־פעמית לחישוב היתרה הצפויה. לאחר מכן ההכנסות וההוצאות מתווספות ומופחתות אוטומטית לפי התאריך שלהן.
       </AppText>
+      {/* app.js buildOpeningBalanceSectionHtml(): flat סכום / תאריך rows (raw YYYY-MM-DD), dashed action. */}
       {opening ? (
-        <Card>
+        <>
           <LabelValue label="סכום" value={formatAmount(opening.amount)} testID="settings-opening-amount" />
-          <LabelValue label="תאריך" value={formatDateStr(opening.dateStr)} />
-        </Card>
-      ) : (
-        <Card>
-          <AppText testID="settings-opening-none">לא הוגדרה יתרת התחלה.</AppText>
-        </Card>
-      )}
-      <Btn label={opening ? 'תקן יתרת התחלה' : '+ הגדר יתרת התחלה'} onPress={() => push('/opening-balance')} testID="settings-opening-edit" />
+          <LabelValue label="תאריך" value={opening.dateStr} />
+        </>
+      ) : null}
+      <Btn label={opening ? 'תקן יתרת התחלה' : '+ הגדר יתרת התחלה'} tone="dashed" onPress={() => push('/opening-balance')} testID="settings-opening-edit" />
     </ScreenScroll>
   );
 }
@@ -479,12 +507,21 @@ function ActivityLogTopic({ snapshot }: { snapshot: FinanceSnapshot }) {
 function AboutTopic() {
   return (
     <ScreenScroll testID="settings-about">
+      {/* app.js buildAboutSectionHtml(): version, "מה חדש" list, local-data hint. */}
       <Card>
         <LabelValue label="גרסה" value={Constants.expoConfig?.version ?? '—'} />
+        <AppText bold style={{ marginTop: 10 }}>
+          מה חדש
+        </AppText>
+        {WHATS_NEW.map((line) => (
+          <AppText key={line} testID="about-whats-new-item">
+            {'• ' + line}
+          </AppText>
+        ))}
+        <AppText variant="small" tone="muted" style={{ marginTop: 10 }}>
+          FamilyFinance PRO — אפליקציה מקומית לניהול תקציב משפחתי. כל הנתונים נשמרים במכשיר בלבד.
+        </AppText>
       </Card>
-      <AppText variant="small" tone="muted">
-        FamilyFinance PRO — אפליקציה מקומית לניהול תקציב משפחתי. כל הנתונים נשמרים במכשיר בלבד; אין שרת ואין סנכרון.
-      </AppText>
     </ScreenScroll>
   );
 }
