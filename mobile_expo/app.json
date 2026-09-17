@@ -5,6 +5,12 @@
     "owner": "vr47252",
     "scheme": "familyfinance",
     "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/08a355db-3469-4264-b2e3-0a1fc6af212d"
+    },
     "orientation": "portrait",
     "icon": "./assets/familyfinance-icon.png",
     "userInterfaceStyle": "light",

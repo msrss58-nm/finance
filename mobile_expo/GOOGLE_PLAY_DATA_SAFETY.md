@@ -49,18 +49,42 @@ https://msrss58-nm.github.io/finance/privacy/
 Note: INTERNET and ACCESS_NETWORK_STATE are defaults of the React Native / Expo runtime. The app
 itself makes no network request today.
 
-## REVIEW AGAIN BEFORE STAGE 3 / EAS UPDATE
+## EAS Update — re-evaluated in Stage 3A (18/09/2026)
 
-⚠ These answers describe the app **without** `expo-updates`. Stage 3 will add EAS Update, and from
-that moment the app will contact Expo's update infrastructure on launch. Update requests carry
-technical data — platform, runtime version, channel and update identifiers, and inherently the IP
-address — processed by Expo as the update provider.
+`expo-updates` (~57.0.22) is now a dependency and the config carries `updates.url`
+(`https://u.expo.dev/08a355db-3469-4264-b2e3-0a1fc6af212d`) with `runtimeVersion` policy
+`appVersion`. **No binary contains it yet** — the installed A54 build predates it, so today nothing
+in the field performs update checks. The first OTA-capable binary is Stage 3B.
 
-Before any binary with `expo-updates` is uploaded to Play:
-1. Re-answer the Data Safety form: decide whether this counts as collection of "App info and
-   performance" / "Device or other IDs", and whether "encrypted in transit" must be answered Yes.
-2. Update `privacy/index.html` with a section about update checks — the policy must not describe EAS
-   Update as active before it is.
-3. Re-verify that financial data itself is still never transmitted (EAS Update only downloads JS
-   bundles; it does not upload app data).
-4. Record the decision in `CURRENT_STATUS.md` and in this file.
+What the update mechanism transmits, once such a binary exists:
+
+| Direction | Data | Notes |
+|---|---|---|
+| App → Expo (EAS Update) | app/project id, channel, runtime version, update id, platform, SDK/library versions, and the IP address inherent to any HTTPS connection | Sent only to check for and download an update |
+| Expo → App | the JS bundle and its assets | Code only |
+| App → anywhere | **nothing from the user's data** | Financial items, balances, goals, settings and the activity log are never uploaded |
+
+### Effect on the Data Safety answers: none of the user-data answers change
+
+- "Does your app collect or share any of the required user data types?" — still **No**. The update
+  request carries technical delivery metadata, not user data collected by the developer; Expo acts as
+  the update-delivery provider and the developer receives no user data from it.
+- "Financial info" — still not collected and not shared. Verified: the update client only downloads
+  code; nothing reads the SQLite store or the secure store on that path.
+- "Device or other IDs" — no advertising ID and no device identifier is collected by the app. The
+  update request's technical identifiers are scoped to update delivery.
+- "App info and performance" — no crash log or performance data is collected. `expo-updates` does not
+  bring analytics or crash reporting with it.
+- "Encrypted in transit" — update traffic is HTTPS. Because nothing is declared as collected, the
+  question stays not applicable; if Play's form requires an answer for any declared category in the
+  future, the answer is Yes.
+
+Recorded in `privacy/index.html` (section "עדכוני אפליקציה") before any OTA-capable binary ships.
+
+## REVIEW AGAIN BEFORE THE FIRST PLAY UPLOAD
+
+1. Re-read this file against the shipped binary's dependency list (did anything new join that talks to
+   a server?).
+2. Confirm `privacy/index.html` still matches actual behavior, and refresh its "last updated" date.
+3. Confirm no analytics/crash-reporting package entered through a transitive dependency.
+4. Record the final answers here after they are entered in Play Console.

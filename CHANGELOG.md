@@ -735,3 +735,22 @@ QA פיזי על Samsung A54 (Android 16) עבר:
 
 אין שינוי ב-`app.json`, ‏`eas.json`, ‏versionCode, חתימה, לוגיקת גיבוי/שחזור או קוד מקור.
 אין EAS Build, אין EAS Update, אין הגשה ל-Play Console.
+## 18/09/2026 — Stage 3A: הגדרת EAS Update (ללא build, ללא פרסום עדכון)
+
+- **תלות חדשה:** `expo-updates ~57.0.22` בלבד (+ התלויות שלה `expo-eas-client`, `expo-structured-headers`, `arg`).
+- **`mobile_expo/app.json`:** נוספו `runtimeVersion: { "policy": "appVersion" }` ו-`updates.url`
+  ‏(`https://u.expo.dev/08a355db-3469-4264-b2e3-0a1fc6af212d`, מזהה הפרויקט הקיים). ‏version 1.0.0
+  ו-versionCode 1 לא שונו.
+- **`mobile_expo/eas.json`:** ‏`preview` → channel `staging`; ‏`production` → channel `production`.
+  ‏`production-apk` יורש את ערוץ ה-production; ‏`development` ללא ערוץ. ‏`cli.appVersionSource: "local"` נשמר.
+- **`privacy/index.html`:** נוסף סעיף "עדכוני אפליקציה" — פנייה לתשתית Expo לבדיקה והורדה של עדכון,
+  מידע טכני בלבד (מזהי אפליקציה/ריצה/עדכון ונתוני רשת מעצם החיבור), והבהרה שהנתונים הכספיים אינם נשלחים.
+- **`mobile_expo/GOOGLE_PLAY_DATA_SAFETY.md`:** הערכה מחדש של EAS Update — אף תשובה על נתוני משתמש
+  אינה משתנה ("לא נאסף, לא משותף"), עם טבלת מה נשלח ומה לא.
+- **`mobile_expo/README.md`:** מדיניות OTA מול build נייטיבי, מיפוי הערוצים, וזרימת העבודה
+  IMPLEMENT → בדיקות → typecheck/lint → staging → QA פיזי → קידום ל-production.
+- **CURRENT_STATUS.md / TODO.md:** ‏Stage 2 סומן CLOSED / PASS; ‏Stage 3A תועד; ‏Stage 3B תוכנן ל-01/10/2026.
+- **שערים:** ‏273/273 בדיקות, ‏typecheck 0, ‏lint 0, ‏`expo config --type prebuild` מאמת את הקונפיג המפוענח.
+  ‏expo-doctor 19/21 — שני הכשלים קיימים מראש/סביבתיים (סכימה: `fetch failed`; סטיית patch מתועדת).
+- אין EAS Build, אין `eas update`, אין שינוי חתימה, אין שינוי גרסה/versionCode, אין הגשה ל-Play.
+  **אף binary עדיין אינו מכיל `expo-updates`** — ה-binary הראשון כזה הוא Stage 3B.

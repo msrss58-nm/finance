@@ -157,15 +157,47 @@ https://msrss58-nm.github.io/finance/privacy/).
 - An OTA-only release changes neither.
 - versionCode is deliberately still `1`: nothing has been uploaded to Play yet.
 
-**OTA vs native build**
+**OTA vs native build (EAS Update, configured 18/09/2026)**
 
-- Stage 3 will enable EAS Update with `runtimeVersion` policy `appVersion`, so
-  `version` becomes the OTA compatibility key: changing it stops OTA delivery to
-  older binaries.
-- After Stage 3, JS/UI/business-logic changes (texts, alert rules, Home and
-  Forecast calculations, layout, tests) ship as OTA updates.
-- A new binary is required for: adding/removing an Expo module, any `app.json`
-  or plugin change (permissions, backup rules, icons, scheme, RTL), an SDK
-  upgrade, minSdk/targetSdk changes, and version/versionCode changes.
-- EAS Build is a limited resource: batch approved changes, state why a physical
-  build is required before running one, and never rebuild identical source.
+`expo-updates` is installed and `app.json` carries
+`updates.url = https://u.expo.dev/<projectId>` with `runtimeVersion` policy
+`appVersion`, so `version` is the OTA compatibility key: changing it stops OTA
+delivery to every binary built from the previous version. Channels in
+`eas.json`: `preview` → **staging**, `production` → **production**
+(`production-apk` inherits `production`; `development` has no channel). The QA
+binary for the A54 is therefore the **preview** profile, which is on staging and
+is signed with the same key, so `adb install -r` keeps the data.
+
+⚠ No binary contains `expo-updates` yet. The first OTA-capable binary is Stage 3B
+(planned for 01/10/2026, when the build quota resets).
+
+OTA-safe (no new binary):
+
+- JS/TS logic, including domain and presentation code;
+- React Native UI, layout and styles;
+- texts and copy;
+- assets already compatible with the shipped binary;
+- tests.
+
+New binary required:
+
+- Expo SDK upgrade, or any native module added/removed/changed;
+- Android permissions;
+- `app.json` / config-plugin changes that alter the generated binary (backup
+  rules, icons, scheme, RTL, notifications surface);
+- signing or package changes;
+- `version` / `versionCode` changes;
+- anything else that makes the runtime incompatible.
+
+If it is unclear which side a change falls on, treat it as needing review before
+any OTA publication.
+
+Workflow — never publish straight to production:
+
+```
+IMPLEMENT → npm test → typecheck + lint → publish to STAGING
+         → physical QA on the A54 → promote that exact update to PRODUCTION
+```
+
+EAS Build stays a limited resource: batch approved changes, state why a physical
+build is required before running one, and never rebuild identical source.

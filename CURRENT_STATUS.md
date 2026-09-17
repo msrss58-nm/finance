@@ -1383,3 +1383,38 @@ EAS Build הוא משאב מוגבל. אין build לשינויי טקסט/עי�
 - **Stage 4 — שחרור ל-Google Play:** AAB, דף חנות (צילומי מסך, גרפיקה ראשית, תיאורים), טופס Data Safety,
   ‏12 בודקים ל-14 ימים רצופים ואז בקשת גישה ל-Production.
 - לא ידוע מהריפו: מצב אימות הזהות בחשבון Play, וזמינות שם החבילה/שם האפליקציה בחנות.
+## 18/09/2026 — Stage 2 — CLOSED / PASS, ו-Stage 3A: הגדרת EAS Update ללא build
+
+### Stage 2 — CLOSED / PASS
+- Stage 2A (גילוי) ו-Stage 2B (פרטיות ותיעוד) הושלמו ונדחפו ב-commit `f5ee5a6`.
+- דף הפרטיות נפרס ואומת חי: https://msrss58-nm.github.io/finance/privacy/ — ‏HTTP 200,
+  הבתים שהוגשו זהים לקובץ ב-commit. ‏Pages deployment ‏6513085560 ו-Vercel ‏6513081151 — שניהם success.
+- **Stage 2 נסגר כ-PASS.**
+
+### Stage 3A — הגדרת EAS Update (ללא build, ללא פרסום עדכון)
+- **תלות:** `expo-updates ~57.0.22` (הותקן דרך `expo install`, גרסה תואמת ל-SDK 57). ה-lock הוסיף אך ורק
+  את `expo-updates` ואת התלויות שלו (`expo-eas-client`, `expo-structured-headers`, `arg`) — שום חבילה אחרת לא שונתה.
+- **app.json:** נוספו `runtimeVersion: { "policy": "appVersion" }` ו-
+  `updates.url = https://u.expo.dev/08a355db-3469-4264-b2e3-0a1fc6af212d` (מזהה הפרויקט הקיים והמאומת).
+  ללא שינוי: שם, ‏package, ‏scheme, ‏version 1.0.0, ‏versionCode 1, הרשאות, plugins.
+- **eas.json:** ‏`preview` → channel `staging`; ‏`production` → channel `production`.
+  ‏`production-apk` יורש מ-`production` ולכן יורש גם את ערוץ ה-production; ‏`development` נשאר ללא ערוץ.
+  **המשמעות המעשית:** ה-binary לבדיקות פיזיות על A54 ייבנה מפרופיל `preview` (ערוץ staging, אותה חתימה).
+- **אימות config:** ‏`expo config --type prebuild` מחזיר runtimeVersion ו-updates.url נכונים,
+  ‏`com.familyfinance.pro`, ‏1.0.0 / versionCode 1, ורשימת ה-plugins ללא שינוי.
+- **שערים:** ‏273/273 בדיקות, ‏typecheck 0, ‏lint 0.
+  ‏expo-doctor 19/21: בדיקת סכימת ה-config נכשלה בגלל `TypeError: fetch failed` (בעיית רשת, לא הקונפיג),
+  ובדיקת התאמת הגרסאות היא סטיית ה-patch המתועדת מראש (`expo-notifications`, `expo-sharing`) — שתיהן קיימות
+  מלפני השלב הזה ולא נגרמו ממנו.
+- **פרטיות ו-Data Safety:** נוסף סעיף "עדכוני אפליקציה" למדיניות הפרטיות (פנייה לתשתית Expo לצורך בדיקה
+  והורדה של עדכון, מידע טכני בלבד, והנתונים הכספיים אינם נשלחים). ב-`GOOGLE_PLAY_DATA_SAFETY.md` נוספה
+  הערכה מחדש: **אף תשובה על נתוני משתמש אינה משתנה** — עדיין "לא נאסף ולא משותף".
+- **חשוב:** אף binary עדיין אינו מכיל `expo-updates`. ה-A54 מריץ build שקדם לשינוי הזה, ולכן כרגע לא מתבצעות
+  בדיקות עדכון בשטח.
+
+### Stage 3B — מתוכנן ל-01/10/2026 (כשהמכסה מתאפסת)
+1. build אחד מפרופיל `preview` (ערוץ staging) — ה-binary הראשון שמסוגל לקבל OTA;
+2. התקנה על A54 עם `adb install -r` (אותה חתימה, הנתונים נשמרים) ואימות: ‏Home ‏₪13,247, תחזית 02.10 ‏₪13,022,
+   התראת "נשאר תשלום אחד", והאימות הפיזי שממתין ל-`5af2487` + `318f59d`;
+3. פרסום עדכון staging ראשון (`eas update --channel staging`) ואימות שהוא נקלט במכשיר;
+4. רק אחרי אימות — קידום אותו עדכון ל-production.

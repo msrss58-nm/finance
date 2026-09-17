@@ -274,3 +274,17 @@
   לוגיקת הגיבוי (כולל ה-pinHash הישן) נשארת כפי שהיא.
 - **מכסת EAS Build:** מוצתה עד 01/10/2026. אימות פיזי של `5af2487` + `318f59d` על A54 ממתין ל-build
   מוצדק אחד, שיאוחד עם Stage 3.
+## עדכון (18/09/2026) — Stage 2 נסגר, Stage 3A בוצע
+
+- ~~**Stage 2B — פרטיות ותיעוד שחרור**~~ — **CLOSED / PASS.** ‏commit `f5ee5a6`; דף הפרטיות חי ומאומת
+  בכתובת https://msrss58-nm.github.io/finance/privacy/
+- ~~**Stage 2 — חוסמי Play/אבטחה**~~ — **CLOSED / PASS** (Stage 2A + Stage 2B).
+- ~~**Stage 3A — הגדרת EAS Update ללא build**~~ — **הושלם (18/09/2026).** הותקן `expo-updates ~57.0.22`;
+  ‏`app.json` קיבל `runtimeVersion` (policy `appVersion`) ו-`updates.url` של הפרויקט הקיים;
+  ‏`eas.json` קיבל ערוצים: ‏`preview` → `staging`, ‏`production` → `production`.
+  ללא build, ללא פרסום עדכון, ללא שינוי גרסה/versionCode/חתימה.
+- **Stage 3B — ה-binary הראשון שמסוגל לקבל OTA** — פתוח, מתוכנן ל-01/10/2026 (איפוס מכסת EAS):
+  build יחיד מפרופיל `preview` ← התקנה על A54 (`install -r`, הנתונים נשמרים) ← אימות פיזי של
+  `5af2487` + `318f59d` ← עדכון staging ראשון ← רק אז קידום ל-production.
+- **Stage 4 — שחרור ל-Google Play** — פתוח כפי שתועד למעלה (נכסי חנות, טופס Data Safety,
+  ‏12 בודקים ל-14 ימים, ואז בקשת Production).
