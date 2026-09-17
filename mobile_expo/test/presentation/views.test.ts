@@ -72,8 +72,9 @@ test('Home: the "רכישות" / "מנויים" tiles are not rendered, while th
   });
   const items = [
     { id: 1, type: 'fixed', displayCategory: 'fixed', title: 'שכירות', amount: 4000, day: '15', where: 'bank', isArchived: false },
-    { id: 2, type: 'fixed', displayCategory: 'custom_fixed', title: 'ספוטיפיי', amount: 40, day: '6', where: 'bank', isArchived: false },
-    { id: 3, type: 'dated', displayCategory: 'creditPurchase', title: 'אוזניות', amount: 300, start: '2026-09-10', where: 'bank', isArchived: false },
+    // Dated after NOW: Home expenses count only what is still expected (APPROVED 17/09/2026).
+    { id: 2, type: 'fixed', displayCategory: 'custom_fixed', title: 'ספוטיפיי', amount: 40, day: '16', where: 'bank', isArchived: false },
+    { id: 3, type: 'dated', displayCategory: 'creditPurchase', title: 'אוזניות', amount: 300, start: '2026-09-20', where: 'bank', isArchived: false },
   ];
   const v = buildHomeView(await snapshotOf({ family_finance_data: JSON.stringify(items), family_finance_cat_config: config }, NOW));
   // The built-in keys are backfilled by resolveCategoryConfig(); only the two hidden labels are missing.

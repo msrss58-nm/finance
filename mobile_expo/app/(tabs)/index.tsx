@@ -111,7 +111,7 @@ function HomeContent({ snapshot }: { snapshot: FinanceSnapshot }) {
       {/* .snapshot-grid — income + expenses only (the Web's 2-column grid) */}
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
         <SnapshotCard label="הכנסות" value={view.incomeText} color={t.c.primaryText} testID="home-income" />
-        <SnapshotCard label="סך הכול הוצאות" value={view.expensesText} color={t.c.danger} testID="home-expenses" />
+        <SnapshotCard label="סה״כ הוצאות שנותרו עד סוף המחזור" value={view.expensesText} color={t.c.danger} testID="home-expenses" />
       </View>
 
       {/* .category-tiles-grid — 3 columns */}
@@ -286,9 +286,27 @@ function atmInput(t: ReturnType<typeof useTheme>) {
 /** .snapshot-card */
 function SnapshotCard({ label, value, color, testID }: { label: string; value: string; color: string; testID: string }) {
   const t = useTheme();
+  const labelStyle = { fontSize: t.fs(10.5), color: t.c.textMuted, letterSpacing: 0.3, textAlign: 'center' } as const;
   return (
     <View testID={testID} style={[{ flex: 1, backgroundColor: t.c.surface, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 6, alignItems: 'center' }, webShadow]}>
-      <Text style={{ fontSize: t.fs(10.5), color: t.c.textMuted, letterSpacing: 0.3, textAlign: 'center' }}>{label}</Text>
+      {/* The label area always reserves two lines (APPROVED 17/09/2026) so both cards' values align:
+          an invisible two-line placeholder in the same text style sets the height, the real label
+          sits centered over it and wraps to at most two lines. */}
+      <View style={{ alignSelf: 'stretch' }}>
+        <Text
+          aria-hidden
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={[labelStyle, { opacity: 0 }]}
+        >
+          {'\u00A0\n\u00A0'}
+        </Text>
+        <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, justifyContent: 'center' }}>
+          <Text numberOfLines={2} style={labelStyle}>
+            {label}
+          </Text>
+        </View>
+      </View>
       <Text
         testID={`${testID}-value`}
         numberOfLines={1}

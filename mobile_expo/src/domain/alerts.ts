@@ -20,7 +20,8 @@ import type { NotificationFlags } from './settings.ts';
  */
 export const INCOME_ALERT_WINDOW_DAYS = 14;
 
-export type InAppAlertKind = 'upcomingPayment' | 'upcomingIncome' | 'completedObligation';
+/** 'lastPayment' / 'obligationEndsToday' come only from obligationLifecycle.ts (mobile-only, merged for Home). */
+export type InAppAlertKind = 'upcomingPayment' | 'upcomingIncome' | 'completedObligation' | 'lastPayment' | 'obligationEndsToday';
 
 export type InAppAlert = {
   readonly kind: InAppAlertKind;

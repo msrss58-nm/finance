@@ -2,8 +2,9 @@
 // renderCategoryTileGridHtml(), renderHomeNotificationsFromRealData() and the
 // ATM saved list, with the approved Stage 2/3 decisions:
 //   - hero = projected balance for today (the Opening Balance engine);
-//   - "סך הכול הוצאות" = the 5th→4th period's expenses WITHOUT cash
-//     withdrawals; withdrawals are shown as their own figure (correction A);
+//   - "סך הכול הוצאות" = the expenses still expected in the 5th→4th period
+//     (strictly after today, APPROVED 17/09/2026), WITHOUT cash withdrawals;
+//     withdrawals are shown as their own figure (correction A);
 //   - in-app alerts = exceptional items only (decision C);
 //   - "מה צפוי לרדת" = outgoing bank charges in the next 10 days, nearest
 //     first, no cash withdrawals, nothing already shown as an alert (B).
@@ -21,8 +22,9 @@ import { computeInAppAlerts } from '../domain/alerts.ts';
 import type { CashflowEvent } from '../domain/cashflow.ts';
 import { cashflowDateKey, parseLocalDateStr } from '../domain/dates.ts';
 import { getForecastPeriodBounds, getProjectedBalanceToday } from '../domain/forecast.ts';
-import { getHomePeriodOutflows } from '../domain/homeTotals.ts';
+import { getHomePeriodOutflows, getHomeRemainingExpensesForCurrentPeriod } from '../domain/homeTotals.ts';
 import { FF_KEYS } from '../domain/keys.ts';
+import { computeObligationLifecycleAlerts, mergeObligationLifecycleAlerts } from '../domain/obligationLifecycle.ts';
 import { roundLoanSplitForDisplay } from '../domain/numbers.ts';
 import { isPlainObject, type RawItem } from '../domain/raw.ts';
 import { getRecentCashflowActivity } from '../domain/recentActivity.ts';
@@ -214,7 +216,9 @@ export function buildHomeView(s: FinanceSnapshot): HomeView {
 
   // In-app alerts (exceptional items), then the charges they must not repeat.
   const alerts = computeInAppAlerts({ items, settings, now, categoryConfig, lastAutoArchivedTitles: s.lastAutoArchivedTitles });
-  const alertRows: AlertRow[] = alerts.map((a, i) => {
+  // End-of-obligation alerts (APPROVED 17/09/2026), merged for Home only — one alert per obligation.
+  const homeAlerts = mergeObligationLifecycleAlerts(alerts, computeObligationLifecycleAlerts({ items, settings, now, categoryConfig }));
+  const alertRows: AlertRow[] = homeAlerts.map((a, i) => {
     const n = typeof a.amount === 'number' ? a.amount : Number(a.amount);
     return { key: a.kind + ':' + i, title: a.title, detail: a.detail, amountText: a.amount != null && isFinite(n) ? formatAmount(n) : null };
   });
@@ -252,7 +256,7 @@ export function buildHomeView(s: FinanceSnapshot): HomeView {
   return {
     hero,
     incomeText: formatAmount(getMonthSnapshot(items, now).income),
-    expensesText: formatAmount(outflows.expenses),
+    expensesText: formatAmount(getHomeRemainingExpensesForCurrentPeriod(items, now, categoryConfig)),
     withdrawalsText: formatAmount(outflows.withdrawals),
     periodText: formatDayMonth(bounds.periodStart) + '–' + formatDayMonth(bounds.periodEnd),
     tiles,

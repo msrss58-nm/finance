@@ -64,6 +64,12 @@ test('home: the Web section order, the 2-column snapshot and no extra snapshot c
   ]);
   assert.ok(isAscending(order), 'Home follows index.html #screen-home order');
   assert.doesNotMatch(home, /testID="home-withdrawals"/, 'no third "cash withdrawals" snapshot card');
+  // APPROVED 17/09/2026: the label names the remaining-expenses meaning (strictly after today → cycle end).
+  assert.match(home, /<SnapshotCard label="סה״כ הוצאות שנותרו עד סוף המחזור" value=\{view\.expensesText\}/);
+  assert.doesNotMatch(home, /label="סך הכול הוצאות"/, 'the old whole-period label is gone');
+  // Both snapshot cards reserve two label lines so their values align (APPROVED 17/09/2026).
+  assert.match(home, /\{'\\u00A0\\n\\u00A0'\}/, 'invisible two-line placeholder sets the label height');
+  assert.match(home, /<Text numberOfLines=\{2\} style=\{labelStyle\}>/, 'the real label wraps to at most two lines');
   assert.match(home, /LinearGradient/, 'the hero keeps the Web gradient');
 });
 
