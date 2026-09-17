@@ -237,9 +237,11 @@ function AppearanceTopic({ snapshot }: { snapshot: FinanceSnapshot }) {
   );
 }
 
+// APPROVED 17/09/2026: no "הכנסה שצפויה מחר" row — routine income never reaches the Home alerts,
+// so the switch would control nothing. notifications.upcomingIncome stays in the stored settings
+// (and in the domain) untouched, for backward compatibility.
 const IN_APP_ALERTS: readonly { readonly key: keyof NotificationFlags; readonly label: string }[] = [
   { key: 'upcomingPayment', label: 'תשלום שצפוי מחר' },
-  { key: 'upcomingIncome', label: 'הכנסה שצפויה מחר' },
   { key: 'completedObligation', label: 'התחייבות שהסתיימה' },
 ];
 

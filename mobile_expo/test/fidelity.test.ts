@@ -121,6 +121,10 @@ test('settings topics: colour swatches, notification pills, opening-balance rows
   assert.match(topic, /<ColorSwatchRow/);
   assert.match(topic, /<PillToggleRow/);
   assert.match(topic, /התראות אלה מוצגות בתוך האפליקציה בלבד, כשהיא פתוחה — אינן התראות מערכת \(Push\)\./);
+  // APPROVED 17/09/2026: the income switch is hidden (Home shows no income alerts); the other two stay.
+  assert.doesNotMatch(topic, /key: 'upcomingIncome'/, 'no "הכנסה שצפויה מחר" row');
+  assert.match(topic, /\{ key: 'upcomingPayment', label: 'תשלום שצפוי מחר' \}/);
+  assert.match(topic, /\{ key: 'completedObligation', label: 'התחייבות שהסתיימה' \}/);
   assert.match(topic, /label="תאריך" value=\{opening\.dateStr\}/, 'raw date as on the Web');
   assert.match(topic, /tone="dashed" onPress=\{\(\) => push\('\/opening-balance'\)\}/);
   assert.match(topic, /label="\+ הגדר PIN" tone="dashed"/);
