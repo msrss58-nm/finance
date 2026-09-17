@@ -35,12 +35,10 @@ test('Home: hero, expenses WITHOUT withdrawals, withdrawals shown apart, alerts,
   assert.equal(v.expensesText, formatAmount(6500), 'rent 4000 + committee 300 + card bills 1500 + 700; no withdrawals');
   assert.equal(v.withdrawalsText, formatAmount(500));
   assert.equal(v.periodText, '5.9–4.10');
-  // APPROVED 16/09/2026: income alerts cover today+14, so the salary due on the 15th alerts as
-  // "מחר" and October's occurrence (15.10) is outside the window.
-  assert.deepEqual(v.alerts.map((a) => [a.title, a.detail]), [
-    ['תשלום צפוי מחר', 'שכירות'],
-    ['הכנסה צפויה מחר', 'משכורת'],
-  ]);
+  // APPROVED 17/09/2026: routine recurring income is not a Home alert — the salary due tomorrow
+  // raises an "upcomingIncome" alert in the domain (Web parity) but Home does not show it.
+  assert.deepEqual(v.alerts.map((a) => [a.title, a.detail]), [['תשלום צפוי מחר', 'שכירות']]);
+  assert.equal(JSON.stringify(v.alerts).includes('הכנסה צפויה'), false, 'no income alert on Home');
   // APPROVED 16/09/2026: the list is complete — rent is due tomorrow and appears even though it
   // also raised an alert. Withdrawals, the payroll loan and credit items are not bank charges;
   // the Sep 25 card bill is outside today+10; Sep 24 is the inclusive edge.

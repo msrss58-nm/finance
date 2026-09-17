@@ -216,8 +216,12 @@ export function buildHomeView(s: FinanceSnapshot): HomeView {
 
   // In-app alerts (exceptional items), then the charges they must not repeat.
   const alerts = computeInAppAlerts({ items, settings, now, categoryConfig, lastAutoArchivedTitles: s.lastAutoArchivedTitles });
+  // APPROVED 17/09/2026: routine recurring income is not an alert. Every income item is a monthly
+  // recurring event in the engine (there is no one-time / changed / missing income concept), so no
+  // "הכנסה צפויה" alert reaches Home; income stays in Forecast and every calculation.
+  const actionableAlerts = alerts.filter((a) => a.kind !== 'upcomingIncome');
   // End-of-obligation alerts (APPROVED 17/09/2026), merged for Home only — one alert per obligation.
-  const homeAlerts = mergeObligationLifecycleAlerts(alerts, computeObligationLifecycleAlerts({ items, settings, now, categoryConfig }));
+  const homeAlerts = mergeObligationLifecycleAlerts(actionableAlerts, computeObligationLifecycleAlerts({ items, settings, now, categoryConfig }));
   const alertRows: AlertRow[] = homeAlerts.map((a, i) => {
     const n = typeof a.amount === 'number' ? a.amount : Number(a.amount);
     return { key: a.kind + ':' + i, title: a.title, detail: a.detail, amountText: a.amount != null && isFinite(n) ? formatAmount(n) : null };

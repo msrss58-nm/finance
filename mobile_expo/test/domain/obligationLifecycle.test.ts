@@ -150,6 +150,8 @@ test('Home: existing alerts keep order and content; the lifecycle alert follows 
   assert.deepEqual(v.alerts.map((a) => [a.title, a.detail, a.amountText]), [
     ['תשלום צפוי מחר', 'קבוע', formatAmount(74)],
     ['נשאר תשלום אחד', 'שיפוצים- יורד דרך התלוש · התשלום האחרון ב־1.10', formatAmount(362)],
-    ['הכנסה צפויה', 'משכורת', formatAmount(2760)],
   ]);
+  // APPROVED 17/09/2026: the recurring income still alerts in the domain (base above) but not on Home.
+  assert.equal(base.filter((a) => a.kind === 'upcomingIncome').length, 1);
+  assert.equal(v.alerts.some((a) => a.title.startsWith('הכנסה צפויה')), false);
 });
