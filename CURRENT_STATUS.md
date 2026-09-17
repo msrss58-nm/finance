@@ -1324,3 +1324,62 @@ Git: `mobile_flutter/` נשאר untracked כמקודם. לא בוצע commit/pus
 - **USER PHYSICAL ACCEPTANCE BEFORE COMMIT** — המשתמש צריך לבחון את ה-APK על הטלפון ולאשר לפני commit.
 - Stage 4B — **DEFERRED**.
 - Git: ‏HEAD `332b86a` = `origin/main`, ‏ahead 0 / behind 0; שינויי השחזור ללא commit. הווב נשאר Production.
+
+## 18/09/2026 — Stage 1 + Stage 2A + Stage 2B: הכנה ל-Google Play ול-EAS Update
+
+**מצב Git בתחילת השלב:** ‏HEAD `318f59d` = `origin/main`, ‏ahead 0 / behind 0, עץ עבודה נקי.
+הקומיטים שלא היו מתועדים עד כה: `bb2485e`, `4351dfd`, `54da551`, `ed83cca`, `5af2487`, `318f59d` — מתועדים עכשיו ב-CHANGELOG.
+
+### Stage 1 — בסיס מאומת (גילוי בלבד, ללא שינוי)
+- Expo SDK ‏~57.0.22, React Native ‏0.86.3, npm, ‏CNG (אין `android/`/`ios` בריפו).
+- זהות: `com.familyfinance.pro`, ‏"FamilyFinance PRO", scheme `familyfinance`, גרסה 1.0.0 / versionCode 1,
+  פרויקט EAS ‏`08a355db-3469-4264-b2e3-0a1fc6af212d`, חשבון `vr47252`.
+- ה-APK המותקן: minSdk 24, target/compileSdk 36, ‏4 ABIs, חתימת release של EAS, ‏`allowBackup=false`
+  עם שני קובצי הכללים, רק `MainActivity` מיוצא.
+- **EAS Update אינו מותקן ואינו מוגדר:** `expo-updates` אינו תלות ואינו ב-APK (אין `libexpo-updates`,
+  אין `app.manifest`; ‏`expo.modules.updates.ENABLED=false` הוא ברירת מחדל של Expo בלבד). אין branches ואין channels
+  בפרויקט EAS. לכן **ה-binary הנוכחי לעולם לא יקבל OTA** — נדרש binary חדש אחד לפני שכל OTA יעבוד.
+
+### Stage 2A — גילוי Play/אבטחה (ללא שינוי)
+- **חתימה:** כל 4 קובצי ה-APK על שולחן העבודה חתומים באותה תעודה `512fed74…90710b`, ‏credentials מנוהלים
+  של EAS, סכמת חתימה v2 (v1/v3 לא). אין חומר מפתח בריפו.
+- **גרסאות:** 1.0.0 / versionCode 1 מעולם לא הועלו ל-Play, ולכן מתאימים להעלאה ראשונה.
+- **פרטיות:** אין קריאות רשת בקוד האפליקציה, אין analytics/טלמטריה/דיווח קריסות/חשבון/שרת/ענן.
+  הנתונים ב-SQLite מקומי; ה-PIN נשמר ב-SecureStore (`ff_pin_v1`) ואינו נכלל בגיבוי; התראות מקומיות בלבד.
+- **pinHash:** מקורו ב-`hashPin()` של הווב ונשמר בתוך `family_finance_settings`. האפליקציה הניידת אינה
+  קוראת או כותבת אותו. בנתוני A54 האמיתיים ערכו `null`.
+
+### החלטות מאושרות (18/09/2026)
+1. **חתימה:** לשמור את מפתח EAS הנוכחי ולהשתמש בו כ-upload key של Play; ‏Play App Signing יחתום את
+   ה-binaries שמופצים בחנות. אין רוטציה ואין מיגרציה. **השלכה:** מעבר ה-A54 מהתקנה ידנית להתקנה מהחנות
+   יחייב גיבוי ← הסרה ← התקנה מ-Play ← שחזור (החתימות שונות).
+2. **גרסאות:** `cli.appVersionSource: "local"` נשאר; ‏versionCode עולה בכל העלאת binary ל-Play;
+   versionName משתנה בשחרור מוצר/נייטיב; שחרור OTA אינו משנה אף אחד מהם. **versionCode לא שונה בשלב הזה.**
+3. **pinHash:** התנהגות הגיבוי נשארת ללא שינוי. הסרה בייצוא הייתה שוברת את השוויון מול הווב
+   (paritySuite: ‏`collectAppLocalStorageBackup`) ועלולה לנעול משתמש ווב שגיבויו נשמר עם `pinEnabled=true`.
+4. **EAS Update:** לא מופעל בשלב הזה, ולא מתואר כהתנהגות קיימת במדיניות הפרטיות.
+
+### Stage 2B — מה בוצע עכשיו (תיעוד ופרטיות בלבד)
+- `privacy/index.html` — מדיניות פרטיות ציבורית בעברית (RTL), מתארת אך ורק התנהגות מאומתת,
+  כתובת קשר `ffpro1857@gmail.com`. מוגשת דרך GitHub Pages הקיים (מקור: ענף `main`, נתיב `/`).
+- `mobile_expo/GOOGLE_PLAY_DATA_SAFETY.md` — טיוטה פנימית של תשובות Data Safety, כל טענה עם הפניה לקוד
+  שמוכיח אותה, ובסוף סעיף מסומן **"REVIEW AGAIN BEFORE STAGE 3 / EAS UPDATE"**.
+- `mobile_expo/README.md` — כללי חתימה/גרסאות/OTA, ותיקון עובדתי: אימות ה-PIN נעשה ב-KDF האמיתי
+  (`modules/ff-pin-kdf`, ‏PBKDF2-HMAC-SHA256, מחובר ב-`bootstrap.ts`), ו-`lockVerifier.ts` הוא רק
+  מנעול הסינתטי של Stage 1. הנוסח הקודם ("placeholder בלבד") היה מיושן.
+- לא שונו: `app.json`, ‏`eas.json`, ‏versionCode, לוגיקת גיבוי/שחזור, חתימה, קוד מקור או בדיקות.
+
+### מדיניות מכסת EAS Build (נקבעה ע"י המשתמש 17/09/2026)
+EAS Build הוא משאב מוגבל. אין build לשינויי טקסט/עיצוב קטנים/לוגיקת סינון/בדיקות בלבד — קודם בדיקות
+ממוקדות, חבילה מלאה, parity, ‏typecheck ו-lint. build רק כשהתנהגות נייטיבית השתנתה, או כשנדרש אימות
+פיזי/שער קבלה. **מצב נוכחי: מכסת ה-Free נוצלה עד 01/10/2026** — ולכן אימות A54 של `5af2487` + `318f59d`
+ממתין ל-build מוצדק אחד.
+
+### נקודת ההמשך (מעודכנת 18/09/2026)
+- **Stage 2B** — נסגר רק לאחר שדף הפרטיות נפרס ואומת בכתובת הציבורית.
+- **Stage 3 — EAS Update:** התקנת `expo-updates`, ‏`runtimeVersion` (policy `appVersion`), ‏`updates.url`,
+  ערוצים `production`/`staging` ב-`eas.json`, ואז **build אחד** שהוא ה-binary הראשון שמסוגל לקבל OTA.
+  לפני כן יש לעדכן את מדיניות הפרטיות ואת טיוטת ה-Data Safety.
+- **Stage 4 — שחרור ל-Google Play:** AAB, דף חנות (צילומי מסך, גרפיקה ראשית, תיאורים), טופס Data Safety,
+  ‏12 בודקים ל-14 ימים רצופים ואז בקשת גישה ל-Production.
+- לא ידוע מהריפו: מצב אימות הזהות בחשבון Play, וזמינות שם החבילה/שם האפליקציה בחנות.

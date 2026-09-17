@@ -111,11 +111,12 @@ the development one and is decided with iOS (Stage 4B).
 
 ## Security notes
 
-- The lock in this stage is a **placeholder** (`src/security/lockVerifier.ts`)
-  that proves the gate. It is not PIN authentication, and the PIN is a privacy
-  lock, not encryption. The real verifier (PBKDF2-HMAC-SHA256, the Flutter
-  oracle's `ff_pin_v1` record) waits for KDF package approval. Until then an
-  existing `ff_pin_v1` record fails closed.
+- The PIN is verified by the real KDF: `modules/ff-pin-kdf` (PBKDF2-HMAC-SHA256,
+  100,000 iterations, 16-byte salt, 32-byte verifier — the Flutter oracle's
+  `ff_pin_v1` record), reached through `src/platform/expoPinKdf.ts` and wired in
+  `src/composition/bootstrap.ts`. `src/security/lockVerifier.ts` is only the
+  Stage 1 synthetic foundation lock, used when no `ff_pin_v1` record exists; it
+  protects nothing. The PIN remains a privacy lock, not encryption of the data.
 - Secrets live only in expo-secure-store, never in SQLite, so they can never
   enter a backup sweep. Every secure-storage failure fails closed.
 - Screen/recents privacy (`expo-screen-capture`) is active while a lock is
@@ -123,3 +124,48 @@ the development one and is decided with iOS (Stage 4B).
 - Notifications are local only. `plugins/withLocalOnlyNotifications.js`
   strips the FCM manifest entry points (Android) and the `aps-environment`
   entitlement (iOS).
+
+## Release rules (Play signing, versioning, OTA)
+
+Approved 18/09/2026. Google Play Data Safety answers live in
+`GOOGLE_PLAY_DATA_SAFETY.md`; the public privacy policy is `privacy/index.html`
+at the repository root (served at
+https://msrss58-nm.github.io/finance/privacy/).
+
+**Play signing**
+
+- The current EAS-managed key (certificate SHA-256 `512fed74…90710b`) stays the
+  key and becomes the Google Play **upload key**. It never enters this
+  repository.
+- Google Play App Signing signs the binaries Play distributes, so a
+  Play-installed build and a sideloaded EAS build carry **different**
+  signatures.
+- Two sideloaded builds signed by the EAS key update each other in place
+  (`adb install -r`) and keep the app data.
+- Moving the A54 from the sideloaded build to the Play build therefore needs:
+  backup (Settings ▸ Data) → uninstall → install from Play → restore.
+- Never rotate or migrate signing without explicit approval.
+
+**Versioning**
+
+- Keep `cli.appVersionSource: "local"` in `eas.json`; versions are visible in
+  Git, not managed remotely.
+- `android.versionCode` — increment by 1 for every binary uploaded to Play,
+  including a re-upload of the same version. Play rejects a reused value.
+- `version` (versionName) — change for a product or native release that users
+  should see.
+- An OTA-only release changes neither.
+- versionCode is deliberately still `1`: nothing has been uploaded to Play yet.
+
+**OTA vs native build**
+
+- Stage 3 will enable EAS Update with `runtimeVersion` policy `appVersion`, so
+  `version` becomes the OTA compatibility key: changing it stops OTA delivery to
+  older binaries.
+- After Stage 3, JS/UI/business-logic changes (texts, alert rules, Home and
+  Forecast calculations, layout, tests) ship as OTA updates.
+- A new binary is required for: adding/removing an Expo module, any `app.json`
+  or plugin change (permissions, backup rules, icons, scheme, RTL), an SDK
+  upgrade, minSdk/targetSdk changes, and version/versionCode changes.
+- EAS Build is a limited resource: batch approved changes, state why a physical
+  build is required before running one, and never rebuild identical source.
