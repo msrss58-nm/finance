@@ -130,7 +130,9 @@ the development one and is decided with iOS (Stage 4B).
 Approved 18/09/2026. Google Play Data Safety answers live in
 `GOOGLE_PLAY_DATA_SAFETY.md`; the public privacy policy is `privacy/index.html`
 at the repository root (served at
-https://msrss58-nm.github.io/finance/privacy/).
+https://msrss58-nm.github.io/finance/privacy/). The store listing draft, Play
+Console answer sheet, asset checklist, closed-testing plan and build strategy
+are in `PLAY_RELEASE.md`.
 
 **Play signing**
 

@@ -1,7 +1,8 @@
 # Google Play Data Safety — draft answers (internal)
 
 Status: **draft, not submitted.** Nothing in this file has been entered into Play Console.
-Last verified against the code: 18/09/2026, commit `318f59d` (see "Evidence" for each claim).
+Last verified against the code: 18/09/2026, commit `754bafc` (see "Evidence" for each claim, and
+"Stage 4A — pre-upload review" at the end of this file).
 
 Public privacy policy: `privacy/index.html` in this repository →
 https://msrss58-nm.github.io/finance/privacy/
@@ -88,3 +89,56 @@ Recorded in `privacy/index.html` (section "עדכוני אפליקציה") befor
 2. Confirm `privacy/index.html` still matches actual behavior, and refresh its "last updated" date.
 3. Confirm no analytics/crash-reporting package entered through a transitive dependency.
 4. Record the final answers here after they are entered in Play Console.
+
+## Stage 4A — pre-upload review (18/09/2026, commit `754bafc`)
+
+Re-checked against the current state of the repository. Nothing has been submitted. The store
+listing, Console field sheet, closed-testing plan and build strategy live in `PLAY_RELEASE.md`.
+
+### Answer set for the first Play binary — unchanged
+
+| Play question | Answer |
+|---|---|
+| Does your app collect or share any of the required user data types? | **No** |
+| Is all of the user data collected by your app encrypted in transit? | Not applicable — nothing is declared as collected |
+| Do you provide a way for users to request that their data be deleted? | Not applicable — no account and no server; deletion happens on the device |
+
+Per category: financial info stored on the device only, never transmitted; no personal info,
+contacts, location, photos, files, messages, calendar, health or web-browsing data; no app activity,
+no app info and performance, no device or advertising IDs. Dependency review at this commit found no
+analytics, crash-reporting or attribution package, direct or transitive.
+
+### The first binary will contain `expo-updates` — still no change to any user-data answer
+
+Unlike every binary shipped so far, the first Play binary is OTA-capable, so it will contact Expo's
+update service. That path sends app/project id, channel, runtime version, update id, platform and
+library versions over HTTPS, plus the IP address inherent to any connection, and receives the JS
+bundle and its assets. It reads neither the SQLite store nor the secure store, and uploads nothing
+the user entered. It is update delivery by a service provider, not collection of user data by the
+developer, so the answers above stand. This is already described to users in `privacy/index.html`
+(section "עדכוני אפליקציה").
+
+### Financial features declaration — DECISION PENDING IN PLAY CONSOLE
+
+Verified product facts: FamilyFinance PRO is a personal financial-management / budgeting app. It does
+**not** provide banking, lending, loan facilitation or brokerage, payday loans or earned-wage
+advances, payments, money transfers, digital wallets, investment or trading, crypto, insurance,
+credit monitoring or repair, debt management as a service, or personalized financial advice. Loans in
+the app are rows the user types about loans they already have.
+
+Two candidate classifications:
+
+1. "My app doesn't provide any financial features".
+2. Support services → "Other".
+
+**Do not pre-select either.** The choice is made only after the live Play Console form — its
+definitions and help text — has been reviewed, and the safest accurate answer is recorded here and in
+`PLAY_RELEASE.md` §5 at that point. Note that answering the declaration at all is mandatory for every
+app on the account since 30/10/2025.
+
+### Uncertainty to resolve in Console
+
+- Whether the form still asks for "encrypted in transit" when nothing is declared as collected. If it
+  requires an answer for any declared category in the future, the answer is Yes — update traffic and
+  every future connection are HTTPS.
+- The exact current wording of the Data Safety and Financial features forms; both have changed before.
