@@ -3,7 +3,8 @@
 Status: **preparation only.** Nothing in this file has been entered into Play Console, no binary has
 been built from it, and no store asset has been created yet.
 
-Prepared in Stage 4A, 18/09/2026, against commit `754bafc` (app version 1.0.0, versionCode 1,
+Prepared in Stage 4A and extended in Stage 4B, 18/09/2026, against commit `754bafc`
+(app version 1.0.0, versionCode 1,
 `com.familyfinance.pro`). Data Safety answers live in `GOOGLE_PLAY_DATA_SAFETY.md`; the public
 privacy policy is `privacy/index.html` at the repository root, served at
 https://msrss58-nm.github.io/finance/privacy/ . Signing, versioning and OTA rules are in `README.md`
@@ -14,10 +15,34 @@ UNKNOWN and must be answered by the account owner in the live Console.
 
 ---
 
+## 0. Google Play account status — 18/09/2026
+
+Reported by the account owner; not verifiable from this repository.
+
+| Item | Status |
+|---|---|
+| Developer account | Created |
+| Registration fee | Paid |
+| Android device verification (Galaxy A54) | **Complete** |
+| Identity verification | **Submitted, under Google review — NOT complete** |
+| Contact phone verification | Pending; it unlocks only after identity verification completes |
+| "Create app" | **Locked** until account verification finishes |
+
+Consequence: no app record exists yet, so nothing in this file can be entered anywhere. Every
+Console step waits on the verification result. Never describe identity verification as complete
+until Google says it is.
+
+---
+
 ## 1. Store listing draft
 
 Default listing language: **Hebrew (he-IL)** — the app forces RTL and has no language switch
 (`app.json`, `expo-localization` with `forcesRTL: true`). English (en-US) is optional and secondary.
+
+Re-checked in Stage 4B (18/09/2026): the counts below were measured again on the exact strings, and
+the copy was audited once more against the code. It contains no disabled feature, no bank
+connectivity, no cloud sync, no account, no AI or advice, and no promise of any financial outcome.
+Treat it as the **final proposed Hebrew listing** — it changes only when the product changes.
 
 ### App name — 17 / 30 characters
 
@@ -166,24 +191,41 @@ auto-lock timer (the app locks whenever it goes to the background —
 `Design/*/screen.png` are gitignored third-party mockups of other products. **They must never be
 uploaded to the store listing.**
 
-### Screenshot set to capture (Stage 4B)
+### Screenshot plan — LOCKED (Stage 4B, 18/09/2026)
 
-Six portrait captures, ≥1080×1920, in this order:
+Six portrait captures, ≥1080×1920, 9:16, PNG without alpha or JPEG, in exactly this order. The
+order is the story: where do I stand today → where am I heading → what is it made of → what am I
+saving for → my data stays mine.
 
-1. **בית** — the hero "יתרה צפויה להיום" with the two snapshot cards and the category tiles.
-2. **תחזית** — the daily projected-balance chart.
-3. **תחזית** — the daily breakdown with one day expanded.
-4. A **category page** — e.g. הלוואות or תשלומים שונים, showing obligations with payments left.
-   Frame it so the disabled search field is out of shot.
-5. **יעדים** — a goal with components and a progress bar.
-6. **הגדרות ▸ נתונים** or **הגדרות ▸ אבטחה** — the backup and privacy story.
+**Data state for every shot:** the synthetic dataset only. `src/composition/syntheticDataset.ts`
+builds a complete `BackupEnvelope` — salary ~14,500, rent 4,200, car insurance (annual), a Netflix
+credit-card item, instalment purchases, a payroll loan, cash withdrawals, goals with components,
+plus a payment due tomorrow — with all dates relative to "now". In a release build it loads through
+**Settings ▸ נתונים ▸ הדבקת גיבוי כטקסט**, so no development build is needed. Set an opening balance
+first, or Home and Forecast show prompts instead of numbers.
 
-**Use synthetic data, never real family finances.** `src/composition/syntheticDataset.ts` builds a
-complete `BackupEnvelope` (salary, rent, credit-card items, a payroll loan, withdrawals, goals,
-alerts) with dates relative to "now". In a release build it can be loaded through
-Settings ▸ נתונים ▸ paste a backup as text, so no development build is required. Capture on an
-emulator if the build's ABIs allow it; on the A54 only after a backup has been exported and verified
-off-device.
+| # | Screen | State to reach | Must be visible | Must NOT be visible | Caption (Hebrew, added externally) |
+|---|---|---|---|---|---|
+| 1 | בית | Synthetic data loaded, opening balance set, scrolled to the top | The hero "יתרה צפויה להיום" with its "אינה יתרת בנק מאומתת" line, both snapshot cards, the category tiles | The alerts section if it is empty; any real name or amount | תמונת מצב יומית של התקציב |
+| 2 | תחזית | Same data, chart section expanded | "📈 יתרה יומית צפויה" with a populated step chart and the basis text that says it is not connected to the bank | The empty-state prompt (means no opening balance) | תחזית יתרה יומית עד סוף המחזור |
+| 3 | תחזית | Scrolled to "📋 פירוט יומי", one day expanded | The daily table — תאריך / הכנסות / הוצאות / יתרה צפויה — and one day's individual events | A day with zero movement as the expanded one | פירוט יומי: מה נכנס ומה יורד בכל יום |
+| 4 | קטגוריה (הלוואות or תשלומים שונים) | Open the category page from קטגוריות | The category total chip and obligation rows showing payments left | **The disabled search field** — frame or scroll it out of shot | מעקב הלוואות ותשלומים — כמה נשאר |
+| 5 | יעדים | פעילים tab | A goal with components, a progress bar and a target date | The archive tab; an overdue-only view as the only goal shown | יעדי חיסכון עם מעקב התקדמות |
+| 6 | הגדרות ▸ נתונים | The data topic open | Backup, restore, CSV export, and the reset action | The paste-backup text area with synthetic JSON still in it | גיבוי, שחזור וייצוא — הנתונים נשארים אצלכם |
+
+Captions are optional and, if used, must be added **externally** in the graphic; the app itself must
+not be edited for the store. Keep each caption short enough to read on a phone-sized thumbnail. No
+caption may claim anything the copy rules above forbid.
+
+Capture on an emulator if the build's ABIs allow it. On the A54 only after a backup has been
+exported and verified off-device — and note that loading the synthetic dataset **replaces** the
+data on the device.
+
+**Do not capture yet — there is no suitable build.** The binary installed on the A54 predates
+`5af2487` and `318f59d` (their physical verification is still recorded as pending). It therefore
+still shows routine upcoming-income alerts on Home and the upcoming-income switch in Settings, both
+of which have been removed from the product. Screenshots taken from it would advertise a UI that no
+longer exists. Capture only from the Stage 3B build.
 
 ---
 
@@ -225,6 +267,28 @@ reporting, advertising ID, account or server. The first Play binary will contain
 it will contact Expo's update service — that path carries technical delivery metadata over HTTPS and
 downloads code only. It uploads nothing the user entered and changes none of the user-data answers.
 
+### Ready-to-enter sheet — first Play binary
+
+Answer in this order; the form hides later questions depending on earlier answers.
+
+| Console question | Answer to enter | Why |
+|---|---|---|
+| Does your app collect or share any of the required user data types? | **No** | Nothing leaves the device. No network call exists in `src/` or `app/`; the only outbound path in the first binary is the update client, which is delivery infrastructure, not developer collection |
+| Data types — Location / Personal info / Financial info / Health and fitness / Messages / Photos and videos / Audio / Files and docs / Calendar / Contacts / App activity / Web browsing / App info and performance / Device or other IDs | **None selected** | Financial data is entered by the user and stored in the app's private SQLite database only |
+| Is all of the user data collected by your app encrypted in transit? | **Not shown** once nothing is declared as collected. If the form insists: **Yes** | All connections the binary can make are HTTPS |
+| Do you provide a way for users to request that their data be deleted? | **Not shown**; if asked: no account, deletion happens on the device (in-app "איפוס כל הנתונים" or uninstall) | There is no server and no account to delete from |
+| Data collected by a third-party SDK? | **No** | Dependency review at `754bafc` found no analytics, attribution or crash-reporting package, direct or transitive |
+| Is your app's data handling independently validated against a security standard? | **No** | No such audit has been done. Do not claim one |
+| Does your app have ads? | **No** | No ad SDK |
+| Advertising ID used? | **No** | No AD_ID permission |
+| Privacy policy URL | `https://msrss58-nm.github.io/finance/privacy/` | Live, verified |
+
+**Confirm only in the live Console:** the exact phrasing and order of the questions (the form has
+changed before), whether "encrypted in transit" and "deletion request" still appear when nothing is
+declared, and whether Play adds a separate question about software-update delivery. If the form asks
+anything not covered here, stop and re-read `GOOGLE_PLAY_DATA_SAFETY.md` before answering — do not
+improvise an answer at the keyboard.
+
 ---
 
 ## 5. Financial-features / policy classification
@@ -252,6 +316,34 @@ blocked until it is answered — but the answer is not chosen here. The two cand
 Resolve it by reading the actual form in Console, with its definitions and help text, and choosing
 the accurate, defensible answer. Do not pre-select either from this document. Record the final choice
 here once it is made.
+
+### Decision matrix for the live form
+
+Read the form's own definition of "financial features" first, then walk this table.
+
+| Form option | Does FamilyFinance PRO do it? | Evidence |
+|---|---|---|
+| Personal loan — direct lender / facilitator / payday / earned-wage advance | **No** | The app originates nothing; a "loan" is a row the user types about a loan they already have |
+| Banking, line of credit, microfinance | **No** | No bank connection, no account, no network call |
+| Mobile payments, digital wallets, money transfer | **No** | No payment SDK, no billing library |
+| Buy now pay later, rewards/points programmes | **No** | Instalments are the user's own records; nothing is offered or brokered |
+| Crypto wallet / exchange / tokenized assets | **No** | No crypto code of any kind |
+| Stock trading, portfolio management, crowdfunding | **No** | No market data, no brokerage, no portfolio feature |
+| Credit monitoring and reporting, credit repair | **No** | No bureau access, no score |
+| Insurance | **No** | "ביטוח רכב" can exist only as an expense row the user types |
+| Financial advice | **No** | The insight cards are deterministic arithmetic on the user's own numbers — next event, this month's card charges, remaining loan balance. No recommendation engine, no AI |
+| Debt management as a service | **No** | Tracking one's own obligations is not a service provided to the user |
+| "My app doesn't provide any financial features" | **Candidate 1** | Nothing above applies, and the list has no budgeting/tracking option |
+| Support services → Other | **Candidate 2** | Choose this only if the live form defines "financial features" broadly enough to cover personal financial management as such |
+
+**Decision rule:** if the form's definition is about *providing a financial service or product*,
+answer Candidate 1. If its definition covers *handling or managing financial information* in a way
+that plainly includes a personal budget tracker, answer Candidate 2 with "Other" described as
+"personal budgeting and expense tracking; all data entered manually by the user and stored on the
+device". If an option requires a licence, a lender relationship or regulator documentation, it is
+the wrong option — none of that exists here. When in doubt, choose the answer you could defend
+verbatim to a reviewer using the facts above, and record which option you picked and its exact
+wording, with the date, in this file.
 
 **Standing constraint:** adding bank-account aggregation, open-banking links, payments or
 personalized advice would turn this into a financial product/service — a category that requires an
@@ -363,8 +455,11 @@ more than the extra build.
 - At least 2 phone screenshots; 5–6 as specified in §2.
 - The Financial features declaration answered in Console (§5).
 - The Data Safety form actually submitted.
-- Developer-account identity and phone verification complete — UNKNOWN from the repository.
-- One EAS build (quota resets 01/10/2026). Nothing can be uploaded without it.
+- **Account verification** — identity verification is under Google review and phone verification
+  waits on it, so "Create app" is still locked (§0). Nothing can be entered in Console until it
+  clears.
+- One EAS build (quota resets 01/10/2026). Nothing can be uploaded without it, and there is no
+  build suitable for store screenshots until then (§2).
 
 **IMPORTANT**
 - Choose A or B in §9 before the build.
@@ -381,6 +476,121 @@ more than the extra build.
 - Wire `android-icon-monochrome.png` as a notification / themed icon (needs a build; not worth one on
   its own).
 - Visual check of the adaptive icon's double inset.
+
+---
+
+## 11. Feature graphic — production specification
+
+1024×500, **no alpha**, 24-bit PNG or JPEG, sRGB, under 15 MB. It is the banner at the top of the
+listing and is often shown scaled down to a few hundred pixels wide, so it must survive being small.
+
+**Text**
+
+- Headline (Hebrew): `כל התקציב המשפחתי — במכשיר שלכם`
+- Optional subtitle: `יתרה, תחזית, הלוואות ותשלומים` — include it only if it stays legible at
+  roughly 40% scale; the headline alone is a valid design.
+- English variant, only if an English listing is published:
+  headline `Your family budget, on your device`, subtitle `Balance, forecast, loans, instalments`.
+- Hebrew text is RTL: set the paragraph direction correctly, and check the rendered file rather than
+  trusting the editor's preview.
+
+**Composition**
+
+- Background: the brand navy `#0f3a78`, flat or with a subtle vertical gradient toward a slightly
+  darker tone. No photography, no stock imagery.
+- The app icon (from `icons/familyfinance-512.png`) on one side at roughly 300–340 px, optically
+  centred vertically; text block on the other side. With Hebrew text, the icon reads best on the
+  left with the text right-aligned.
+- Accent colour for a thin rule or a single small highlight: the app's green `#0a7d3d` or white at
+  reduced opacity. Two colours plus white is the whole palette.
+- No screenshot inside the graphic, no device frame, no drop shadows imitating a real card.
+
+**Typography**
+
+- One clean sans-serif with real Hebrew support (Rubik, Heebo, Assistant, or the system UI face).
+  One family, two weights at most.
+- Headline about 64–78 px, subtitle about 34–40 px, both at high contrast against the navy
+  (white or near-white). Nothing below 30 px.
+
+**Safe areas**
+
+- Keep every glyph and the icon inside a 5% margin — at least 50 px left/right and 25 px top/bottom.
+- Play crops and overlays this asset differently across surfaces: keep the middle ~1000×450 free of
+  anything essential, and never place text in the outer 64 px on any side.
+
+**Must NOT appear**
+
+- Bank logos, card networks, currency-symbol clip-art suggesting real accounts, charts implying
+  market data, AI or robot imagery, or anything resembling a banking dashboard.
+- Numbers that could read as a real balance, and any real personal or financial data.
+- Growth arrows, "earn", "save X%", returns, or any claim of a financial outcome.
+- Store badges, review stars, awards, "#1", or other ranking claims.
+- The word "PRO" styled as a paid tier — it is part of the product name, not a plan.
+- Alpha transparency of any kind; flatten before export.
+
+**Not generated.** No image has been created. Producing it needs explicit approval.
+
+---
+
+## 12. Tester worksheet (14–15 testers)
+
+Do not invite anyone yet. Keep this as a spreadsheet — one row per tester, one line per event — and
+bring it to the production-access application, which asks how testers were recruited and what came
+back.
+
+CSV header to paste into a new sheet:
+
+```
+tester_name,google_account_email,invited_on,opted_in_on,install_confirmed,day1_date,still_opted_in,feedback_received,issue_found,issue_resolved,notes
+```
+
+| Column | Meaning | Rule |
+|---|---|---|
+| tester_name | Who they are | Enough to contact them |
+| google_account_email | The **Google account** that opts in | Must be the same account that installs from Play; a different address silently fails to count |
+| invited_on | Date the opt-in link was sent | — |
+| opted_in_on | Date they accepted the opt-in | This, not the invitation, is what Google counts |
+| install_confirmed | Yes/No | Opting in without installing is weak evidence of real testing |
+| day1_date | The first day of that tester's 14-day window | Normally the same as `opted_in_on` |
+| still_opted_in | Yes/No, re-checked every few days | If it flips to No, that tester's clock restarts when they return |
+| feedback_received | Short note | Google asks about feedback specifically |
+| issue_found | What broke | Device and Android version belong in `notes` |
+| issue_resolved | How and when | Say whether the fix went out as an OTA or a new binary |
+| notes | Device, Android version, anything unusual | — |
+
+Rules that protect the 14-day clock: recruit 14–15 so a dropout does not sink the count; never
+remove and re-add a tester, swap the list or delete the track mid-window; a Google Group makes
+membership changes safe; count only accounts that actually opted in.
+
+---
+
+## 13. Checklist for the day account verification clears
+
+Run it in order and stop where it says stop.
+
+1. Confirm **identity verification is approved** in Console — not "submitted", approved.
+2. Complete **contact phone verification** (it unlocks only after step 1).
+3. Confirm **Create app** is enabled.
+4. Create the app record: name `FamilyFinance PRO`, default language **Hebrew (he-IL)**, type App,
+   Free.
+5. Confirm the package name `com.familyfinance.pro` is accepted — it is fixed at the first upload
+   and can never be changed for this app.
+6. Confirm the app name is available and, if taken, decide on an alternative **before** filling
+   anything else in.
+7. Open the **Financial features** declaration, read its definition and help text, walk the matrix
+   in §5, choose the defensible answer, and record the choice and the date here.
+8. Fill the **store listing** draft fields from §1: name, short description, full description,
+   support email, privacy policy URL, website left empty. Save as draft. Assets can come later;
+   the icon from §2 can be uploaded now.
+9. Fill the **Data Safety** draft from §4's ready-to-enter sheet. Save as draft; submit only when
+   the rest of App content is consistent.
+10. Complete the remaining App content declarations from §3 (ads, app access, content rating,
+    target audience, news, government, health, COVID).
+11. Create the **internal testing** track and prepare the tester list from §12 — do not invite
+    anyone yet.
+12. **STOP before uploading any AAB.** The build strategy in §9 (A or B) is not approved, and no
+    OTA-capable binary exists. Uploading is Stage 3B/4B work, after the EAS quota resets on
+    01/10/2026.
 
 ---
 
