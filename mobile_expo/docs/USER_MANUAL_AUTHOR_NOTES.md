@@ -57,11 +57,33 @@ as an apology.
 | FAQ | The quirk | Source | Note |
 |---|---|---|---|
 | 3 | On days 1–4 the displayed cycle has not started yet, so today's row is absent from the Forecast table and the Home remaining-expenses card skips charges due in the next 1–3 days | `src/domain/forecast.ts:29-40`; `src/domain/homeTotals.ts:66` | **Approved behavior**, not a defect: Decision A of 17/09/2026 kept `date > today` and the current bounds after a proposed change would have reverted Web v1.4.7 (commit `58d3ca8`) |
-| 6 | A credit-paid fixed item can raise "תשלום צפוי מחר" although it never appears in "מה צפוי לרדת" | `src/domain/alerts.ts:51-58` compares day-of-month only, without the payment-method filter the charge list applies (`src/domain/upcomingCharges.ts:5-12`) | **Candidate defect.** Balances are unaffected — only the alert is noisy. Fixing it means filtering the alert by payment method; that touches `computeInAppAlerts`, which is compared against the Web app by the parity suite, so it needs a deliberate deviation decision |
+| 6 | ~~A credit-paid fixed item can raise "תשלום צפוי מחר" although it never appears in "מה צפוי לרדת"~~ | — | **FIXED 18/09/2026** — see "Quirk A" below. FAQ 6 now explains the opposite: such items deliberately do not alert |
 | 7 | For a billing day of 29–31, the forecast event fires on the clamped date (e.g. 28 Feb) but the payments-left counter waits for the raw day (31 Mar), so the loan/instalment tiles over-count for those days | clamp `src/domain/dates.ts:5-12`; counter `src/domain/dates.ts:44` (`todayZero.getDate() >= range.bDay`) | **Real inconsistency.** Documented with the practical workaround (use a billing day ≤ 28). Worth a product decision later: clamp the counter the same way the event is clamped |
 | 8 | A yearly fixed item is spread as amount/12 every month instead of charging once a year | `src/domain/resolvers.ts:60`; `src/domain/cashflow.ts:90` | Intended model (CLAUDE.md §10), but consistently surprising — documented with the alternative (a dated one-time charge) |
 | 9 | The Home "הכנסות" card is the configured monthly total, with no date filter | `src/domain/aggregates.ts:106-107` | Intended; documented so users stop reading it as "income received so far" |
 | 10 | A cash withdrawal reduces the balance but is not an expense | `src/domain/cashflow.ts:132-148` | Intended; documented with the double-counting warning |
+
+## Quirk A — resolved 18/09/2026 (approved product decision)
+
+"תשלום צפוי מחר" now means **a real bank debit scheduled for tomorrow**, derived from the canonical
+charge list (`getUpcomingCharges`, i.e. the unified cash-flow engine) in
+`src/presentation/homeView.ts`. The correction fixed four things at once: credit-paid items, payroll
+loans and method-less instalments no longer alert; a yearly item alerts with its monthly amount
+instead of the annual one; a bi-monthly item alerts only in a charged month; an item outside its
+billing range does not alert; and a stored day of 29–31 now alerts on the clamped date the charge
+really falls on, which the old day-of-month match silently skipped.
+
+Constraints respected: `src/domain/alerts.ts` and `app.js` were **not** touched, so
+`computeInAppAlerts` stays Web-verbatim (decision C) and **no parity deviation was added** — both
+suites stay green. No scheduling logic was duplicated; the alert reuses the existing charge list.
+
+Consequence to keep in mind when reading the domain tests: at domain level the payroll loan still
+raises a payment alert and still merges the lifecycle mark — that is the Web contract and it is
+asserted deliberately in `test/domain/obligationLifecycle.test.ts`. What the user sees is asserted
+through `buildHomeView` in the same file and in `test/presentation/upcomingPaymentAlert.test.ts`.
+
+**Quirk B (billing day 29–31 vs the payments-left counter) stays DEFERRED** by the same decision.
+Row 7 below is unchanged and still describes live behavior; FAQ 7 still documents it for users.
 
 ## Open questions / things deliberately not documented
 

@@ -5,7 +5,9 @@
 //   - "סך הכול הוצאות" = the expenses still expected in the 5th→4th period
 //     (strictly after today, APPROVED 17/09/2026), WITHOUT cash withdrawals;
 //     withdrawals are shown as their own figure (correction A);
-//   - in-app alerts = exceptional items only (decision C);
+//   - in-app alerts = exceptional items only (decision C), and "תשלום צפוי מחר"
+//     is the real bank debit scheduled for tomorrow, taken from the canonical
+//     charge list (APPROVED 18/09/2026);
 //   - "מה צפוי לרדת" = outgoing bank charges in the next 10 days, nearest
 //     first, no cash withdrawals, nothing already shown as an alert (B).
 // "Amount until next income" is deliberately NOT part of this view.
@@ -18,7 +20,7 @@ import {
   getMonthSnapshot,
   getVariableRemainingBalance,
 } from '../domain/aggregates.ts';
-import { computeInAppAlerts } from '../domain/alerts.ts';
+import { computeInAppAlerts, type InAppAlert } from '../domain/alerts.ts';
 import type { CashflowEvent } from '../domain/cashflow.ts';
 import { cashflowDateKey, parseLocalDateStr } from '../domain/dates.ts';
 import { getForecastPeriodBounds, getProjectedBalanceToday } from '../domain/forecast.ts';
@@ -128,6 +130,14 @@ export function formatCreditSettlementUpdatedLabel(dateStr: unknown): string {
 
 const RED_TILE_KEYS = new Set(['fixed', 'variable', 'loan', 'dated']);
 
+/**
+ * The obligation types "תשלום צפוי מחר" covers — unchanged from the Web rule. The credit-card
+ * settlement and other dated charges stay out of the alert list; they are shown in "מה צפוי לרדת".
+ */
+const OBLIGATION_ALERT_TYPES = new Set(['fixed', 'variable', 'loan']);
+/** Mirrors the title in domain/alerts.ts, which is parity-locked and must not be edited. */
+const UPCOMING_PAYMENT_ALERT_TITLE = 'תשלום צפוי מחר';
+
 export function buildHomeView(s: FinanceSnapshot): HomeView {
   const { data, now } = s;
   const { items, categoryConfig, settings } = data;
@@ -216,17 +226,40 @@ export function buildHomeView(s: FinanceSnapshot): HomeView {
 
   // In-app alerts (exceptional items), then the charges they must not repeat.
   const alerts = computeInAppAlerts({ items, settings, now, categoryConfig, lastAutoArchivedTitles: s.lastAutoArchivedTitles });
+  const charges = getUpcomingCharges({ items, now, categoryConfig, alerts });
+  // APPROVED 18/09/2026: "תשלום צפוי מחר" means a real bank debit scheduled for tomorrow, so it is
+  // derived from the same canonical charge list rather than from a bare day-of-month match. The
+  // engine already decides what actually leaves the bank and when, so this needs no second
+  // scheduling rule and `computeInAppAlerts` (Web-parity, decision C) stays untouched. Consequences:
+  // credit-paid items and payroll loans no longer raise this alert (they never debit the bank; their
+  // lifecycle alerts still cover them), a yearly item alerts with its monthly amount, a bi-monthly
+  // item alerts only in a charged month, an item outside its billing range does not alert, and a
+  // stored day of 29-31 alerts on the clamped date the charge really falls on.
+  const tomorrowKey = cashflowDateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
+  const paymentAlerts: InAppAlert[] = settings.notifications.upcomingPayment
+    ? charges
+        .filter((c) => c.dateKey === tomorrowKey && OBLIGATION_ALERT_TYPES.has(c.type))
+        .map((c) => ({
+          kind: 'upcomingPayment' as const,
+          title: UPCOMING_PAYMENT_ALERT_TITLE,
+          detail: typeof c.title === 'string' ? c.title : String(c.title ?? ''),
+          amount: c.amount,
+          itemId: c.itemId,
+          itemType: c.type,
+          date: c.date,
+        }))
+    : [];
   // APPROVED 17/09/2026: routine recurring income is not an alert. Every income item is a monthly
   // recurring event in the engine (there is no one-time / changed / missing income concept), so no
   // "הכנסה צפויה" alert reaches Home; income stays in Forecast and every calculation.
-  const actionableAlerts = alerts.filter((a) => a.kind !== 'upcomingIncome');
+  const actionableAlerts = [...paymentAlerts, ...alerts.filter((a) => a.kind !== 'upcomingIncome' && a.kind !== 'upcomingPayment')];
   // End-of-obligation alerts (APPROVED 17/09/2026), merged for Home only — one alert per obligation.
   const homeAlerts = mergeObligationLifecycleAlerts(actionableAlerts, computeObligationLifecycleAlerts({ items, settings, now, categoryConfig }));
   const alertRows: AlertRow[] = homeAlerts.map((a, i) => {
     const n = typeof a.amount === 'number' ? a.amount : Number(a.amount);
     return { key: a.kind + ':' + i, title: a.title, detail: a.detail, amountText: a.amount != null && isFinite(n) ? formatAmount(n) : null };
   });
-  const upcoming: ChargeRow[] = getUpcomingCharges({ items, now, categoryConfig, alerts }).map((c) => ({
+  const upcoming: ChargeRow[] = charges.map((c) => ({
     key: c.type + '|' + String(c.itemId) + '|' + c.dateKey,
     title: typeof c.title === 'string' ? c.title : String(c.title ?? ''),
     dateText: formatDate(c.date),

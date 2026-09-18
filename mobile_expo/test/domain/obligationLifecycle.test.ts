@@ -23,6 +23,11 @@ const homeAlerts = (items: object[], now: Date, settings: object = ON) =>
     computeInAppAlerts({ items: items as never, settings: settings as never, now, categoryConfig: cc, lastAutoArchivedTitles: [] }),
     lifecycle(items, now, settings),
   );
+/** What Home actually renders — where the payment alert follows the real bank debit (18/09/2026). */
+const homeViewAlerts = async (items: object[], now: Date, settings: object = ON) =>
+  buildHomeView(await snapshotOf({ family_finance_data: JSON.stringify(items), family_finance_settings: JSON.stringify(settings) }, now)).alerts.map(
+    (a) => [a.title, a.detail],
+  );
 
 // 12 payments on the 2nd, the first on 2.12.2025 → the last on 2.11.2026.
 const loan = (fields: object = {}) => ({ id: 1, type: 'loan', displayCategory: 'loan', title: 'הלוואה', amount: 835, day: '2', total: '12', start: '2025-11-26', where: 'בחשבון', isArchived: false, ...fields });
@@ -120,14 +125,20 @@ const REAL_INSTALLMENTS = [
   { id: 34, type: 'variable', displayCategory: 'variable', title: 'משקפיים', amount: 127, day: '2', total: '12', start: '2026-08-26', where: 'credit', isArchived: false },
 ];
 
-test('real-data equivalent: on 17.9 only the payroll loan ending 1.10 alerts; the ₪835 loans end 2.11 (2 left), not 2.10', () => {
+test('real-data equivalent: on 17.9 only the payroll loan ending 1.10 alerts; the ₪835 loans end 2.11 (2 left), not 2.10', async () => {
   assert.deepEqual(lifecycle(REAL_INSTALLMENTS, at(2026, 9, 17)).map((a) => [a.kind, a.itemId, a.detail, a.amount]), [
     ['lastPayment', 26, 'שיפוצים- יורד דרך התלוש · התשלום האחרון ב־1.10', 362],
   ]);
-  // 30.9: the existing "תשלום צפוי מחר" names it and is marked, no second alert.
+  // 30.9, domain level: computeInAppAlerts is Web-verbatim, so it still raises "תשלום צפוי מחר" for
+  // this payroll loan and the lifecycle alert is merged into it rather than repeated.
   const sep30 = homeAlerts(REAL_INSTALLMENTS, at(2026, 9, 30)).filter((a) => a.itemId === 26);
   assert.deepEqual(sep30.map((a) => [a.kind, a.detail]), [['upcomingPayment', 'שיפוצים- יורד דרך התלוש · התשלום האחרון']]);
   assert.deepEqual(lifecycle(REAL_INSTALLMENTS, at(2026, 10, 1)).map((a) => [a.kind, a.itemId]), [['obligationEndsToday', 26]]);
+  // 30.9, what the user actually sees: APPROVED 18/09/2026, Home raises "תשלום צפוי מחר" only for a
+  // real bank debit, and this loan is repaid from the payslip — so the lifecycle alert stands alone.
+  assert.deepEqual(await homeViewAlerts(REAL_INSTALLMENTS, at(2026, 9, 30)), [
+    ['נשאר תשלום אחד', 'שיפוצים- יורד דרך התלוש · התשלום האחרון ב־1.10'],
+  ]);
   // 2.10: the ₪835 loans' 2.10 payment is today, so it counts as paid → 1 left, the last on 2.11.
   assert.deepEqual(lifecycle(REAL_INSTALLMENTS, at(2026, 10, 2)).map((a) => [a.kind, a.itemId, a.detail]), [
     ['lastPayment', 21, 'הלוואה · התשלום האחרון ב־2.11'],
